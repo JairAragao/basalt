@@ -33,6 +33,11 @@
           :config="config"
           @saved="(c) => $emit('saved', c)"
         />
+        <CardEditor
+          v-else-if="tab === 'card'"
+          :config="config"
+          @saved="(c) => $emit('saved', c)"
+        />
         <PropertyEditor
           v-else
           :config="config"
@@ -47,10 +52,11 @@
 import StatusEditor from './StatusEditor.vue';
 import PropertyEditor from './PropertyEditor.vue';
 import FiltersEditor from './FiltersEditor.vue';
+import CardEditor from './CardEditor.vue';
 
 export default {
   name: 'Settings',
-  components: { StatusEditor, PropertyEditor, FiltersEditor },
+  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor },
   props: {
     config: { type: Object, required: true },
   },
@@ -61,6 +67,7 @@ export default {
         { id: 'status', label: 'Status' },
         { id: 'properties', label: 'Propriedades' },
         { id: 'filters', label: 'Filtros' },
+        { id: 'card', label: 'Cartão' },
       ],
     };
   },

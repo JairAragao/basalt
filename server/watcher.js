@@ -1,11 +1,16 @@
-// watcher.js — observa tasks/*.md e (re)calcula os derivados GUT.
-// NUNCA commita. Anti-loop: só regrava se os derivados mudaram.
+// watcher.js — observa tasks/*.md e (re)calcula os campos FÓRMULA derivados.
+// NUNCA commita. Anti-loop GENÉRICO: só regrava se algum campo fórmula mudou.
+//
+// O motor é server/formula.js (compute(data, schema)). O carimbo de cálculo é
+// o campo genérico 'computed_at' (ISO).
 
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
 const matter = require('gray-matter');
-const gute = require('./gute');
+const formula = require('./formula');
+
+const STAMP_FIELD = 'computed_at';
 
 // Extrai o id (nome do arquivo sem .md) de um path.
 function idFromFile(file) {
@@ -18,14 +23,30 @@ function sameDerived(a, b) {
   return a === b;
 }
 
+// Resolve o "schema" usado pelo motor a partir das deps, aceitando o formato
+// novo (deps.schema) e o legado (deps.guteConfig = config/gute.json).
+function resolveSchema(deps) {
+  return deps.schema || deps.guteConfig || {};
+}
+
+// Stamp field efetivo: legado usa o stampField do gute.json se presente,
+// senão o genérico 'computed_at'.
+function resolveStampField(deps) {
+  const sch = resolveSchema(deps);
+  if (sch && typeof sch.stampField === 'string' && sch.stampField) return sch.stampField;
+  return STAMP_FIELD;
+}
+
 /**
  * recompute(file, deps) — núcleo testável (sem chokidar).
- *  deps: { guteConfig, writeTask(id, data, body), readFile(file)->raw }
+ *  deps: { schema | guteConfig, writeTask(id, data, body), readFile(file)->raw }
  * Retorna true se reescreveu, false se pulou (anti-loop / arquivo inválido).
  */
 function recompute(file, deps) {
-  const { guteConfig, writeTask } = deps;
+  const { writeTask } = deps;
   const readFile = deps.readFile || ((f) => fs.readFileSync(f, 'utf8'));
+  const schema = resolveSchema(deps);
+  const stampField = resolveStampField(deps);
 
   let parsed;
   try {
@@ -36,18 +57,23 @@ function recompute(file, deps) {
   const data = parsed.data || {};
   const body = parsed.content;
 
-  const derived = gute.compute(data, guteConfig);
+  // Calcula TODOS os campos fórmula do schema sobre as props numéricas da task.
+  const computed = formula.compute(data, schema);
+  const formulaKeys = Object.keys(computed);
 
-  // ANTI-LOOP: se os derivados atuais já batem com os calculados, não regrava.
-  const unchanged =
-    sameDerived(data.GUT, derived.GUT) &&
-    sameDerived(data.prioridade_gute, derived.prioridade_gute);
-  if (unchanged) return false;
+  // ANTI-LOOP GENÉRICO: se todos os campos fórmula atuais já batem com os
+  // calculados, não regrava.
+  let changed = false;
+  for (const k of formulaKeys) {
+    if (!sameDerived(data[k], computed[k])) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return false;
 
-  // Atualiza derivados + carimbo de cálculo.
-  data.GUT = derived.GUT;
-  data.prioridade_gute = derived.prioridade_gute;
-  const stampField = guteConfig.stampField || 'gute_computed_at';
+  // Atualiza os campos fórmula + carimbo de cálculo.
+  for (const k of formulaKeys) data[k] = computed[k];
   data[stampField] = new Date().toISOString();
 
   const id = idFromFile(file);
@@ -56,24 +82,25 @@ function recompute(file, deps) {
 }
 
 /**
- * startWatcher({ TASKS_DIR, gute: guteConfig, schema })
+ * startWatcher({ TASKS_DIR, schema })
  * Inicia o chokidar e liga add/change ao recompute. Usa a escrita atômica
  * do tasks-repo (mesmo .tmp + rename) para o carimbo dos derivados.
+ *
+ * Re-observa automaticamente o TASKS_DIR do vault novo quando o usuário troca
+ * de vault (config.onVaultChange) — sem reiniciar o servidor.
  */
-function startWatcher({ TASKS_DIR, gute: guteConfig }) {
+function startWatcher({ TASKS_DIR, schema }) {
   // require tardio evita ciclo de import com tasks-repo no boot.
   const tasksRepo = require('./tasks-repo');
+  const config = require('./config');
 
   const deps = {
-    guteConfig,
+    // Lê o schema vivo no momento do cálculo (suporta reload/troca de vault).
+    get schema() {
+      return (config && config.schema) || schema;
+    },
     writeTask: (id, data, body) => tasksRepo.ATOMIC_writeTask(id, stripId(data), body),
   };
-
-  const glob = path.join(TASKS_DIR, '*.md');
-  const watcher = chokidar.watch(glob, {
-    ignoreInitial: false,
-    awaitWriteFinish: { stabilityThreshold: 200 },
-  });
 
   const onChange = (file) => {
     try {
@@ -83,8 +110,31 @@ function startWatcher({ TASKS_DIR, gute: guteConfig }) {
     }
   };
 
-  watcher.on('add', onChange).on('change', onChange);
-  console.log('[watcher] observando', glob);
+  let watcher = null;
+  function watch(dir) {
+    const glob = path.join(dir, '*.md');
+    watcher = chokidar.watch(glob, {
+      ignoreInitial: false,
+      awaitWriteFinish: { stabilityThreshold: 200 },
+    });
+    watcher.on('add', onChange).on('change', onChange);
+    console.log('[watcher] observando', glob);
+    return watcher;
+  }
+
+  watch(TASKS_DIR);
+
+  // Troca de vault → fecha o watcher antigo e abre no novo TASKS_DIR.
+  if (typeof config.onVaultChange === 'function') {
+    config.onVaultChange(({ TASKS_DIR: nextDir }) => {
+      const target = nextDir || config.TASKS_DIR;
+      if (watcher) {
+        try { watcher.close(); } catch { /* noop */ }
+      }
+      watch(target);
+    });
+  }
+
   return watcher;
 }
 

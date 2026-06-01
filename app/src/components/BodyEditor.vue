@@ -22,6 +22,28 @@
       <button class="be-bubble__btn" :class="{ 'is-active': mark.link }" title="Link" @mousedown.prevent @click="toggleLink"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 12a3 3 0 0 0 4 0l2-2a3 3 0 0 0-4-4l-1 1" stroke-linecap="round"/><path d="M12 8a3 3 0 0 0-4 0l-2 2a3 3 0 0 0 4 4l1-1" stroke-linecap="round"/></svg></button>
     </div>
 
+    <!-- barrinha de link (substitui o prompt do navegador) -->
+    <div
+      v-show="linkEditor.open"
+      ref="linkbar"
+      class="be-linkbar"
+      :style="{ left: linkEditor.x + 'px', top: linkEditor.y + 'px' }"
+      @mousedown.prevent
+    >
+      <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" class="be-linkbar__icon"><path d="M8 12a3 3 0 0 0 4 0l2-2a3 3 0 0 0-4-4l-1 1" stroke-linecap="round"/><path d="M12 8a3 3 0 0 0-4 0l-2 2a3 3 0 0 0 4 4l1-1" stroke-linecap="round"/></svg>
+      <input
+        ref="linkInput"
+        v-model="linkEditor.url"
+        type="url"
+        placeholder="Colar ou digitar link…"
+        class="be-linkbar__input"
+        @keydown.enter.prevent="applyLink"
+        @keydown.esc.prevent="closeLink"
+      />
+      <button class="be-bubble__btn" title="Aplicar" @mousedown.prevent @click="applyLink">✓</button>
+      <button v-if="linkEditor.has" class="be-bubble__btn" title="Remover link" @mousedown.prevent @click="removeLink">✕</button>
+    </div>
+
     <!-- menu de blocos (slash). Posicionado no caret. -->
     <div
       v-show="slash.open"
@@ -111,6 +133,7 @@ export default {
       // estado das marcas (atualiza a aparência dos botões da bubble)
       mark: { bold: false, italic: false, strike: false, code: false, link: false },
       bubbleVisible: false,
+      linkEditor: { open: false, url: '', has: false, x: 0, y: 0 },
       // menu slash
       slash: {
         open: false,
@@ -249,7 +272,7 @@ export default {
           placement: 'top',
           maxWidth: 'none',
           onShow: () => { self.bubbleVisible = true; },
-          onHidden: () => { self.bubbleVisible = false; },
+          onHidden: () => { self.bubbleVisible = false; self.closeLink(); },
         },
         shouldShow: ({ editor, from, to, state }) => {
           if (self.slash.open) return false;
@@ -287,15 +310,28 @@ export default {
     toggleLink() {
       if (!this.editor) return;
       const prev = this.editor.getAttributes('link').href || '';
-      const url = window.prompt('URL do link (vazio para remover):', prev);
-      if (url === null) return; // cancelou
+      // posiciona a barrinha logo acima da bubble (que está na seleção)
+      const r = this.$refs.bubble.getBoundingClientRect();
+      this.linkEditor = { open: true, url: prev, has: !!prev, x: r.left, y: Math.max(8, r.top - 6) };
+      this.$nextTick(() => { const el = this.$refs.linkInput; if (el) { el.focus(); el.select(); } });
+    },
+    applyLink() {
+      if (!this.editor) return;
+      const url = (this.linkEditor.url || '').trim();
       const chain = this.editor.chain().focus().extendMarkRange('link');
-      if (url === '') {
-        chain.unsetLink().run();
-      } else {
-        chain.setLink({ href: url }).run();
-      }
+      if (!url) chain.unsetLink().run();
+      else chain.setLink({ href: url }).run();
+      this.closeLink();
       this.refreshMarks();
+    },
+    removeLink() {
+      if (!this.editor) return;
+      this.editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      this.closeLink();
+      this.refreshMarks();
+    },
+    closeLink() {
+      this.linkEditor.open = false;
     },
     refreshMarks() {
       if (!this.editor) return;
@@ -613,6 +649,31 @@ export default {
 .be-bubble__btn:hover { background: #2a2a2a; color: #e9e9e7; }
 .be-bubble__btn.is-active { color: #d9a01e; background: rgba(217, 160, 30, 0.12); }
 .be-bubble__btn--mono { font-family: Consolas, monospace; font-size: 12px; }
+.be-linkbar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #252525;
+  border: 1px solid #373737;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transform: translateY(-100%);
+}
+.be-linkbar__icon { color: #6f6f6f; margin-left: 2px; flex-shrink: 0; }
+.be-linkbar__input {
+  width: 220px;
+  background: #1d1d1d;
+  border: 1px solid #373737;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  color: #e9e9e7;
+  outline: none;
+}
+.be-linkbar__input:focus { border-color: #d9a01e; }
 .be-bubble__sep {
   width: 1px;
   height: 18px;

@@ -48,6 +48,19 @@ function stripDerived(data) {
   return out;
 }
 
+// Campos "auto" (gerenciados pelo sistema): auditoria created/updated at/by.
+// Não vêm do form; o app nunca os escreve — o tasks-repo carimba.
+function autoKeys() {
+  const props = (config.schema && config.schema.properties) || {};
+  return Object.keys(props).filter((k) => props[k] && props[k].auto);
+}
+// Remove tanto derivados (fórmula + computed_at) quanto auto do input do app.
+function stripManaged(data) {
+  const out = stripDerived(data);
+  for (const k of autoKeys()) delete out[k];
+  return out;
+}
+
 function ATOMIC_writeTask(id, data, body) {
   const full = resolveTaskPath(id);
   const tmp = path.join(config.TASKS_DIR, `.${id}.tmp`);
@@ -87,7 +100,7 @@ function get(id) {
   return { id, data: parsed.data, body: parsed.content };
 }
 
-function create(data, body) {
+function create(data, body, actor) {
   const input = { ...data };
   let id = input.id;
   if (!id) { id = genId(input, config.schema); input.id = id; }
@@ -97,13 +110,20 @@ function create(data, body) {
   const { ok, errors } = validateTask(input, config.schema);
   if (!ok) throw new Error(`validação falhou: ${errors.join('; ')}`);
 
-  const clean = stripDerived(input);
+  const clean = stripManaged(input);
   delete clean.id;
+  // Auditoria: carimba criação + edição (mesmo instante/autor no create).
+  const now = new Date().toISOString();
+  const who = actor || '';
+  clean.created_at = now;
+  clean.created_by = who;
+  clean.updated_at = now;
+  clean.updated_by = who;
   ATOMIC_writeTask(id, clean, body);
   return { id };
 }
 
-function update(id, data, body) {
+function update(id, data, body, actor) {
   const full = resolveTaskPath(id);
   if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
   const input = { ...data, id };
@@ -112,13 +132,22 @@ function update(id, data, body) {
   if (!ok) throw new Error(`validação falhou: ${errors.join('; ')}`);
 
   const existing = matter.read(full);
-  const clean = stripDerived(input);
+  const ex = existing.data || {};
+  const clean = stripManaged(input);
   delete clean.id;
-  // Preserva os derivados já no arquivo (dono = watcher).
+  // Preserva os derivados (fórmula) e o carimbo de cálculo (dono = watcher).
   const derivedKeys = (config.schema && Array.isArray(config.schema.derived)) ? config.schema.derived : [];
   for (const k of derivedKeys) {
-    if (k in (existing.data || {})) clean[k] = existing.data[k];
+    if (k in ex) clean[k] = ex[k];
   }
+  if ('computed_at' in ex) clean.computed_at = ex.computed_at;
+  // Auditoria: preserva a criação; carimba a edição.
+  const now = new Date().toISOString();
+  const who = actor || '';
+  clean.created_at = ex.created_at || now;
+  clean.created_by = ex.created_by !== undefined ? ex.created_by : who;
+  clean.updated_at = now;
+  clean.updated_by = who;
 
   const finalBody = body === undefined ? existing.content : body;
   ATOMIC_writeTask(id, clean, finalBody);

@@ -179,17 +179,38 @@ export default {
     inputFields() {
       const derived = new Set(this.derivedNames);
       return Object.keys(this.properties)
-        .filter((name) => !derived.has(name))
+        .filter((name) => !derived.has(name) && !(this.properties[name] && this.properties[name].auto))
         .map((name) => ({ name, ...this.properties[name] }));
     },
     rowFields() {
       return this.inputFields.filter((f) => f.name !== this.titleKey);
     },
     derivedDisplay() {
-      return this.derivedNames.map((name) => {
-        const prop = this.properties[name] || {};
-        return { name, label: prop.label || name, value: this.task ? this.task[name] : null };
-      });
+      // Linhas read-only: fórmulas (derivados com spec) + campos de auditoria (auto).
+      const fmtVal = (prop, value) => {
+        if (value == null || value === '') return value;
+        if (prop && prop.type === 'datetime') {
+          const d = new Date(value);
+          if (!Number.isNaN(d.getTime())) {
+            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          }
+        }
+        return value;
+      };
+      const out = [];
+      this.derivedNames
+        .filter((name) => name !== 'computed_at' && this.properties[name])
+        .forEach((name) => {
+          const prop = this.properties[name] || {};
+          out.push({ name, label: prop.label || name, value: fmtVal(prop, this.task ? this.task[name] : null) });
+        });
+      Object.keys(this.properties)
+        .filter((name) => this.properties[name] && this.properties[name].auto)
+        .forEach((name) => {
+          const prop = this.properties[name];
+          out.push({ name, label: prop.label || name, value: fmtVal(prop, this.task ? this.task[name] : null) });
+        });
+      return out;
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';

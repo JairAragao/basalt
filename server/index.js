@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
-const { schema, gute, TASKS_DIR } = require('./config');
+const config = require('./config');
 const routes = require('./routes');
 const { startWatcher } = require('./watcher');
 
@@ -24,8 +24,9 @@ if (fs.existsSync(DIST)) {
   });
 }
 
-// Inicia o watcher que recalcula derivados GUT (nunca commita).
-startWatcher({ TASKS_DIR, gute, schema });
+// Inicia o watcher que recalcula os campos fórmula (nunca commita).
+// Lê config.TASKS_DIR/schema do VAULT corrente; o watcher relê o schema vivo.
+startWatcher({ TASKS_DIR: config.TASKS_DIR, schema: config.schema });
 
 const PORT = process.env.PORT || 4317;
 app.listen(PORT, () => {

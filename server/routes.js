@@ -14,12 +14,19 @@ const config = require('./config');
 const tasksRepo = require('./tasks-repo');
 const git = require('./git');
 const { describeChanges } = require('./commit-msg');
+const { validatePropertySpec } = require('./validate');
 
 const router = express.Router();
 
-const CONFIG_DIR = path.join(config.ROOT, 'config');
-const BOARD_FILE = path.join(CONFIG_DIR, 'board.json');
-const SCHEMA_FILE = path.join(CONFIG_DIR, 'schema.json');
+// Arquivos de config vivem no VAULT corrente (config.CONFIG_DIR), que pode mudar
+// em runtime (troca de vault). Por isso são FUNÇÕES, não constantes — sempre
+// resolvem o caminho atual.
+function boardFile() {
+  return path.join(config.CONFIG_DIR, 'board.json');
+}
+function schemaFile() {
+  return path.join(config.CONFIG_DIR, 'schema.json');
+}
 
 function statusFor(err) {
   const m = err.message || '';
@@ -33,11 +40,11 @@ function fail(res, err) {
 function taskFile(id) {
   return path.join(config.TASKS_DIR, `${id}.md`);
 }
-// Caminho do arquivo da tarefa RELATIVO ao ROOT do repo (para git log/show/diff).
-// Sempre com '/' — o git usa posix paths internamente, mesmo no Windows.
+// Caminho do arquivo da tarefa RELATIVO ao VAULT (raiz do repo git), para
+// git log/show/diff. Sempre com '/' — o git usa posix paths internamente.
 function taskRelPath(id) {
   return path
-    .relative(config.ROOT, taskFile(id))
+    .relative(config.VAULT, taskFile(id))
     .split(path.sep)
     .join('/');
 }
@@ -59,9 +66,50 @@ function withWarning(payload, warning) {
   return warning ? { ...payload, warning } : payload;
 }
 
+// Autor da mudança = usuário do git do vault (created_by/updated_by). Local-first,
+// sem login: o mesmo nome que assina os commits. Nunca lança.
+async function gitActor() {
+  try {
+    const id = await git.getIdentity();
+    return (id && id.name) || '';
+  } catch {
+    return '';
+  }
+}
+
 // ── Tarefas ──────────────────────────────────────────────────────────────────
 router.get('/config', (req, res) => {
   res.json({ schema: config.schema, board: config.board, gute: config.gute });
+});
+
+// ── Vault (pasta config/ + tasks/ + git próprio escolhida pelo usuário) ───────
+// GET /api/vault → status do vault corrente.
+router.get('/vault', (req, res) => {
+  try {
+    res.json(config.vaultStatus());
+  } catch (err) { fail(res, err); }
+});
+
+// POST /api/vault { path } → valida/seed/git-init o vault, persiste a escolha,
+// recarrega a config e devolve o status + a config nova. Erro de path → 400.
+router.post('/vault', async (req, res) => {
+  try {
+    const p = (req.body || {}).path;
+    if (typeof p !== 'string' || p.trim() === '') {
+      return res.status(400).json({ error: 'validação: o campo "path" é obrigatório (string não-vazia)' });
+    }
+    const result = config.setVault(p);
+    res.json({
+      status: result.status,
+      git: result.git,
+      schema: config.schema,
+      board: config.board,
+      gute: config.gute,
+    });
+  } catch (err) {
+    // Erros de path/seed são de validação → 400.
+    res.status(400).json({ error: err.message });
+  }
 });
 
 router.get('/tasks', (req, res) => {
@@ -79,7 +127,7 @@ router.post('/tasks', async (req, res) => {
     const taskBody = body !== undefined ? body : data.body;
     const cleanData = { ...data };
     delete cleanData.body;
-    const { id } = tasksRepo.create(cleanData, taskBody);
+    const { id } = tasksRepo.create(cleanData, taskBody, await gitActor());
     // Lê o que ficou gravado para a mensagem refletir o id/titulo finais.
     const after = safeGetData(id) || { ...cleanData, id };
     const msg = describeChanges(null, after, 'create', id);
@@ -100,7 +148,7 @@ router.put('/tasks/:id', async (req, res) => {
 
     // Frontmatter ANTES (para descrever a mudança). Pode não existir → null.
     const before = safeGetData(id);
-    tasksRepo.update(id, cleanData, taskBody);
+    tasksRepo.update(id, cleanData, taskBody, await gitActor());
     const after = safeGetData(id) || { ...cleanData, id };
 
     const msg = describeChanges(before, after, 'update', id);
@@ -117,7 +165,7 @@ router.patch('/tasks/:id/move', async (req, res) => {
     if (!novoStatus) return res.status(400).json({ error: 'status é obrigatório' });
     const current = tasksRepo.get(id);
     const before = current.data;
-    tasksRepo.update(id, { ...current.data, status: novoStatus }, current.body);
+    tasksRepo.update(id, { ...current.data, status: novoStatus }, current.body, await gitActor());
     const after = safeGetData(id) || { ...current.data, status: novoStatus };
 
     const msg = describeChanges(before, after, 'move', id);
@@ -241,9 +289,9 @@ router.put('/board/status', async (req, res) => {
     const { statusGroups, renames } = req.body || {};
     validateStatusGroups(statusGroups);
 
-    const board = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
+    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
     board.statusGroups = statusGroups;
-    writeJsonAtomic(BOARD_FILE, board);
+    writeJsonAtomic(boardFile(), board);
 
     const rn = (Array.isArray(renames) ? renames : []).filter((r) => r && r.from && r.to && r.from !== r.to);
     let changed = [];
@@ -253,7 +301,7 @@ router.put('/board/status', async (req, res) => {
     }
 
     config.reload();
-    await git.commitPaths([BOARD_FILE, ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`);
+    await git.commitPaths([boardFile(), ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`);
     const warning = await pushOrWarn();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -290,12 +338,46 @@ router.put('/board/filters', async (req, res) => {
       if (!clean.includes(key)) clean.push(key);
     }
 
-    const board = JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8'));
+    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
     board.filters = clean;
-    writeJsonAtomic(BOARD_FILE, board);
+    writeJsonAtomic(boardFile(), board);
 
     config.reload();
-    await git.commitPaths([BOARD_FILE], `board: filtros atualizados (${clean.length})`);
+    await git.commitPaths([boardFile()], `board: filtros atualizados (${clean.length})`);
+    const warning = await pushOrWarn();
+    res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+// ── Config do CARTÃO (o que aparece na face, antes de abrir) ─────────────────
+// body: { fields:[propKey], subtitle?:propKey|''|null, badge?:propKey|''|null }
+router.put('/board/card', async (req, res) => {
+  try {
+    const { fields, subtitle, badge } = req.body || {};
+    const props = (config.schema && config.schema.properties) || {};
+    const derived = new Set((config.schema && config.schema.derived) || []);
+    const known = (k) => k in props || derived.has(k);
+
+    if (!Array.isArray(fields)) throw new Error('validação: fields deve ser um array');
+    const clean = [];
+    for (const f of fields) {
+      if (typeof f !== 'string' || !f.trim()) throw new Error('validação: cada campo deve ser uma string não-vazia');
+      const key = f.trim();
+      if (!known(key)) throw new Error(`validação: a propriedade "${key}" não existe`);
+      if (!clean.includes(key)) clean.push(key);
+    }
+    for (const k of [subtitle, badge]) {
+      if (k != null && k !== '' && !known(k)) throw new Error(`validação: a propriedade "${k}" não existe`);
+    }
+
+    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
+    board.card = { ...(board.card || {}), fields: clean };
+    if (subtitle !== undefined) board.card.subtitle = subtitle || undefined;
+    if (badge !== undefined) board.card.badge = badge || undefined;
+    writeJsonAtomic(boardFile(), board);
+
+    config.reload();
+    await git.commitPaths([boardFile()], 'board: campos do cartão atualizados');
     const warning = await pushOrWarn();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -311,24 +393,43 @@ router.put('/schema/properties', async (req, res) => {
     const { properties, renames, optionRenames } = req.body || {};
     validateProperties(properties);
 
-    const schema = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
+    const schema = JSON.parse(fs.readFileSync(schemaFile(), 'utf8'));
     const oldKeys = Object.keys(schema.properties || {});
-    const derived = new Set(Array.isArray(schema.derived) ? schema.derived : []);
+    // schema.derived é DERIVADO por config (props formula + 'computed_at').
+    // No arquivo em disco pode não existir; recomputa aqui pra não tratar
+    // chaves de fórmula como "removidas" na migração.
+    const derived = new Set(config.schema && Array.isArray(config.schema.derived) ? config.schema.derived : []);
 
-    // Não deixar o editor mexer em propriedades de sistema (status/G/U/T/E/titulo).
+    // SÓ a propriedade "status" é de sistema: não pode ser removida nem renomeada.
+    // (A trava antiga valia p/ titulo/G/U/T/E — agora são props normais.)
+    const rnRaw = (Array.isArray(renames) ? renames : []).filter((r) => r && r.from && r.to && r.from !== r.to);
     for (const k of oldKeys) {
       const sys = schema.properties[k] && schema.properties[k].system;
-      if (sys && !(k in properties)) throw new Error(`validação: a propriedade de sistema "${k}" não pode ser removida`);
+      if (!sys) continue;
+      if (!(k in properties)) throw new Error(`validação: a propriedade de sistema "${k}" não pode ser removida`);
+      if (rnRaw.some((r) => r.from === k)) throw new Error(`validação: a propriedade de sistema "${k}" não pode ser renomeada`);
+    }
+
+    // Garante que o spec de "status" preserve system:true (o front pode omitir).
+    if (properties.status && typeof properties.status === 'object') {
+      properties.status.system = true;
     }
 
     schema.properties = properties;
-    writeJsonAtomic(SCHEMA_FILE, schema);
+    writeJsonAtomic(schemaFile(), schema);
 
     const newKeys = Object.keys(properties);
-    const rn = (Array.isArray(renames) ? renames : []).filter((r) => r && r.from && r.to && r.from !== r.to);
+    const rn = rnRaw;
     const renameMap = new Map(rn.map((r) => [r.from, r.to]));
     const removed = oldKeys.filter((k) => !newKeys.includes(k) && !renameMap.has(k) && !derived.has(k));
-    const added = newKeys.filter((k) => !oldKeys.includes(k) && ![...renameMap.values()].includes(k));
+    // Props NOVAS a semear nas tarefas — exclui renomeadas e props type 'formula'
+    // (estas são derivadas: o watcher as calcula, não viram campo manual vazio).
+    const added = newKeys.filter(
+      (k) =>
+        !oldKeys.includes(k) &&
+        ![...renameMap.values()].includes(k) &&
+        !(properties[k] && properties[k].type === 'formula')
+    );
 
     // optionRenames: [{property,from,to}] — migra valores de opção enum.
     // Indexado por propriedade-DESTINO (após eventual rename de chave), pois a
@@ -373,7 +474,7 @@ router.put('/schema/properties', async (req, res) => {
 
     config.reload();
     const optNote = optRn.length ? `, ${optRn.length} opção(ões) migrada(s)` : '';
-    await git.commitPaths([SCHEMA_FILE, ...changed], `schema: propriedades atualizadas${optNote}`);
+    await git.commitPaths([schemaFile(), ...changed], `schema: propriedades atualizadas${optNote}`);
     const warning = await pushOrWarn();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -383,13 +484,15 @@ function validateProperties(props) {
   if (!props || typeof props !== 'object' || Array.isArray(props)) throw new Error('validação: properties deve ser um objeto');
   const keys = Object.keys(props);
   if (!keys.length) throw new Error('validação: precisa de ao menos 1 propriedade');
+  // status é obrigatório (é o que dirige o kanban e é a única prop de sistema).
+  if (!('status' in props)) throw new Error('validação: a propriedade de sistema "status" é obrigatória');
   for (const k of keys) {
     if (!/^[A-Za-z0-9_]+$/.test(k)) throw new Error(`validação: chave de propriedade inválida "${k}" (use letras/números/_)`);
     const spec = props[k];
     if (!spec || typeof spec !== 'object') throw new Error(`validação: propriedade "${k}" sem definição`);
-    if (spec.type === 'enum' && (!Array.isArray(spec.options) || !spec.options.length)) {
-      throw new Error(`validação: enum "${k}" precisa de options`);
-    }
+    // Valida enum (options) e formula (expression não-vazia) — server/validate.js.
+    const specErr = validatePropertySpec(k, spec);
+    if (specErr) throw new Error(`validação: ${specErr}`);
   }
 }
 

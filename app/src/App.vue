@@ -166,11 +166,13 @@
       @close="settingsOpen = false"
     />
 
-    <!-- Setup / saúde do git (mostrado quando getHealthGit().ok === false) -->
+    <!-- Setup: vault + saúde do git (vault.needsSetup ou getHealthGit().ok === false) -->
     <SetupWizard
       v-if="setupOpen"
       :health="gitHealth"
-      @revalidated="onGitRevalidated"
+      :vault="vaultStatus"
+      @vault-set="onVaultSet"
+      @revalidated="onSetupRevalidated"
       @dismiss="setupOpen = false"
     />
 
@@ -210,7 +212,7 @@ import TaskPeek from './components/TaskPeek.vue';
 import Settings from './components/Settings.vue';
 import SetupWizard from './components/SetupWizard.vue';
 import Dropdown from './components/Dropdown.vue';
-import { getConfig, listTasks, deleteTask, getHealthGit, syncPull } from './api';
+import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, getVault } from './api';
 
 const COLOR_KEY = 'basalt.colorColumns';
 
@@ -234,6 +236,7 @@ export default {
       deleting: false,
       syncing: false,
       gitHealth: null,
+      vaultStatus: null,
       setupOpen: false,
       toast: { show: false, text: '', type: 'success', timer: null },
     };
@@ -310,6 +313,8 @@ export default {
     async bootstrap() {
       this.loading = true;
       this.loadError = '';
+      // 1) estado do vault primeiro — se needsSetup, abre o wizard na etapa de vault.
+      await this.checkVault();
       try {
         const [cfg, tasks] = await Promise.all([getConfig(), listTasks()]);
         this.config = cfg || { schema: {}, board: {}, gute: {} };
@@ -327,23 +332,48 @@ export default {
       // checagem de saúde do git (não bloqueia o board)
       this.checkGitHealth();
     },
+    async checkVault() {
+      try {
+        const v = await getVault();
+        this.vaultStatus = v;
+        if (v && v.needsSetup) this.setupOpen = true;
+      } catch (e) {
+        // endpoint indisponível (ex.: backend antigo): não trava a app.
+        this.vaultStatus = null;
+      }
+    },
     async checkGitHealth() {
       try {
         const h = await getHealthGit();
         this.gitHealth = h;
-        this.setupOpen = !!(h && h.ok === false);
+        // só abre por causa do git se o vault já estiver pronto
+        const vaultOk = !this.vaultStatus || this.vaultStatus.needsSetup === false;
+        if (vaultOk && h && h.ok === false) this.setupOpen = true;
       } catch (e) {
         // health indisponível: não trava a app, só não abre o wizard
         this.gitHealth = null;
       }
     },
-    onGitRevalidated(h) {
-      this.gitHealth = h;
-      if (h && h.ok) {
+    // O wizard semeou/definiu um vault novo: recarrega tudo a partir dele.
+    async onVaultSet(v) {
+      this.vaultStatus = v || this.vaultStatus;
+      // recarrega config + tasks do vault recém-definido
+      await this.bootstrap();
+      this.notify('Vault definido.');
+    },
+    // Revalidação do wizard: recebe { health, vault } atualizados.
+    onSetupRevalidated(payload) {
+      const h = payload && payload.health;
+      const v = payload && payload.vault;
+      if (v) this.vaultStatus = v;
+      if (h) this.gitHealth = h;
+      const vaultOk = !v || v.needsSetup === false;
+      const gitOk = !h || h.ok === true;
+      if (vaultOk && gitOk) {
         this.setupOpen = false;
-        this.notify('Git configurado com sucesso.');
+        this.notify('Configuração concluída.');
       }
-      // se ainda não ok, mantém o wizard aberto com os checks atualizados
+      // se algo ainda pendente, mantém o wizard aberto com o estado atualizado
     },
     async doSync() {
       if (this.syncing) return;

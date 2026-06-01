@@ -78,15 +78,25 @@
             <div v-if="diffLoading" class="grid h-32 place-items-center text-[12px] text-muted">Carregando diff…</div>
             <div v-else-if="diffError" class="m-3 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-[12px] text-red-300">{{ diffError }}</div>
 
-            <!-- lado a lado -->
+            <!-- lado a lado (vermelho = removido · verde = adicionado) -->
             <div v-else-if="diffMode === 'split'" class="grid grid-cols-2 gap-px bg-ink-500 text-[11px] leading-relaxed">
               <div class="bg-ink-900">
                 <div class="sticky top-0 border-b border-ink-500 bg-ink-850 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-faint">Antes</div>
-                <pre class="overflow-x-auto whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-muted"><code>{{ detail ? detail.before : '' }}</code></pre>
+                <pre class="overflow-x-auto px-2 py-1.5 font-mono"><code><span
+                      v-for="(ln, i) in splitRows.before"
+                      :key="i"
+                      class="block whitespace-pre-wrap break-words px-1"
+                      :class="ln.cls"
+                    >{{ ln.text || ' ' }}</span></code></pre>
               </div>
               <div class="bg-ink-900">
                 <div class="sticky top-0 border-b border-ink-500 bg-ink-850 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-faint">Depois</div>
-                <pre class="overflow-x-auto whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-muted"><code>{{ detail ? detail.after : '' }}</code></pre>
+                <pre class="overflow-x-auto px-2 py-1.5 font-mono"><code><span
+                      v-for="(ln, i) in splitRows.after"
+                      :key="i"
+                      class="block whitespace-pre-wrap break-words px-1"
+                      :class="ln.cls"
+                    >{{ ln.text || ' ' }}</span></code></pre>
               </div>
             </div>
 
@@ -140,6 +150,16 @@ export default {
         return { text, cls };
       });
     },
+    // Antes|Depois com realce: vermelho = linha removida, verde = adicionada.
+    splitRows() {
+      const d = this.detail || {};
+      const { before, after } = this.lineDiff(d.before || '', d.after || '');
+      const cls = (t) => (t === 'del' ? 'bg-red-500/10 text-red-300' : t === 'add' ? 'bg-green-500/10 text-green-300' : 'text-muted');
+      return {
+        before: before.map((l) => ({ text: l.text, cls: cls(l.type) })),
+        after: after.map((l) => ({ text: l.text, cls: cls(l.type) })),
+      };
+    },
   },
   watch: {
     open(v) { if (v) this.load(); },
@@ -188,6 +208,26 @@ export default {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       });
+    },
+    // Diff de linhas via LCS → marca removidas (antes) e adicionadas (depois).
+    lineDiff(beforeText, afterText) {
+      const a = String(beforeText).split('\n');
+      const b = String(afterText).split('\n');
+      const m = a.length, n = b.length;
+      const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+      for (let i = m - 1; i >= 0; i--)
+        for (let j = n - 1; j >= 0; j--)
+          dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      const before = [], after = [];
+      let i = 0, j = 0;
+      while (i < m && j < n) {
+        if (a[i] === b[j]) { before.push({ text: a[i], type: 'same' }); after.push({ text: b[j], type: 'same' }); i++; j++; }
+        else if (dp[i + 1][j] >= dp[i][j + 1]) { before.push({ text: a[i], type: 'del' }); i++; }
+        else { after.push({ text: b[j], type: 'add' }); j++; }
+      }
+      while (i < m) { before.push({ text: a[i], type: 'del' }); i++; }
+      while (j < n) { after.push({ text: b[j], type: 'add' }); j++; }
+      return { before, after };
     },
   },
 };

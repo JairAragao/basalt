@@ -2,8 +2,8 @@
 // Funções PURAS: validação de input e geração de id/slug. Sem I/O, sem libs
 // externas. O backend (server/index.js) importa { validateTask, genId }.
 //
-// "schema" = config/schema.json. Campos de schema.derived (GUT,
-// prioridade_gute, gute_computed_at) são escritos pelo watcher — NÃO são
+// "schema" = config/schema.json. Campos de schema.derived (campos type
+// 'formula' + o stamp 'computed_at') são escritos pelo watcher — NÃO são
 // validados aqui e, se vierem no data, são ignorados (não geram erro).
 
 // ---------------------------------------------------------------------------
@@ -134,15 +134,44 @@ function slugify(text, maxLen) {
   return slug;
 }
 
+// Escolhe a fonte do slug do id. Como 'titulo' agora é removível, há fallback:
+//  1) data[schema.idFrom] se a prop idFrom existir no schema E tiver valor;
+//  2) 1ª propriedade type 'string' do schema preenchida no data;
+//  3) qualquer valor string preenchido em data;
+//  4) '' (vira slug 'tarefa').
+function pickIdSource(data, schema) {
+  const d = data && typeof data === 'object' ? data : {};
+  const props = (schema && schema.properties) || {};
+
+  const nonEmptyStr = (v) => typeof v === 'string' && v.trim() !== '';
+
+  // (1) idFrom configurado e ainda existente no schema, com valor.
+  const idFrom = schema && schema.idFrom;
+  if (idFrom && (idFrom in props) && nonEmptyStr(d[idFrom])) {
+    return d[idFrom];
+  }
+
+  // (2) 1ª prop string do schema (na ordem do schema) com valor no data.
+  for (const [key, spec] of Object.entries(props)) {
+    if (spec && spec.type === 'string' && nonEmptyStr(d[key])) return d[key];
+  }
+
+  // (3) qualquer string preenchida no data (na ordem do data).
+  for (const [, v] of Object.entries(d)) {
+    if (nonEmptyStr(v)) return v;
+  }
+
+  return '';
+}
+
 /**
  * genId(data, schema) -> "<idPrefix><YYYY-MM-DD>-<slug>"
- * O slug vem de data[schema.idFrom] (ex: titulo). Se vazio, usa "tarefa".
- * A data é sempre a data atual (não é o id de uma task antiga).
+ * O slug vem de pickIdSource (idFrom existente, senão 1ª string preenchida).
+ * Se nada servir, usa "tarefa". A data é sempre a data atual.
  */
 function genId(data, schema) {
   const prefix = (schema && schema.idPrefix) || '';
-  const idFrom = (schema && schema.idFrom) || 'titulo';
-  const source = data ? data[idFrom] : undefined;
+  const source = pickIdSource(data, schema);
 
   let slug = slugify(source, 60);
   if (slug === '') slug = 'tarefa';
@@ -150,4 +179,31 @@ function genId(data, schema) {
   return `${prefix}${today()}-${slug}`;
 }
 
-module.exports = { validateTask, genId };
+// ---------------------------------------------------------------------------
+// validatePropertySpec(key, spec) -> string|null
+// ---------------------------------------------------------------------------
+// Valida UMA definição de propriedade do schema (usada na edição via API).
+// Retorna a mensagem de erro (PT-BR) ou null se válida.
+//   - enum    → precisa de options (array não-vazio).
+//   - formula → precisa de expression (string não-vazia); round opcional inteiro.
+function validatePropertySpec(key, spec) {
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
+    return `propriedade "${key}" sem definição`;
+  }
+  const type = spec.type;
+  if (type === 'enum') {
+    if (!Array.isArray(spec.options) || !spec.options.length) {
+      return `enum "${key}" precisa de options`;
+    }
+  } else if (type === 'formula') {
+    if (typeof spec.expression !== 'string' || spec.expression.trim() === '') {
+      return `fórmula "${key}" precisa de expression (string não-vazia)`;
+    }
+    if (spec.round !== undefined && !Number.isInteger(spec.round)) {
+      return `fórmula "${key}": round deve ser inteiro`;
+    }
+  }
+  return null;
+}
+
+module.exports = { validateTask, genId, validatePropertySpec };

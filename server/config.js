@@ -1,17 +1,68 @@
-// config.js — carrega/valida os 3 arquivos de config e DERIVA as colunas do board
-// e as opções de status a partir de board.statusGroups (fonte da verdade do status).
-// Recarregável: config.reload() relê os arquivos (usado após edição via API),
-// sem reiniciar o servidor. Consumidores devem usar config.X (não destruturar).
+// config.js — resolve o VAULT (pasta com config/ + tasks/ + git próprio),
+// carrega/valida os arquivos de config e DERIVA colunas do board, opções de
+// status (de board.statusGroups) e a lista de derivados (chaves de props
+// type 'formula' + o stamp 'computed_at').
+//
+// VAULT (path absoluto) é resolvido por prioridade:
+//   (1) setting persistido em ~/.basalt/settings.json { "vaultPath": "..." }
+//   (2) env BASALT_VAULT
+//   (3) ROOT do app (default, retrocompat)
+//
+// Expõe: config.VAULT, config.CONFIG_DIR (=VAULT/config), config.TASKS_DIR
+// (=VAULT/tasks), config.ROOT (=appRoot, fonte dos defaults/seed), reload(),
+// vaultStatus(), setVault(path).
+//
+// Recarregável: config.reload() relê a partir do VAULT corrente sem reiniciar.
+// Consumidores devem usar config.X (não destruturar valores mutáveis).
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
-const CONFIG_DIR = path.join(ROOT, 'config');
-const TASKS_DIR = path.join(ROOT, 'tasks');
+const { execFileSync } = require('child_process');
 
-function readJson(file) {
-  const full = path.join(CONFIG_DIR, file);
+// Raiz do app (pasta acima de server/) — é onde vivem os DEFAULTS de config/.
+const ROOT = path.resolve(__dirname, '..');
+const DEFAULTS_DIR = path.join(ROOT, 'config'); // <appRoot>/config — template de seed
+
+// Settings persistidos do usuário (escolha de vault).
+const SETTINGS_DIR = path.join(os.homedir(), '.basalt');
+const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json');
+
+// ── Settings (~/.basalt/settings.json) ───────────────────────────────────────
+function readSettings() {
+  try {
+    const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(obj) {
+  fs.mkdirSync(SETTINGS_DIR, { recursive: true });
+  const tmp = SETTINGS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, SETTINGS_FILE);
+}
+
+// ── Resolução do VAULT ───────────────────────────────────────────────────────
+// Prioridade: setting persistido > env BASALT_VAULT > ROOT do app.
+function resolveVault() {
+  const settings = readSettings();
+  const fromSetting = settings && typeof settings.vaultPath === 'string' ? settings.vaultPath.trim() : '';
+  if (fromSetting) return path.resolve(fromSetting);
+
+  const fromEnv = typeof process.env.BASALT_VAULT === 'string' ? process.env.BASALT_VAULT.trim() : '';
+  if (fromEnv) return path.resolve(fromEnv);
+
+  return ROOT;
+}
+
+// ── Leitura/validação de config ──────────────────────────────────────────────
+function readJson(dir, file) {
+  const full = path.join(dir, file);
   let raw;
   try {
     raw = fs.readFileSync(full, 'utf8');
@@ -31,7 +82,8 @@ function isPlainObject(v) {
 
 function validateSchema(schema) {
   if (!isPlainObject(schema.properties)) throw new Error('config inválida: schema.properties deve ser um objeto');
-  if (!Array.isArray(schema.derived)) throw new Error('config inválida: schema.derived deve ser um array');
+  // schema.derived é DERIVADO por config (props formula + stamp). Não exigimos
+  // mais um array fixo no arquivo — se vier, é ignorado/sobrescrito.
 }
 
 function validateBoard(board) {
@@ -45,9 +97,18 @@ function validateBoard(board) {
   });
 }
 
-function validateGute(gute) {
-  if (!('inputs' in gute) || !Array.isArray(gute.inputs)) throw new Error('config inválida: gute.inputs ausente ou não é array');
-  if (!('derived' in gute) || !isPlainObject(gute.derived)) throw new Error('config inválida: gute.derived ausente ou não é objeto');
+// Carimbo genérico escrito pelo motor de fórmula (substitui o antigo gute_computed_at).
+const STAMP_FIELD = 'computed_at';
+
+// schema.derived = chaves de props type 'formula' + o stamp 'computed_at'.
+function deriveDerived(schema) {
+  const keys = [];
+  const props = (schema && schema.properties) || {};
+  for (const [k, spec] of Object.entries(props)) {
+    if (spec && spec.type === 'formula') keys.push(k);
+  }
+  keys.push(STAMP_FIELD);
+  return keys;
 }
 
 // Achata os grupos em colunas planas do board (o front consome board.columns).
@@ -74,16 +135,130 @@ function deriveStatusOptions(board) {
   return out;
 }
 
-const configObj = { ROOT, TASKS_DIR, schema: null, board: null, gute: null };
+// ── Seed: copia os DEFAULTS (<appRoot>/config/*.json) para VAULT/config ───────
+// NÃO apaga nada existente. Cria VAULT/config e copia só os arquivos faltantes.
+function seedVault(vault) {
+  const configDir = path.join(vault, 'config');
+  const tasksDir = path.join(vault, 'tasks');
+  fs.mkdirSync(vault, { recursive: true });
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(tasksDir, { recursive: true });
 
+  let defaults = [];
+  try {
+    defaults = fs.readdirSync(DEFAULTS_DIR).filter((f) => f.endsWith('.json'));
+  } catch {
+    defaults = [];
+  }
+  for (const f of defaults) {
+    // gute.json não é mais necessário — não semeia (motor lê do schema).
+    if (f === 'gute.json') continue;
+    const dest = path.join(configDir, f);
+    if (!fs.existsSync(dest)) {
+      try {
+        fs.copyFileSync(path.join(DEFAULTS_DIR, f), dest);
+      } catch (e) {
+        throw new Error(`falha ao semear ${f} no vault (${e.message})`);
+      }
+    }
+  }
+}
+
+// git init no vault se não houver repo. Retorna { ok, error? } — nunca lança.
+function gitInitVault(vault) {
+  try {
+    if (fs.existsSync(path.join(vault, '.git'))) return { ok: true };
+    execFileSync('git', ['init'], { cwd: vault, stdio: 'ignore' });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: `não foi possível inicializar git no vault: ${e.message}` };
+  }
+}
+
+// ── Status do vault (sem efeitos colaterais) ─────────────────────────────────
+function statusOf(vault) {
+  const configDir = path.join(vault, 'config');
+  const tasksDir = path.join(vault, 'tasks');
+  const exists = safeIsDir(vault);
+  const hasConfig = safeIsFile(path.join(configDir, 'schema.json')) && safeIsFile(path.join(configDir, 'board.json'));
+  const hasTasks = safeIsDir(tasksDir);
+  const hasGit = safeIsDir(path.join(vault, '.git'));
+  return {
+    path: vault,
+    exists,
+    hasConfig,
+    hasTasks,
+    hasGit,
+    needsSetup: !hasConfig,
+  };
+}
+
+function safeIsDir(p) {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+function safeIsFile(p) {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// ── Objeto de config exportado ───────────────────────────────────────────────
+const configObj = {
+  ROOT, // raiz do app (defaults/seed)
+  STAMP_FIELD,
+  VAULT: null,
+  CONFIG_DIR: null,
+  TASKS_DIR: null,
+  schema: null,
+  board: null,
+  gute: null, // legado: pode ficar null se gute.json não existir
+};
+
+// Assinantes notificados quando o VAULT efetivo muda (ex.: watcher re-globa).
+const _vaultListeners = [];
+
+// load(): resolve o VAULT, semeia se faltar config, e relê tudo.
 function load() {
-  const schema = readJson('schema.json');
-  const board = readJson('board.json');
-  const gute = readJson('gute.json');
+  const prevVault = configObj.VAULT;
+  const vault = resolveVault();
+
+  // Se o vault corrente (incluindo o default = appRoot) não tiver config,
+  // semeia a partir dos defaults. Para o default isso é no-op (já tem config).
+  const configDir = path.join(vault, 'config');
+  const haveConfig =
+    safeIsFile(path.join(configDir, 'schema.json')) && safeIsFile(path.join(configDir, 'board.json'));
+  if (!haveConfig) {
+    // Só semeia se o appRoot tiver defaults legíveis; senão deixa o readJson
+    // lançar com mensagem clara abaixo.
+    try {
+      seedVault(vault);
+    } catch {
+      /* segue — readJson dá o erro definitivo */
+    }
+  }
+
+  const CONFIG_DIR = path.join(vault, 'config');
+  const TASKS_DIR = path.join(vault, 'tasks');
+
+  const schema = readJson(CONFIG_DIR, 'schema.json');
+  const board = readJson(CONFIG_DIR, 'board.json');
+
+  // gute.json é OPCIONAL agora (legado). Não quebra se faltar.
+  let gute = null;
+  try {
+    gute = readJson(CONFIG_DIR, 'gute.json');
+  } catch {
+    gute = null;
+  }
 
   validateSchema(schema);
   validateBoard(board);
-  validateGute(gute);
 
   // Derivados: colunas planas + opções de status vêm de statusGroups.
   board.columns = deriveColumns(board);
@@ -91,19 +266,90 @@ function load() {
     schema.properties.status.options = deriveStatusOptions(board);
   }
 
+  // schema.derived é DERIVADO (props formula + stamp), sobrescreve qualquer array fixo.
+  schema.derived = deriveDerived(schema);
+
   // Normaliza board.filters: sempre um array de strings (props do schema).
-  // A validação de que cada filtro referencia uma propriedade existente fica na
-  // rota PUT /api/board/filters (precisa do schema vivo no momento da escrita).
   board.filters = Array.isArray(board.filters)
     ? board.filters.filter((f) => typeof f === 'string' && f.trim() !== '')
     : [];
 
+  configObj.VAULT = vault;
+  configObj.CONFIG_DIR = CONFIG_DIR;
+  configObj.TASKS_DIR = TASKS_DIR;
   configObj.schema = schema;
   configObj.board = board;
   configObj.gute = gute;
+
+  // Notifica assinantes se a pasta do vault MUDOU (não em reload no mesmo vault).
+  if (prevVault && prevVault !== vault) {
+    for (const fn of _vaultListeners) {
+      try {
+        fn({ from: prevVault, to: vault, TASKS_DIR });
+      } catch (e) {
+        console.warn('[config] listener de vault falhou:', e.message);
+      }
+    }
+  }
 }
 
 load();
 
+// onVaultChange(fn): registra um callback chamado quando o VAULT efetivo troca.
+// fn recebe { from, to, TASKS_DIR }. Usado pelo watcher para re-observar.
+configObj.onVaultChange = function onVaultChange(fn) {
+  if (typeof fn === 'function') _vaultListeners.push(fn);
+};
+
+// reload(): relê a partir do VAULT corrente.
 configObj.reload = load;
+
+// vaultStatus(): status do VAULT corrente (path, exists, hasConfig, hasTasks,
+// hasGit, needsSetup). Sem efeitos colaterais.
+configObj.vaultStatus = function vaultStatus() {
+  return statusOf(configObj.VAULT || resolveVault());
+};
+
+// setVault(p): valida e adota um novo vault.
+//   - p: string não-vazia (path do vault).
+//   - cria config/tasks via seed (sem apagar nada existente) e git init se faltar.
+//   - persiste em ~/.basalt/settings.json e faz reload().
+// Retorna { status, git } onde status é o vaultStatus() pós-setup. Lança Error
+// (mensagem PT-BR) em path inválido — a rota traduz em 400.
+configObj.setVault = function setVault(p) {
+  if (typeof p !== 'string' || p.trim() === '') {
+    throw new Error('vault inválido: informe um caminho não-vazio');
+  }
+  const vault = path.resolve(p.trim());
+
+  // Se o path existe e NÃO é diretório → erro.
+  if (fs.existsSync(vault) && !safeIsDir(vault)) {
+    throw new Error(`vault inválido: "${vault}" existe e não é uma pasta`);
+  }
+
+  // Cria/seed config + tasks (não apaga nada existente).
+  seedVault(vault);
+
+  // git init se faltar (best-effort; não derruba o setup).
+  const gitResult = gitInitVault(vault);
+
+  // Persiste a escolha e recarrega a config a partir do novo vault.
+  const settings = readSettings();
+  settings.vaultPath = vault;
+  writeSettings(settings);
+
+  load();
+
+  return { status: statusOf(configObj.VAULT), git: gitResult };
+};
+
+// clearVault(): volta ao default (remove vaultPath do settings). Util/teste.
+configObj.clearVault = function clearVault() {
+  const settings = readSettings();
+  delete settings.vaultPath;
+  writeSettings(settings);
+  load();
+  return statusOf(configObj.VAULT);
+};
+
 module.exports = configObj;

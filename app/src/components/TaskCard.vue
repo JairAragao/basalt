@@ -67,11 +67,17 @@ export default {
       if (n >= 8) return 'bg-amber-500/15 text-amber-300';
       return 'bg-ink-600 text-muted';
     },
+    // Campos exibidos na face do cartão = config board.card.fields (escolhidos
+    // nas Configurações). Fallback p/ modulo/tipo se nunca foi configurado.
+    fieldKeys() {
+      const c = this.cardCfg;
+      const fields = Array.isArray(c.fields) ? c.fields : ['modulo', 'tipo'];
+      const used = new Set([c.title, c.subtitle, c.badge]);
+      return fields.filter((k) => k && !used.has(k));
+    },
     extraChips() {
       const out = [];
-      const used = new Set([this.cardCfg.title, this.cardCfg.subtitle, this.cardCfg.badge, 'status']);
-      ['modulo', 'tipo'].forEach((key) => {
-        if (used.has(key)) return;
+      this.fieldKeys.forEach((key) => {
         const v = this.task[key];
         if (v !== null && v !== undefined && v !== '') out.push({ key, value: v });
       });

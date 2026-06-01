@@ -93,6 +93,53 @@
               <input v-model.number="prop.max" type="number" class="field !w-20 !py-1" placeholder="—" />
             </label>
           </div>
+
+          <!-- builder de expressão (formula) -->
+          <div v-else-if="prop.type === 'formula'" class="rounded-md border border-ink-500 bg-ink-800 p-2">
+            <div class="mb-1 flex items-center gap-2">
+              <span class="pill border border-teal-500/40 bg-teal-500/10 text-[10px] text-teal-300">derivado · somente leitura</span>
+              <span class="text-[11px] text-faint">calculada a partir das propriedades numéricas</span>
+            </div>
+
+            <!-- expressão -->
+            <input
+              v-model="prop.expression"
+              class="field !py-1 font-mono text-[12px]"
+              placeholder="ex: G * U * T / E"
+            />
+
+            <!-- propriedades numéricas clicáveis -->
+            <div class="mt-2 text-[11px] text-faint">Propriedades</div>
+            <div class="mt-1 flex flex-wrap gap-1.5">
+              <button
+                v-for="nk in numericKeysFor(prop)"
+                :key="nk.key"
+                type="button"
+                class="rounded border border-ink-500 bg-ink-700 px-2 py-0.5 font-mono text-[11px] text-txt transition-colors hover:border-accent hover:bg-ink-600"
+                :title="nk.label"
+                @click="insertToken(prop, nk.key)"
+              >{{ nk.key }}</button>
+              <span v-if="!numericKeysFor(prop).length" class="text-[11px] text-faint">nenhuma propriedade numérica disponível</span>
+            </div>
+
+            <!-- operadores -->
+            <div class="mt-2 text-[11px] text-faint">Operadores</div>
+            <div class="mt-1 flex flex-wrap gap-1.5">
+              <button
+                v-for="op in operators"
+                :key="op"
+                type="button"
+                class="grid h-6 min-w-[1.5rem] place-items-center rounded border border-ink-500 bg-ink-700 px-1.5 font-mono text-[12px] text-muted transition-colors hover:border-accent hover:bg-ink-600 hover:text-txt"
+                @click="insertToken(prop, op)"
+              >{{ op }}</button>
+            </div>
+
+            <!-- arredondamento -->
+            <label class="mt-2 flex items-center gap-1.5 text-[12px] text-faint">
+              casas decimais
+              <input v-model.number="prop.round" type="number" min="0" max="6" class="field !w-20 !py-1" placeholder="2" />
+            </label>
+          </div>
         </div>
       </div>
 
@@ -128,7 +175,7 @@ const nextUid = () => `p${++UID}`;
 let OUID = 0;
 const nextOptUid = () => `o${++OUID}`;
 
-const TYPE_LABELS = { string: 'Texto', enum: 'Lista', int: 'Número' };
+const TYPE_LABELS = { string: 'Texto', enum: 'Lista', int: 'Número', formula: 'Fórmula' };
 
 function slugify(label) {
   return (label || '')
@@ -155,7 +202,9 @@ export default {
         { value: 'string', label: 'Texto' },
         { value: 'enum', label: 'Lista' },
         { value: 'int', label: 'Número' },
+        { value: 'formula', label: 'Fórmula' },
       ],
+      operators: ['+', '-', '*', '/', '(', ')'],
     };
   },
   created() {
@@ -179,6 +228,9 @@ export default {
             : [],
           min: spec.min,
           max: spec.max,
+          // fórmula: expressão sobre chaves de props numéricas + arredondamento
+          expression: spec.type === 'formula' ? (spec.expression || '') : '',
+          round: spec.type === 'formula' && spec.round !== undefined && spec.round !== null ? spec.round : undefined,
           required: !!spec.required,
           system: !!spec.system,
           default: spec.default,
@@ -189,6 +241,7 @@ export default {
     changeType(prop, v) {
       prop.type = v;
       if (v === 'enum' && !Array.isArray(prop.options)) prop.options = [];
+      if (v === 'formula' && prop.expression === undefined) prop.expression = '';
     },
     addProp() {
       this.props_.push({
@@ -201,10 +254,33 @@ export default {
         options: [],
         min: undefined,
         max: undefined,
+        expression: '',
+        round: undefined,
         required: false,
         system: false,
         default: undefined,
       });
+    },
+    // Chaves de propriedades numéricas disponíveis p/ usar na fórmula (int + formula),
+    // exceto a própria. Slug do label (mesma regra do build) p/ refletir o que será gravado.
+    numericKeysFor(prop) {
+      const out = [];
+      const seen = new Set();
+      for (const p of this.props_) {
+        if (p._uid === prop._uid) continue;
+        if (p.type !== 'int' && p.type !== 'formula') continue;
+        const key = p.system ? p._originalKey : (slugify(p.label) || '');
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push({ key, label: (p.label || '').trim() || key });
+      }
+      return out;
+    },
+    // Insere um token (chave de prop ou operador) no input da expressão da fórmula.
+    insertToken(prop, token) {
+      const cur = prop.expression || '';
+      const needsSpace = cur && !/[\s(]$/.test(cur) && !/^[)\s]/.test(token);
+      prop.expression = cur + (needsSpace ? ' ' : '') + token;
     },
     removeProp(idx) {
       this.props_.splice(idx, 1);
@@ -226,6 +302,9 @@ export default {
       // labels não-vazios
       for (const p of this.props_) {
         if (!(p.label || '').trim()) return 'Toda propriedade precisa de um nome.';
+        if (!p.system && p.type === 'formula') {
+          if (!(p.expression || '').trim()) return `A fórmula "${p.label.trim()}" precisa de uma expressão.`;
+        }
         if (!p.system && p.type === 'enum') {
           const vals = (p.options || []).map((o) => (o.value || '').trim());
           if (!vals.length) return `A lista "${p.label.trim()}" precisa de ao menos uma opção.`;
@@ -279,7 +358,12 @@ export default {
           if (p.min !== undefined && p.min !== null && p.min !== '') spec.min = Number(p.min);
           if (p.max !== undefined && p.max !== null && p.max !== '') spec.max = Number(p.max);
         }
-        if (p.required) spec.required = true;
+        if (p.type === 'formula') {
+          spec.expression = (p.expression || '').trim();
+          if (p.round !== undefined && p.round !== null && p.round !== '') spec.round = Number(p.round);
+        }
+        // fórmula é derivada (read-only): nunca marca required
+        if (p.required && p.type !== 'formula') spec.required = true;
         if (p.system) spec.system = true;
         if (p.default !== undefined) spec.default = p.default;
 

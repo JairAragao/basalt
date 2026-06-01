@@ -77,6 +77,21 @@ export function deleteTask(id) {
   })
 }
 
+// --- Vault (pasta config/ + tasks/ + git próprio) ---
+// { path, exists, hasConfig, hasTasks, hasGit, needsSetup }
+export function getVault() {
+  return request(`${BASE}/vault`)
+}
+
+// Define/cria o vault no caminho informado. Semeia config/tasks e git init se faltar.
+// path: string não-vazia. Retorna o status do vault + { schema, board, gute? } ou erro 400.
+export function setVault(path) {
+  return request(`${BASE}/vault`, {
+    method: 'POST',
+    body: JSON.stringify({ path })
+  })
+}
+
 // --- Saúde do git / setup ---
 // { ok, hasRepo, branch, user, hasRemote, remoteUrl, checks:[{id,label,ok,detail,fix}] }
 export function getHealthGit() {
@@ -108,6 +123,11 @@ export function saveFilters(filters) {
   })
 }
 
+// Config do cartão — o que aparece na face (fields) + subtitle/badge.
+export function saveCard(card) {
+  return request(`${BASE}/board/card`, { method: 'PUT', body: JSON.stringify(card) })
+}
+
 // Config de status (grupos/etapas) — leitura e escrita (migra tarefas em rename).
 export function getBoard() {
   return request(`${BASE}/board`)
@@ -133,12 +153,15 @@ export default {
   saveStatus,
   saveProperties,
   saveFilters,
+  saveCard,
   listTasks,
   getTask,
   createTask,
   updateTask,
   moveTask,
   deleteTask,
+  getVault,
+  setVault,
   getHealthGit,
   syncPull,
   getHistory,

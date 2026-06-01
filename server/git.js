@@ -10,15 +10,29 @@
 // (push/fetch/ls-remote em remote autenticado falham rápido em vez de pendurar).
 
 const simpleGit = require('simple-git');
-const { ROOT } = require('./config');
+const config = require('./config');
 
+// baseDir do git = config.VAULT (a pasta escolhida pelo usuário, com config/ +
+// tasks/ + git PRÓPRIO). Como o VAULT pode mudar em runtime (config.setVault),
+// a instância do simple-git é (re)criada de forma preguiçosa quando o VAULT
+// muda — assim os comandos sempre operam sobre o vault corrente.
+//
 // Ambiente não-interativo para TODA chamada git deste módulo.
 // Usa a forma .env(nome, valor) — que ADICIONA a variável ao ambiente herdado —
 // em vez de .env(objeto), que SUBSTITUI o ambiente inteiro e faria o simple-git
 // bloquear por carregar um GIT_ASKPASS herdado (allowUnsafeAskPass). Assim o
 // credential helper / chave SSH do usuário continuam valendo, mas nenhum comando
 // trava pedindo senha — falha rápido em vez de pendurar.
-const git = simpleGit({ baseDir: ROOT }).env('GIT_TERMINAL_PROMPT', '0');
+let _git = null;
+let _gitBaseDir = null;
+function git() {
+  const baseDir = config.VAULT;
+  if (!_git || _gitBaseDir !== baseDir) {
+    _git = simpleGit({ baseDir }).env('GIT_TERMINAL_PROMPT', '0');
+    _gitBaseDir = baseDir;
+  }
+  return _git;
+}
 
 // ── Identidade do repo ───────────────────────────────────────────────────────
 // Lê user.name/user.email efetivos (local > global). Retorna null em cada campo
@@ -27,12 +41,12 @@ async function getIdentity() {
   let name = null;
   let email = null;
   try {
-    name = (await git.raw(['config', '--get', 'user.name'])).trim() || null;
+    name = (await git().raw(['config', '--get', 'user.name'])).trim() || null;
   } catch {
     name = null;
   }
   try {
-    email = (await git.raw(['config', '--get', 'user.email'])).trim() || null;
+    email = (await git().raw(['config', '--get', 'user.email'])).trim() || null;
   } catch {
     email = null;
   }
@@ -56,11 +70,11 @@ async function ensureIdentity() {
 // 'origin' → ok:false com motivo. Falha de auth/rede também volta como error.
 async function pushNow() {
   try {
-    const remotes = await git.getRemotes(false);
+    const remotes = await git().getRemotes(false);
     if (!remotes || !remotes.length) {
       return { ok: false, error: 'nenhum remote configurado (origin ausente)' };
     }
-    await git.push();
+    await git().push();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: oneLine(err.message) };
@@ -70,11 +84,11 @@ async function pushNow() {
 // pull: `git pull --ff-only`. Retorna { ok, message?, error? } (não lança).
 async function pull() {
   try {
-    const remotes = await git.getRemotes(false);
+    const remotes = await git().getRemotes(false);
     if (!remotes || !remotes.length) {
       return { ok: false, error: 'nenhum remote configurado (origin ausente)' };
     }
-    const out = await git.raw(['pull', '--ff-only']);
+    const out = await git().raw(['pull', '--ff-only']);
     return { ok: true, message: oneLine(out) || 'pull concluído' };
   } catch (err) {
     return { ok: false, error: oneLine(err.message) };
@@ -86,8 +100,8 @@ async function pull() {
 async function commitTask(filePath, message) {
   await ensureIdentity();
   try {
-    await git.raw(['add', filePath]);
-    await git.raw(['commit', '-m', message]);
+    await git().raw(['add', filePath]);
+    await git().raw(['commit', '-m', message]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para', filePath);
@@ -101,8 +115,8 @@ async function commitTask(filePath, message) {
 async function removeAndCommit(filePath, message) {
   await ensureIdentity();
   try {
-    await git.raw(['add', filePath]);
-    await git.raw(['commit', '-m', message]);
+    await git().raw(['add', filePath]);
+    await git().raw(['commit', '-m', message]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para remoção de', filePath);
@@ -119,8 +133,8 @@ async function commitPaths(paths, message) {
   if (!list.length) return;
   await ensureIdentity();
   try {
-    await git.raw(['add', ...list]);
-    await git.raw(['commit', '-m', message]);
+    await git().raw(['add', ...list]);
+    await git().raw(['commit', '-m', message]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para', message);
@@ -138,7 +152,7 @@ async function healthGit() {
   // 1) Repo git existe.
   let hasRepo = false;
   try {
-    hasRepo = await git.checkIsRepo();
+    hasRepo = await git().checkIsRepo();
   } catch {
     hasRepo = false;
   }
@@ -166,7 +180,7 @@ async function healthGit() {
   // Branch atual.
   let branch = null;
   try {
-    branch = (await git.raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || null;
+    branch = (await git().raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || null;
   } catch {
     branch = null;
   }
@@ -189,7 +203,7 @@ async function healthGit() {
   // 3) Remote 'origin' existe.
   let remotes = [];
   try {
-    remotes = await git.getRemotes(true);
+    remotes = await git().getRemotes(true);
   } catch {
     remotes = [];
   }
@@ -258,7 +272,7 @@ async function healthGit() {
 // Falha (auth, rede, prompt evitado por GIT_TERMINAL_PROMPT=0) → ok:false com fix.
 async function tryRemoteCmd(args, id, label, okDetail, fix) {
   try {
-    await git.raw(args);
+    await git().raw(args);
     return { id, label, ok: true, detail: okDetail, fix: null };
   } catch (err) {
     return { id, label, ok: false, detail: oneLine(err.message), fix };
@@ -273,7 +287,7 @@ async function logHistory(relPath) {
   const FMT = '%H%x1f%h%x1f%aI%x1f%an%x1f%s%x1e';
   let out;
   try {
-    out = await git.raw(['log', '--follow', `--format=${FMT}`, '--', relPath]);
+    out = await git().raw(['log', '--follow', `--format=${FMT}`, '--', relPath]);
   } catch (err) {
     if (/unknown revision|does not have any commits|bad revision/i.test(err.message)) {
       return [];
@@ -300,7 +314,7 @@ async function logHistory(relPath) {
 // Se o caminho não existir naquele ref (ex.: sem pai), retorna "".
 async function showAt(ref, relPath) {
   try {
-    return await git.raw(['show', `${ref}:${relPath}`]);
+    return await git().raw(['show', `${ref}:${relPath}`]);
   } catch (err) {
     // Sem pai / arquivo inexistente naquele ref → trata como vazio.
     if (
@@ -323,14 +337,14 @@ async function diffFile(hashParentExpr, hash, relPath) {
   // sai com código 1 e stdout vazio. Por isso checamos o output, não só o throw.
   let base = await resolveCommit(hashParentExpr);
   if (!base) base = await emptyTreeHash();
-  return git.raw(['diff', base, hash, '--', relPath]);
+  return git().raw(['diff', base, hash, '--', relPath]);
 }
 
 // Resolve uma expressão de revisão para um SHA de commit. Retorna '' se não
 // existir (ex.: pai de um commit-raiz). Não lança nesses casos.
 async function resolveCommit(expr) {
   try {
-    const out = await git.raw(['rev-parse', '--verify', '--quiet', `${expr}^{commit}`]);
+    const out = await git().raw(['rev-parse', '--verify', '--quiet', `${expr}^{commit}`]);
     return String(out || '').trim();
   } catch {
     return '';
@@ -343,7 +357,7 @@ let _emptyTree = null;
 async function emptyTreeHash() {
   if (_emptyTree) return _emptyTree;
   try {
-    _emptyTree = (await git.raw(['hash-object', '-t', 'tree', '/dev/null'])).trim();
+    _emptyTree = (await git().raw(['hash-object', '-t', 'tree', '/dev/null'])).trim();
   } catch {
     // Fallback: constante SHA-1 conhecida.
     _emptyTree = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
