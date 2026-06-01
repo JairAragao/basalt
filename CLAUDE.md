@@ -1,0 +1,119 @@
+# Basalt — instruções do projeto (handoff)
+
+> Este arquivo é carregado automaticamente pelo Claude Code. É o contexto pra
+> continuar o desenvolvimento do **Basalt** em qualquer máquina/sessão.
+
+## O que é
+
+**Basalt** = gestor de tarefas **kanban git-native**, **AI-first**, **local-first**, dark.
+- Tarefas = arquivos `.md` (frontmatter + corpo markdown) versionados em git — **files-as-DB**, sem banco.
+- Engine **genérico**: nada é específico de um cliente. Dados (config + tarefas) vivem num **vault** separado.
+- Projeto/IP pessoal de Jair (JairAragao). Repo: `github.com/JairAragao/basalt`.
+- Por que "Basalt": a rocha se forma em **colunas retas** (junção colunar) = colunas do kanban; e é escura (tema dark).
+
+## Stack
+
+- **Front:** Vue **2.7** + **Tailwind** + **Vite** (SEM Vuetify). Libs: `vuedraggable`, `@tiptap/*` (editor), `tippy.js`.
+- **Back:** Node + **Express** (CommonJS). Libs: `gray-matter`, `chokidar`, `simple-git`, `expr-eval`.
+- Sem banco. Sem auth (local-first).
+
+## Como rodar
+
+```bash
+npm install
+npm run dev      # back :4317  +  front :5173 (Vite, proxy /api → :4317)
+# abrir http://localhost:5173
+npm run build    # gera app/dist
+npm start        # serve app/dist + API
+npm test         # Vitest (server/: gute/formula + watcher anti-loop)
+```
+
+- **Node ≥ 18 obrigatório** (Vite 5 quebra no Node 16 com `crypto.getRandomValues`). Há `.nvmrc`=20.
+- **git instalado** é necessário (commit/push/pull via `simple-git`).
+- Nota: na máquina de origem havia um hook que reescrevia `npx`→`npm`; lá usava-se `rtk proxy npx vite build ...`. **Em outra máquina, use `npx`/`npm` normal.**
+
+## Estrutura
+
+```
+config/        schema.json (propriedades+tipos) · board.json (kanban) · (gute.json foi REMOVIDO)
+tasks/         *.md = tarefas (frontmatter + corpo)
+server/        index.js boot+watcher · config.js (vault+reload+derive) · routes.js (API)
+               tasks-repo.js (CRUD+auditoria) · validate.js (validação+genId)
+               formula.js (motor de fórmula genérico) · gute.js (shim→formula)
+               watcher.js (chokidar recompute) · git.js (commit/push/pull/history/diff/identity)
+               commit-msg.js (describeChanges = mensagem automática)
+app/           index.html · vite.config.js · tailwind/postcss.config.js · public/basalt.png
+app/src/       main.js · index.css (Tailwind) · api.js · App.vue · palette.js
+app/src/components/  Board · TableView · TaskCard · TaskPeek · BodyEditor (TipTap) ·
+               CardHistory · Dropdown · Settings · StatusEditor · PropertyEditor ·
+               FiltersEditor · CardEditor · SetupWizard
+landing/       index.html (landing page, dark, AI-first, self-contained Tailwind CDN) · basalt.png
+```
+
+## Conceitos-chave
+
+### Vault (separação engine × dados)
+- **Vault** = pasta com `config/` + `tasks/` + **git próprio**. O engine é genérico; cada projeto = um vault.
+- Resolução do caminho (config.js, prioridade): `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › raiz do app (default).
+- Vault novo/vazio é **semeado** copiando os defaults (`<appRoot>/config/*.json`); cria `tasks/`; `git init` se faltar.
+- Endpoints: `GET /api/vault` (status), `POST /api/vault {path}` (define/seed/persiste/reload). UI: **SetupWizard**.
+- **PENDÊNCIA IMPORTANTE:** hoje o vault default = a própria pasta do app (o repo do engine). Tarefas devem ir pra um **vault separado/privado** — definir no SetupWizard.
+
+### Config declarativa (no vault)
+- `config/schema.json`: `idPrefix`, `idFrom`(=titulo), `properties{key:{type,label,...}}`.
+  - tipos: `string`, `enum`(options), `int`(min/max), `formula`(expression,round), `datetime`.
+  - flags: `system:true` (não-removível) · `auto:true` (gerenciado pelo sistema, read-only).
+- `config/board.json`: `groupBy`(status), `statusGroups[{id,label,stages[{id,label,color}]}]`, `fallbackColumn`, `card{title,subtitle,badge,fields[]}`, `sort{by,dir}`, `filters[]`.
+- `schema.derived` é **DERIVADO em runtime** por config.js = `[chaves de props type formula] + 'computed_at'` (não confie num array fixo).
+
+### Campos fórmula (genérico, estilo Notion)
+- Propriedade `{type:'formula', expression, round?}`. O **watcher** computa todas via `formula.compute(data, schema)`.
+- `expr-eval` com **`parser.consts={}`** (senão `E` vira Euler e `PI` vira π — colidem com nomes de campo!). Faltante/divisão-por-zero/Inf/NaN → `null`.
+- `GUT="G * U * T"` e `prioridade_gute="G * U * T / E"` são **seeds** (exemplos), não regra. GUTE foi de-hardcoded.
+
+### Campos de sistema / auditoria
+- **Só `status` é `system`** (trava o kanban). titulo/G/U/T/E são propriedades normais (removíveis/editáveis).
+- Auditoria (`system`+`auto`, read-only, não-removível): `created_at`, `created_by`, `updated_at`, `updated_by`.
+  - Carimbados pelo **tasks-repo** no create/update. **Autor = usuário do git** (`git.getIdentity().name`) — local-first, sem login. `created_*` preservado na edição.
+
+### Watcher
+- chokidar observa `tasks/*.md`; recalcula campos fórmula; **anti-loop** (só grava se mudou); stamp `computed_at`; **NUNCA commita**. Re-observa o vault novo ao trocar.
+
+### Git automático
+- Todo CRUD de tarefa **commita** (mensagem automática via `describeChanges` comparando frontmatter antes/depois) + **push** (best-effort; se falhar, resposta traz `warning` → toast). Identidade = git user do repo do vault. `created_*/updated_*/computed_at` são ignorados na mensagem (senão poluem).
+
+## API REST (`/api`)
+`GET /config` · `GET /tasks` · `GET /tasks/:id` · `POST /tasks` · `PUT /tasks/:id` · `PATCH /tasks/:id/move` · `DELETE /tasks/:id` · `GET /tasks/:id/history` · `GET /tasks/:id/diff?hash=H` · `GET /vault` · `POST /vault` · `GET /health/git` · `POST /sync/pull` · `PUT /board/status {statusGroups,renames}` · `PUT /board/filters {filters}` · `PUT /board/card {fields,subtitle,badge}` · `PUT /schema/properties {properties,renames,optionRenames}`.
+
+## Pronto (funcional, build verde)
+- Kanban (grupos macro × etapas) + Tabela; sort por qualquer prop ↑↓; filtros editáveis; **colorir colunas** (coluna+header+cards em camadas).
+- Peek estilo Notion (3 modos side/center/full, lembra preferência); **editor de corpo TipTap** (`/`=blocos, seleção=toolbar, barra de link custom, round-trip markdown).
+- Config do cartão (etiquetas/subtitle/badge); **histórico + diff** por card (antes/depois vermelho/verde + unificado).
+- Settings: editores de **Status** (grupos/etapas/cor/paleta), **Propriedades** (add/excluir/renomear + opções enum + **tipo Fórmula** com builder), **Filtros**, **Cartão**. Migração de tarefas em renames.
+- **Vault separado** (backend + SetupWizard). **Auditoria** (4 campos). **Git-native** (commit/push/pull/mensagem automática). Landing page.
+- Ícone basalt (logo + favicon). Dark/Notion. Dropdowns custom (sem `<select>` nativo).
+
+## Pendente / próximos passos
+1. **Definir vault separado** (pasta + repo git **privado** das tarefas) no SetupWizard — hoje tarefas vão pro repo do engine.
+2. **Desktop (Tauri + Rust)** — picker nativo de pasta + installer. Requer instalar **Rust (rustup) + MSVC C++ Build Tools** (não estavam na máquina de origem). Front Vue reaproveita; backend pequeno (~600 linhas) iria pra Rust (git2/libgit2 embutido = sem depender de git instalado).
+3. Otimizar bundle (TipTap deixa o JS ~700KB; lazy-load/manualChunks).
+4. (opcional) `computed_at`/derivados: revisar exibição no peek.
+
+## Gotchas / convenções
+- **Node ≥18** (Vite). `nvm use 20`/`24`.
+- **expr-eval:** sempre `parser.consts={}` no motor de fórmula.
+- **tiptap-markdown fixado em `0.8.10`** (0.9+ exige TipTap v3; o projeto é TipTap v2). Não suba sem migrar.
+- **`localStorage` keys legadas** com prefixo `orchestra-tasks.` (ex: peekMode, peekMode, colorColumns `basalt.colorColumns`) — nome misto por histórico, não quebra.
+- Usar **`Dropdown.vue`** em vez de `<select>` nativo; cores da paleta em **`palette.js`**; tema dark = paleta `ink-*`/`txt`/`muted`/`faint`/`accent`(âmbar #d9a01e) no `tailwind.config.js`.
+- Escrita de tarefa é **atômica** (`.tmp` + rename); paths são **path-safe** (regex + confinado a `tasks/`).
+- Validação: `validate.js` tolera tipos desconhecidos; `genId` usa `idFrom` com fallback (1ª string → 'tarefa') se titulo for removido.
+
+## Estado do git (na origem)
+- Repo reconciliado e enviado: `origin/main` em dia (commit `257fa11 "Basalt: app completo..."`). Branch de segurança `basalt-backup` pode existir local — apagar com `git branch -D basalt-backup`.
+- Working tree limpo. Auto-push do app pode falhar até configurar remote/credenciais + um vault próprio.
+
+## Como continuar (no novo PC)
+1. `git clone https://github.com/JairAragao/basalt.git && cd basalt`
+2. `nvm use 20` (ou Node ≥18) · `npm install` · `npm run dev` → http://localhost:5173
+3. Na 1ª tela (SetupWizard): definir o **vault** (pasta com git) e validar push/pull.
+4. Ler este arquivo + `README.md`. Pegar uma pendência acima.
