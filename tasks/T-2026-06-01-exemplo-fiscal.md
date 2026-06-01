@@ -1,7 +1,7 @@
 ---
 id: T-2026-06-01-exemplo-fiscal
 titulo: Validar CST de IBS/CBS na entrada de NF
-status: Não especificado
+status: Pausado
 responsavel: tassia
 modulo: Financeiro
 tipo: feature
