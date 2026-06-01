@@ -5,32 +5,91 @@
       "id": "todo",
       "label": "A fazer",
       "stages": [
-        { "id": "Análise", "label": "Análise", "color": "#9b9b9b" },
-        { "id": "Não especificado", "label": "Não especificado", "color": "#6f7787" },
-        { "id": "Aguardando Início", "label": "Aguardando Início", "color": "#a1795f" }
+        {
+          "id": "Análise",
+          "label": "Análise",
+          "color": "#9b9b9b"
+        },
+        {
+          "id": "Não especificado",
+          "label": "Não especificado",
+          "color": "#6f7787"
+        },
+        {
+          "id": "Aguardando Início",
+          "label": "Aguardando Início",
+          "color": "#a1795f"
+        }
       ]
     },
     {
       "id": "doing",
       "label": "Em andamento",
       "stages": [
-        { "id": "Pausado", "label": "Pausado", "color": "#d9730d" },
-        { "id": "Em Andamento", "label": "Em Andamento", "color": "#d9a01e" },
-        { "id": "Aguardando Validação", "label": "Aguardando Validação", "color": "#2e83ec" }
+        {
+          "id": "Pausado",
+          "label": "Pausado",
+          "color": "#d9730d"
+        },
+        {
+          "id": "Em Andamento",
+          "label": "Em Andamento",
+          "color": "#d9a01e"
+        },
+        {
+          "id": "Aguardando Validação",
+          "label": "Aguardando Validação",
+          "color": "#2e83ec"
+        }
       ]
     },
     {
       "id": "done",
       "label": "Concluído",
       "stages": [
-        { "id": "Aguardando deploy", "label": "Aguardando deploy", "color": "#3aa6a0" },
-        { "id": "Finalizado", "label": "Finalizado", "color": "#4caf72" },
-        { "id": "Recusado", "label": "Recusado", "color": "#e0566b" }
+        {
+          "id": "Aguardando deploy",
+          "label": "Aguardando deploy",
+          "color": "#3aa6a0"
+        },
+        {
+          "id": "Finalizado",
+          "label": "Finalizado",
+          "color": "#4caf72"
+        },
+        {
+          "id": "Recusado",
+          "label": "Recusado",
+          "color": "#e0566b"
+        }
       ]
     }
   ],
-  "fallbackColumn": { "id": "_none", "label": "Sem status", "color": "#4b4b4b" },
-  "card": { "title": "titulo", "subtitle": "responsavel", "badge": "prioridade_gute" },
-  "sort": { "by": "prioridade_gute", "dir": "desc" },
-  "filters": ["modulo", "responsavel", "tipo"]
+  "fallbackColumn": {
+    "id": "_none",
+    "label": "Sem status",
+    "color": "#4b4b4b"
+  },
+  "card": {
+    "title": "titulo",
+    "subtitle": "responsavel",
+    "badge": "prioridade_gute",
+    "fields": [
+      "responsavel",
+      "modulo",
+      "tipo",
+      "branche",
+      "GUT",
+      "prioridade_gute"
+    ]
+  },
+  "sort": {
+    "by": "prioridade_gute",
+    "dir": "desc"
+  },
+  "filters": [
+    "modulo",
+    "responsavel",
+    "tipo"
+  ]
 }
