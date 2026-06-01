@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark; /* controles nativos (select, scrollbar) em dark */
+  }
+  html, body, #app {
+    height: 100%;
+  }
+  body {
+    @apply bg-ink-900 text-txt antialiased;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { @apply bg-ink-500 rounded; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-ink-line; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer components {
+  /* input/select/textarea padrão */
+  .field {
+    @apply w-full rounded-md bg-ink-700 border border-ink-500 px-2.5 py-1.5
+           text-sm text-txt outline-none transition-colors;
+  }
+  .field:focus { @apply border-accent; }
+  .field::placeholder { @apply text-faint; }
+
+  /* etiqueta colorida (módulo/tipo/prioridade) */
+  .pill {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium;
+  }
+
+  .icon-btn {
+    @apply inline-flex items-center justify-center rounded-md text-muted
+           hover:text-txt hover:bg-ink-600 transition-colors;
+  }
+
+  /* linha de propriedade no peek (estilo Notion) */
+  .prop-row {
+    @apply flex items-start gap-3 rounded-md px-2 py-1.5 transition-colors;
+  }
+  .prop-row:hover { @apply bg-ink-700/60; }
+  .prop-label {
+    @apply flex-shrink-0 w-28 pt-1.5 text-[13px] text-muted select-none;
+  }
+}
