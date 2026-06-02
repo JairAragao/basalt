@@ -6,19 +6,9 @@
       "label": "A fazer",
       "stages": [
         {
-          "id": "Análise",
-          "label": "Análise",
+          "id": "A fazer",
+          "label": "A fazer",
           "color": "#9b9b9b"
-        },
-        {
-          "id": "Não especificado",
-          "label": "Não especificado",
-          "color": "#6f7787"
-        },
-        {
-          "id": "Aguardando Início",
-          "label": "Aguardando Início",
-          "color": "#a1795f"
         }
       ]
     },
@@ -27,40 +17,31 @@
       "label": "Em andamento",
       "stages": [
         {
-          "id": "Pausado",
-          "label": "Pausado",
-          "color": "#d9730d"
-        },
-        {
-          "id": "Em Andamento",
-          "label": "Em Andamento",
+          "id": "Em andamento",
+          "label": "Em andamento",
           "color": "#d9a01e"
-        },
-        {
-          "id": "Aguardando Validação",
-          "label": "Aguardando Validação",
-          "color": "#2e83ec"
         }
       ]
     },
     {
       "id": "done",
-      "label": "Concluído",
+      "label": "Conclu�do",
       "stages": [
         {
-          "id": "Aguardando deploy",
-          "label": "Aguardando deploy",
-          "color": "#3aa6a0"
-        },
-        {
-          "id": "Finalizado",
-          "label": "Finalizado",
+          "id": "Conclu�do",
+          "label": "Conclu�do",
           "color": "#4caf72"
-        },
+        }
+      ]
+    },
+    {
+      "id": "grupo",
+      "label": "Novo grupo",
+      "stages": [
         {
-          "id": "Recusado",
-          "label": "Recusado",
-          "color": "#e0566b"
+          "id": "Nova etapa",
+          "label": "Nova etapa",
+          "color": "#6f7787"
         }
       ]
     }
