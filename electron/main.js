@@ -21,7 +21,7 @@ let splashWin = null;
 let serverListener = null;
 let revealed = false;
 let splashAt = 0;
-const MIN_SPLASH_MS = 1600; // tempo mínimo de splash (pra dar pra ver a animação)
+const MIN_SPLASH_MS = 3000; // tempo mínimo de splash (pra dar pra ver a animação)
 
 // Splash de carregamento — abre instantânea (HTML mínimo) enquanto o backend
 // sobe e o app carrega. Frameless, MESMO TAMANHO da janela principal, animação centralizada.
