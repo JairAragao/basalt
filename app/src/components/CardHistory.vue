@@ -235,5 +235,5 @@ export default {
 
 <style scoped>
 .hist-enter-active, .hist-leave-active { transition: transform .22s ease, opacity .22s ease; }
-.hist-enter, .hist-leave-to { transform: translateX(100%); opacity: 0; }
+.hist-enter-from, .hist-leave-to { transform: translateX(100%); opacity: 0; }
 </style>

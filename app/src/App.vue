@@ -75,9 +75,9 @@
 
         <!-- Configurações -->
         <button class="icon-btn h-8 w-8" title="Configurações" @click="settingsOpen = true">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" class="h-4 w-4">
-            <circle cx="10" cy="10" r="2.5" />
-            <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7" stroke-linecap="round" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
 
@@ -134,6 +134,7 @@
           @open="openEdit"
           @delete="confirmDelete"
           @moved="onMoved"
+          @config-saved="onConfigSaved"
           @error="(m) => notify(m, 'error')"
         />
         <TableView
@@ -301,7 +302,7 @@ export default {
       try { localStorage.setItem(COLOR_KEY, this.colorColumns ? '1' : '0'); } catch (e) { /* ignore */ }
     },
     setFilter(name, value) {
-      this.$set(this.filters, name, value == null ? null : value);
+      this.filters[name] = value == null ? null : value;
     },
     setSortBy(by) {
       if (!by) return;
@@ -336,7 +337,9 @@ export default {
       try {
         const v = await getVault();
         this.vaultStatus = v;
-        if (v && v.needsSetup) this.setupOpen = true;
+        // Primeira run: vault sem config (needsSetup) OU ainda usando a pasta do
+        // app como fallback (isDefault) — usuário ainda não escolheu um vault próprio.
+        if (v && (v.needsSetup || v.isDefault)) this.setupOpen = true;
       } catch (e) {
         // endpoint indisponível (ex.: backend antigo): não trava a app.
         this.vaultStatus = null;
@@ -361,19 +364,13 @@ export default {
       await this.bootstrap();
       this.notify('Vault definido.');
     },
-    // Revalidação do wizard: recebe { health, vault } atualizados.
+    // Revalidação do wizard: recebe { health, vault } atualizados. Só atualiza o
+    // estado — o stepper controla quando fechar (botão "Ir pro board" → dismiss).
     onSetupRevalidated(payload) {
       const h = payload && payload.health;
       const v = payload && payload.vault;
       if (v) this.vaultStatus = v;
       if (h) this.gitHealth = h;
-      const vaultOk = !v || v.needsSetup === false;
-      const gitOk = !h || h.ok === true;
-      if (vaultOk && gitOk) {
-        this.setupOpen = false;
-        this.notify('Configuração concluída.');
-      }
-      // se algo ainda pendente, mantém o wizard aberto com o estado atualizado
     },
     async doSync() {
       if (this.syncing) return;
@@ -458,5 +455,5 @@ export default {
 
 <style>
 .toast-enter-active, .toast-leave-active { transition: opacity .2s, transform .2s; }
-.toast-enter, .toast-leave-to { opacity: 0; transform: translate(-50%, 8px); }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 8px); }
 </style>

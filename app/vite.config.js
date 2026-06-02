@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
-import vue from '@vitejs/plugin-vue2'
+import vue from '@vitejs/plugin-vue'
 
-// Front do app NOVO orchestra-tasks (Vue 2.7 + Vuetify 2).
+// Front do app Basalt (Vue 3 + Tailwind).
 // root = pasta app/. Em dev, /api é proxied pro backend Express (porta 4317).
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),

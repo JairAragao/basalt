@@ -13,7 +13,7 @@
 // retrocompatibilidade dos testes/consumidores antigos. Quando recebe um schema
 // "de verdade" (com .properties), usa as propriedades type 'formula'.
 
-const { Parser } = require('expr-eval');
+const { Parser } = require('expr-eval-fork');
 
 const parser = new Parser();
 // IMPORTANTE: expr-eval reserva `E` (Euler) e `PI` como constantes — isso

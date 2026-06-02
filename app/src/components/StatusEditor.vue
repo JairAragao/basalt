@@ -198,7 +198,7 @@ export default {
         .finally(() => { this.saving = false; });
     },
   },
-  beforeDestroy() {
+  beforeUnmount() {
     document.removeEventListener('mousedown', this.onDocClick);
   },
 };
@@ -206,5 +206,5 @@ export default {
 
 <style scoped>
 .dd-enter-active, .dd-leave-active { transition: opacity .12s ease, transform .12s ease; }
-.dd-enter, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
+.dd-enter-from, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>

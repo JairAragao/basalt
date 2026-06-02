@@ -72,7 +72,7 @@
                     :options="optionsFor(field)"
                     :placeholder="field.label || field.name"
                     :clearable="!field.required"
-                    @input="(v) => $set(model, field.name, v == null ? '' : v)"
+                    @input="(v) => (model[field.name] = v == null ? '' : v)"
                   />
                   <input
                     v-else-if="field.type === 'int'"
@@ -103,7 +103,7 @@
             <BodyEditor
               :value="model.body"
               placeholder="Escreva algo…  ( / para comandos )"
-              @input="(v) => $set(model, 'body', v)"
+              @input="(v) => (model.body = v)"
             />
           </div>
         </div>
@@ -281,11 +281,11 @@ export default {
       try {
         const full = await getTask(this.task.id);
         if (full) {
-          this.$set(this.model, 'body', full.body || '');
+          this.model.body = full.body || '';
           if (full.data) {
             this.inputFields.forEach((field) => {
               if (full.data[field.name] !== undefined && (this.model[field.name] === '' || this.model[field.name] === null)) {
-                this.$set(this.model, field.name, full.data[field.name]);
+                this.model[field.name] = full.data[field.name];
               }
             });
           }
@@ -352,16 +352,16 @@ export default {
 /* side: desliza da direita */
 .peek-side-enter-active, .peek-side-leave-active { transition: opacity .22s ease; }
 .peek-side-enter-active aside, .peek-side-leave-active aside { transition: transform .22s ease; }
-.peek-side-enter, .peek-side-leave-to { opacity: 0; }
-.peek-side-enter aside, .peek-side-leave-to aside { transform: translateX(100%); }
+.peek-side-enter-from, .peek-side-leave-to { opacity: 0; }
+.peek-side-enter-from aside, .peek-side-leave-to aside { transform: translateX(100%); }
 
 /* center e full: fade + leve scale */
 .peek-center-enter-active, .peek-center-leave-active,
 .peek-full-enter-active, .peek-full-leave-active { transition: opacity .2s ease; }
 .peek-center-enter-active aside, .peek-center-leave-active aside,
 .peek-full-enter-active aside, .peek-full-leave-active aside { transition: transform .2s ease; }
-.peek-center-enter, .peek-center-leave-to,
-.peek-full-enter, .peek-full-leave-to { opacity: 0; }
-.peek-center-enter aside, .peek-center-leave-to aside,
-.peek-full-enter aside, .peek-full-leave-to aside { transform: scale(.97); }
+.peek-center-enter-from, .peek-center-leave-to,
+.peek-full-enter-from, .peek-full-leave-to { opacity: 0; }
+.peek-center-enter-from aside, .peek-center-leave-to aside,
+.peek-full-enter-from aside, .peek-full-leave-to aside { transform: scale(.97); }
 </style>

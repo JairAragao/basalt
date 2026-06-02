@@ -288,7 +288,7 @@ export default {
 
     this.refreshMarks();
   },
-  beforeDestroy() {
+  beforeUnmount() {
     document.removeEventListener('mousedown', this.onDocMouseDown, true);
     this.editor && this.editor.destroy();
     this.editor = null;

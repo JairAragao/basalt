@@ -8,6 +8,7 @@
 
 const express = require('express');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const config = require('./config');
@@ -109,6 +110,48 @@ router.post('/vault', async (req, res) => {
   } catch (err) {
     // Erros de path/seed são de validação → 400.
     res.status(400).json({ error: err.message });
+  }
+});
+
+// ── Navegador de pastas (para o picker do SetupWizard) ───────────────────────
+// GET /api/fs/list?path=... → lista SÓ subpastas do diretório (nunca arquivos,
+// nunca conteúdo). Sem path → home do usuário. Path-safe: resolve absoluto,
+// nunca lê arquivos. Em win32 expõe as unidades (drives) em `roots`.
+function listDrivesWin() {
+  const drives = [];
+  for (let c = 65; c <= 90; c++) {
+    const d = String.fromCharCode(c) + ':\\';
+    try { if (fs.statSync(d).isDirectory()) drives.push(d); } catch { /* sem unidade */ }
+  }
+  return drives;
+}
+router.get('/fs/list', (req, res) => {
+  try {
+    const q = (req.query.path || '').toString().trim();
+    const dir = q ? path.resolve(q) : os.homedir();
+    if (!fs.statSync(dir).isDirectory()) {
+      return res.status(400).json({ error: 'o caminho não é uma pasta' });
+    }
+    const dirs = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((d) => {
+        if (!d.isDirectory()) return false;
+        // esconde ocultas (.git etc) e de sistema do Windows ($RECYCLE.BIN, etc)
+        if (d.name.startsWith('.') || d.name.startsWith('$')) return false;
+        return true;
+      })
+      .map((d) => ({ name: d.name, path: path.join(dir, d.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    const parent = path.dirname(dir);
+    res.json({
+      path: dir,
+      parent: parent === dir ? null : parent,
+      dirs,
+      roots: process.platform === 'win32' ? listDrivesWin() : ['/'],
+      sep: path.sep,
+      home: os.homedir(),
+    });
+  } catch (err) {
+    res.status(400).json({ error: `não foi possível listar a pasta: ${err.message}` });
   }
 });
 

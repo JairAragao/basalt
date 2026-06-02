@@ -92,6 +92,14 @@ export function setVault(path) {
   })
 }
 
+// --- Navegador de pastas (picker do SetupWizard) ---
+// Lista só subpastas do diretório. Sem path → home. Retorna
+// { path, parent, dirs:[{name,path}], roots:[string], sep, home }.
+export function listDir(path) {
+  const qs = path ? `?path=${encodeURIComponent(path)}` : ''
+  return request(`${BASE}/fs/list${qs}`)
+}
+
 // --- Saúde do git / setup ---
 // { ok, hasRepo, branch, user, hasRemote, remoteUrl, checks:[{id,label,ok,detail,fix}] }
 export function getHealthGit() {
@@ -162,6 +170,7 @@ export default {
   deleteTask,
   getVault,
   setVault,
+  listDir,
   getHealthGit,
   syncPull,
   getHistory,

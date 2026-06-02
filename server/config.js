@@ -190,6 +190,9 @@ function statusOf(vault) {
     hasTasks,
     hasGit,
     needsSetup: !hasConfig,
+    // true quando ainda usando a pasta do app como vault (fallback legado, não
+    // escolhido pelo usuário) — sinaliza "primeira run" pro SetupWizard.
+    isDefault: vault === ROOT,
   };
 }
 

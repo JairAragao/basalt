@@ -28,20 +28,9 @@
       "label": "Concluído",
       "stages": [
         {
-          "id": "Conclu�do",
-          "label": "Conclu�do",
+          "id": "Concluído",
+          "label": "Concluído",
           "color": "#4caf72"
-        }
-      ]
-    },
-    {
-      "id": "grupo",
-      "label": "Novo grupo",
-      "stages": [
-        {
-          "id": "Nova etapa",
-          "label": "Nova etapa",
-          "color": "#6f7787"
         }
       ]
     }

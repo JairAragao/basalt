@@ -92,7 +92,7 @@ export default {
       this.unbind();
     },
   },
-  beforeDestroy() {
+  beforeUnmount() {
     this.unbind();
   },
 };
@@ -103,5 +103,5 @@ export default {
   @apply flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-txt transition-colors hover:bg-ink-600;
 }
 .dd-enter-active, .dd-leave-active { transition: opacity .12s ease, transform .12s ease; }
-.dd-enter, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
+.dd-enter-from, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>
