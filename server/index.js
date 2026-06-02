@@ -1,4 +1,4 @@
-// index.js — boot do servidor orchestra-tasks.
+// index.js — boot do servidor basalt.
 // Express + rotas /api + (prod) estático app/dist + watcher de GUT.
 
 const path = require('path');
@@ -34,7 +34,7 @@ startWatcher({ TASKS_DIR: config.TASKS_DIR, schema: config.schema });
 const PORT = process.env.PORT || 4317;
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`orchestra-tasks server on :${PORT}`);
+    console.log(`basalt server on :${PORT}`);
   });
 }
 

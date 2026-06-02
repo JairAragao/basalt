@@ -1,5 +1,5 @@
-// Client REST do orchestra-tasks. Consome SÓ o contrato definido pelo backend.
-// Base /api. Em dev o Vite faz proxy pra http://localhost:3001.
+// Client REST do basalt. Consome SÓ o contrato definido pelo backend.
+// Base /api. Em dev o Vite faz proxy pra http://localhost:4317.
 
 const BASE = '/api'
 

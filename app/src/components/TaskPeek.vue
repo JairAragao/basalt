@@ -140,7 +140,7 @@ import Dropdown from './Dropdown.vue';
 import CardHistory from './CardHistory.vue';
 import BodyEditor from './BodyEditor.vue';
 
-const MODE_KEY = 'orchestra-tasks.peekMode';
+const MODE_KEY = 'basalt.peekMode';
 
 export default {
   name: 'TaskPeek',

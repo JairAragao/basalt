@@ -119,7 +119,7 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 - **Node ≥18** (Vite). `nvm use 20`/`24`.
 - **expr-eval:** sempre `parser.consts={}` no motor de fórmula.
 - **tiptap-markdown fixado em `0.8.10`** (0.9+ exige TipTap v3; o projeto é TipTap v2). Não suba sem migrar.
-- **`localStorage` keys legadas** com prefixo `orchestra-tasks.` (ex: peekMode, peekMode, colorColumns `basalt.colorColumns`) — nome misto por histórico, não quebra.
+- **`localStorage` keys** padronizadas no prefixo `basalt.` (`basalt.peekMode`, `basalt.colorColumns`). Renomear a key = perde a preferência salva (reseta no default) — aceitável.
 - Usar **`Dropdown.vue`** em vez de `<select>` nativo; cores da paleta em **`palette.js`**; tema dark = paleta `ink-*`/`txt`/`muted`/`faint`/`accent`(âmbar #d9a01e) no `tailwind.config.js`.
 - Escrita de tarefa é **atômica** (`.tmp` + rename); paths são **path-safe** (regex + confinado a `tasks/`).
 - Validação: `validate.js` tolera tipos desconhecidos; `genId` usa `idFrom` com fallback (1ª string → 'tarefa') se titulo for removido.
