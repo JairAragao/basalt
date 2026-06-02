@@ -52,13 +52,13 @@
       "output": "release"
     },
     "asarUnpack": [
-      "config/**"
+      "defaults/**"
     ],
     "files": [
       "electron/**/*",
       "server/**/*",
       "app/dist/**/*",
-      "config/**/*",
+      "defaults/**/*",
       "basalt.png",
       "package.json"
     ],

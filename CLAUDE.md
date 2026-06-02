@@ -46,8 +46,8 @@ npm run electron:build  # instalável em release/ (Win .exe / Mac .dmg / Linux .
 ## Estrutura
 
 ```
-config/        schema.json + board.json = DEFAULT MÍNIMO do engine (semeado em vaults novos).
-               NÃO tem tasks/ versionado (criado em runtime); tarefas vivem no basalt-vault.
+defaults/      schema.json + board.json = TEMPLATE de seed do engine (DEFAULT MÍNIMO, copiado em vaults novos).
+               engine NÃO versiona config/ nem tasks/ (criados em runtime); os dados vivem no basalt-vault.
 electron/      main.js (sobe o backend em porta livre + janela + IPC) · preload.js (bridge)
 server/        index.js boot+watcher (auto-listen só via `node`; Electron controla o listen)
                config.js (vault+reload+derive+isDefault) · routes.js (API, inclui /fs/list)
@@ -68,7 +68,7 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 ### Vault (separação engine × dados)
 - **Vault** = pasta com `config/` + `tasks/` + **git próprio**. O engine é genérico; cada projeto = um vault.
 - Resolução do caminho (config.js, prioridade): `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › raiz do app (default).
-- Vault novo/vazio é **semeado** copiando os defaults (`<appRoot>/config/*.json`); cria `tasks/`; `git init` se faltar.
+- Vault novo/vazio é **semeado** copiando o template (`<appRoot>/defaults/*.json`); cria `config/`+`tasks/`; `git init` se faltar.
 - Endpoints: `GET /api/vault` (status, com flag **`isDefault`** = ainda no fallback da pasta do app), `POST /api/vault {path}` (define/seed/persiste/reload), `GET /api/fs/list` (navegador de pastas do picker). UI: **SetupWizard** (stepper) + **FolderPicker** (web) / diálogo nativo (Electron).
 - **`isDefault`**: enquanto o vault for a pasta do app, o wizard trata como "primeira run" e pede um vault próprio (ex.: `basalt-vault`). Resolve a antiga pendência de "tarefas no repo do engine".
 

@@ -23,7 +23,7 @@ const { execFileSync } = require('child_process');
 
 // Raiz do app (pasta acima de server/) — é onde vivem os DEFAULTS de config/.
 const ROOT = path.resolve(__dirname, '..');
-const DEFAULTS_DIR = path.join(ROOT, 'config'); // <appRoot>/config — template de seed
+const DEFAULTS_DIR = path.join(ROOT, 'defaults'); // <appRoot>/defaults — template de seed (NÃO é o config/ do vault, que são dados)
 
 // Settings persistidos do usuário (escolha de vault).
 const SETTINGS_DIR = path.join(os.homedir(), '.basalt');

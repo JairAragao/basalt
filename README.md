@@ -64,8 +64,8 @@ Descrição livre em markdown. Pode ter [[wikilinks]].
 - Escrita **atômica** + path-safe. Todo CRUD **commita** (mensagem automática) e faz push best-effort.
 
 ### Vault (engine × dados)
-- **Vault** = pasta com `config/` + `tasks/` + git próprio. O engine semeia os defaults
-  (`config/*.json`) num vault novo e faz `git init` se faltar.
+- **Vault** = pasta com `config/` + `tasks/` + git próprio. O engine semeia o template
+  (`defaults/*.json` no repo do engine) num vault novo e faz `git init` se faltar.
 - Resolução do caminho: `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › pasta do app (fallback).
   Enquanto estiver no fallback, o wizard sinaliza "primeira run" (`isDefault`) e pede um vault próprio.
 

@@ -3,6 +3,8 @@ app/dist/
 release/
 *.log
 .DS_Store
-# arquivos temporários da escrita atômica de tarefas
+# dados de runtime — o engine NÃO versiona tarefas nem config (vivem no vault).
+# defaults/ é o template de seed (versionado); config/ só aparece em runtime no modo default-vault.
 tasks/.*.tmp
 tasks/
+config/
