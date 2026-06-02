@@ -5,3 +5,4 @@ release/
 .DS_Store
 # arquivos temporários da escrita atômica de tarefas
 tasks/.*.tmp
+tasks/
