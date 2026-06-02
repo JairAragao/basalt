@@ -20,28 +20,31 @@ let mainWindow = null;
 let splashWin = null;
 let serverListener = null;
 let revealed = false;
+let splashAt = 0;
+const MIN_SPLASH_MS = 1600; // tempo mínimo de splash (pra dar pra ver a animação)
 
 // Splash de carregamento — abre instantânea (HTML mínimo) enquanto o backend
-// sobe e o app carrega. Frameless, centralizada, ícone + barra de progresso.
+// sobe e o app carrega. Frameless, MESMO TAMANHO da janela principal, animação centralizada.
 function createSplash() {
   splashWin = new BrowserWindow({
-    width: 380,
-    height: 260,
+    width: 1280,
+    height: 820,
     frame: false,
-    resizable: false,
     center: true,
     backgroundColor: '#0c0c0d',
-    alwaysOnTop: true,
     skipTaskbar: true,
     show: true,
   });
   splashWin.loadFile(path.join(__dirname, 'splash.html'));
   splashWin.on('closed', () => { splashWin = null; });
+  splashAt = Date.now();
 }
 
-// Mostra a janela principal e fecha a splash (idempotente).
+// Mostra a janela principal e fecha a splash (idempotente, respeitando o tempo mínimo).
 function reveal() {
   if (revealed) return;
+  const waited = splashAt ? Date.now() - splashAt : MIN_SPLASH_MS;
+  if (waited < MIN_SPLASH_MS) { setTimeout(reveal, MIN_SPLASH_MS - waited); return; }
   revealed = true;
   if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
   if (splashWin) { splashWin.close(); splashWin = null; }

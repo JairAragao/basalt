@@ -1,10 +1,10 @@
 <template>
   <!-- barra de título custom (frameless). `drag` = arrasta a janela; `no-drag` = interativo -->
-  <div class="titlebar flex h-10 flex-shrink-0 items-stretch border-b border-ink-500 bg-ink-950 text-txt select-none">
+  <div class="titlebar flex h-10 flex-shrink-0 items-stretch bg-ink-950 text-txt select-none">
     <!-- logo (região arrastável) -->
-    <div class="drag flex flex-shrink-0 items-center gap-2 pl-3 pr-2">
-      <span class="grid h-6 w-6 place-items-center overflow-hidden rounded-md border border-ink-500 bg-ink-600">
-        <img src="/basalt.png" alt="Basalt" class="h-5 w-5 max-w-none scale-[1.6] object-contain" />
+    <div class="drag flex flex-shrink-0 items-center gap-2 pl-3 pr-2.5">
+      <span class="grid h-8 w-8 place-items-center overflow-hidden rounded-lg border border-ink-500 bg-ink-600 shadow-[0_0_12px_rgba(217,160,30,0.15)]">
+        <img src="/basalt.png" alt="Basalt" class="h-7 w-7 max-w-none scale-[1.6] object-contain" />
       </span>
     </div>
 
@@ -13,8 +13,8 @@
       <div
         v-for="v in vaults"
         :key="v.path"
-        class="group/tab flex max-w-[210px] flex-shrink-0 cursor-pointer items-center gap-2 rounded-t-lg border-b-2 px-3 py-1.5 text-[13px] transition-colors"
-        :class="(!configuring && v.path === activePath) ? 'border-accent bg-ink-800 text-txt' : 'border-transparent text-faint hover:bg-ink-800/60 hover:text-muted'"
+        class="group/tab mt-1 flex max-w-[200px] flex-shrink-0 cursor-pointer items-center gap-2 rounded-t-lg px-3 py-1.5 text-[13px] transition-colors"
+        :class="(!configuring && v.path === activePath) ? 'bg-ink-850 text-txt' : 'text-faint hover:bg-ink-850/50 hover:text-muted'"
         :title="v.path"
         @click="$emit('switch', v.path)"
       >
@@ -35,7 +35,7 @@
       <!-- aba de configuração (ativa enquanto configura um vault) -->
       <div
         v-if="configuring"
-        class="flex flex-shrink-0 items-center gap-2 rounded-t-lg border-b-2 border-accent bg-ink-800 px-3 py-1.5 text-[13px] text-txt"
+        class="mt-1 flex flex-shrink-0 items-center gap-2 rounded-t-lg bg-ink-850 px-3 py-1.5 text-[13px] text-txt"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-3.5 w-3.5"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linecap="round" stroke-linejoin="round" /></svg>
         Configuração

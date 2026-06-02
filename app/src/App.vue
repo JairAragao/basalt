@@ -119,6 +119,7 @@
       <SetupWizard
         v-if="configuring"
         embedded
+        :add-mode="addingVault"
         :health="gitHealth"
         :vault="vaultStatus"
         @vault-set="onVaultSet"
@@ -250,6 +251,7 @@ export default {
       vaults: [],          // vaults configurados (abas)
       activeVault: '',     // path do vault ativo
       configuring: false,  // true = mostrando o SetupWizard (1ª run / adicionar aba)
+      addingVault: false,  // true = "+" (vault NOVO, do zero) vs 1ª run
       toast: { show: false, text: '', type: 'success', timer: null },
     };
   },
@@ -376,6 +378,7 @@ export default {
       try {
         await switchVault(path);
         this.configuring = false;
+        this.addingVault = false;
         await this.loadVaults();
         await this.loadActive();
         this.checkGitHealth();
@@ -385,8 +388,9 @@ export default {
         this.loading = false;
       }
     },
-    // "+" — abre o wizard pra configurar um novo vault (nova aba).
+    // "+" — abre o wizard pra configurar um vault NOVO, do zero (nova aba).
     startAddVault() {
+      this.addingVault = true;
       this.configuring = true;
     },
     // Remove uma aba (NÃO apaga a pasta do vault).
@@ -397,6 +401,7 @@ export default {
         this.activeVault = (r && r.active) || '';
         if (!this.vaults.length) {
           this.configuring = true;
+          this.addingVault = false;
           this.config = null;
         } else {
           this.configuring = false;
@@ -430,6 +435,7 @@ export default {
     // Fecha o wizard ("Ir pro board" / "Pular") → mostra o board do vault ativo.
     async onWizardDismiss() {
       this.configuring = false;
+      this.addingVault = false;
       if (!this.config) {
         this.loading = true;
         await this.loadVaults();

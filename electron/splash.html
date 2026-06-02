@@ -5,38 +5,55 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; }
       body {
-        background: radial-gradient(120% 90% at 50% -10%, #1b1b1f 0%, #0c0c0d 65%);
+        background: radial-gradient(120% 90% at 50% 30%, #1b1b1f 0%, #0c0c0d 60%);
         color: #ECECEA;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
-        border: 1px solid #333338;
-        box-sizing: border-box;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
         -webkit-user-select: none; user-select: none;
       }
+      .stage { display: flex; flex-direction: column; align-items: center; gap: 20px; animation: rise .6s ease-out both; }
+
+      /* ícone com brilho pulsante */
       .logo {
-        width: 76px; height: 76px; display: grid; place-items: center; overflow: hidden;
-        border-radius: 18px; border: 1px solid #333338; background: #34343b;
-        box-shadow: 0 0 36px rgba(217,160,30,0.22);
+        position: relative;
+        width: 104px; height: 104px; display: grid; place-items: center; overflow: hidden;
+        border-radius: 24px; border: 1px solid #3a3a40; background: #34343b;
+        animation: glow 2.4s ease-in-out infinite;
       }
-      .logo img { width: 70px; height: 70px; max-width: none; transform: scale(1.6); object-fit: contain; }
-      .title { font-size: 20px; font-weight: 700; letter-spacing: .2px; text-shadow: 0 0 40px rgba(217,160,30,.25); }
-      .sub { font-size: 12px; color: #9b9b9b; margin-top: -10px; }
-      .bar { width: 220px; height: 4px; background: #212125; border-radius: 999px; overflow: hidden; margin-top: 4px; }
+      .logo img { width: 96px; height: 96px; max-width: none; transform: scale(1.6); object-fit: contain; }
+
+      .title { font-size: 30px; font-weight: 700; letter-spacing: .3px; text-shadow: 0 0 48px rgba(217,160,30,.3); }
+      .sub { font-size: 13px; color: #9b9b9b; margin-top: -12px; letter-spacing: .3px; }
+
+      /* barra indeterminada */
+      .bar { width: 280px; height: 4px; background: #1f1f23; border-radius: 999px; overflow: hidden; margin-top: 6px; }
       .bar::after {
-        content: ''; display: block; width: 40%; height: 100%;
-        background: #d9a01e; border-radius: 999px;
-        animation: slide 1.1s ease-in-out infinite;
+        content: ''; display: block; height: 100%; width: 38%;
+        background: linear-gradient(90deg, transparent, #d9a01e 40%, #f0c050 60%, transparent);
+        border-radius: 999px;
+        animation: slide 1.25s cubic-bezier(.45,0,.55,1) infinite;
+      }
+
+      @keyframes glow {
+        0%, 100% { box-shadow: 0 0 28px rgba(217,160,30,.18); }
+        50% { box-shadow: 0 0 52px rgba(217,160,30,.42); }
       }
       @keyframes slide {
-        0% { transform: translateX(-110%); }
-        100% { transform: translateX(280%); }
+        0% { transform: translateX(-130%); }
+        100% { transform: translateX(360%); }
+      }
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
       }
     </style>
   </head>
   <body>
-    <div class="logo"><img src="../basalt.png" alt="Basalt" /></div>
-    <div class="title">Basalt</div>
-    <div class="sub">carregando…</div>
-    <div class="bar"></div>
+    <div class="stage">
+      <div class="logo"><img src="../basalt.png" alt="Basalt" /></div>
+      <div class="title">Basalt</div>
+      <div class="sub">carregando seu vault…</div>
+      <div class="bar"></div>
+    </div>
   </body>
 </html>

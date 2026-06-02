@@ -191,6 +191,9 @@ export default {
     vault: { type: Object, default: null },
     // embedded: renderiza como conteúdo da aba (não como modal fixo).
     embedded: { type: Boolean, default: false },
+    // addMode: configurando um vault NOVO (aba nova) — começa na escolha de pasta,
+    // ignora o vault atual e exige escolher/validar um vault do zero.
+    addMode: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -201,6 +204,7 @@ export default {
       vaultSaving: false,
       vaultMsg: '',
       vaultMsgType: 'success',
+      picked: false, // um vault foi escolhido/validado nesta sessão do wizard
       welcomeFacts: [
         { t: 'Arquivos, não banco', d: 'Cada tarefa é um .md legível, commitado no git. Versionável, portável, à prova de lock-in.', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M5 3h6l4 4v10H5z"/><path d="M11 3v4h4" stroke-linejoin="round"/></svg>' },
         { t: 'Local-first', d: 'Roda na sua máquina. Sem servidor remoto obrigatório, sem login. Você controla os dados.', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><rect x="3" y="4" width="14" height="9" rx="1"/><path d="M7 17h6M10 13v4" stroke-linecap="round"/></svg>' },
@@ -209,9 +213,11 @@ export default {
     };
   },
   computed: {
-    // Vault "pronto" = existe e tem config (needsSetup falso).
+    // Vault "pronto" = escolhido/validado nesta sessão. No modo "adicionar" SÓ conta
+    // o que foi escolhido aqui (ignora o vault atual). Senão, também aceita um vault já ok.
     vaultDone() {
-      return !!(this.vault && this.vault.needsSetup === false);
+      if (this.addMode) return this.picked;
+      return this.picked || !!(this.vault && this.vault.needsSetup === false);
     },
     steps() {
       return [
@@ -238,6 +244,8 @@ export default {
     },
   },
   mounted() {
+    // Adicionar vault (aba nova): começa na escolha de pasta, do zero.
+    if (this.addMode) { this.idx = 1; return; }
     // Pula direto pra etapa de git só quando já é um vault REAL escolhido (config
     // ok E não é o default app-root). Primeira run / vault default começa no welcome.
     if (this.vaultDone && !(this.vault && this.vault.isDefault)) this.idx = 2;
@@ -261,14 +269,18 @@ export default {
       this.vaultMsg = '';
       try {
         const res = await setVault(path);
+        // setVault devolve { status, git, schema, board, gute } — os flags estão em .status.
+        const st = (res && res.status) ? res.status : (res || {});
         const parts = [];
-        if (res && res.hasConfig) parts.push('config/ pronto');
-        if (res && res.hasTasks) parts.push('tasks/ pronto');
-        parts.push(res && res.hasGit ? 'git ok' : 'git ausente');
+        if (st.hasConfig) parts.push('config/ pronto');
+        if (st.hasTasks) parts.push('tasks/ pronto');
+        parts.push(st.hasGit ? 'git ok' : 'git ausente');
         this.vaultMsg = 'Vault definido. ' + parts.join(' · ') + '.';
-        this.vaultMsgType = (res && res.needsSetup === false) ? 'success' : 'error';
+        const ok = st.needsSetup === false;
+        this.vaultMsgType = ok ? 'success' : 'error';
         this.$emit('vault-set', res);
-        if (res && res.needsSetup === false) {
+        if (ok) {
+          this.picked = true;
           await this.revalidate(true);
           // avança automaticamente pra etapa de git
           this.idx = 2;
