@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+  <div :class="embedded ? 'h-full w-full grid place-items-center overflow-auto bg-ink-900 p-4' : 'fixed inset-0 z-50 grid place-items-center bg-black/60 p-4'">
     <div class="flex max-h-[90vh] min-h-[620px] w-[840px] max-w-[95vw] flex-col overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
       <!-- header com stepper -->
       <header class="flex-shrink-0 border-b border-ink-500 px-5 py-4">
@@ -189,6 +189,8 @@ export default {
   props: {
     health: { type: Object, default: null },
     vault: { type: Object, default: null },
+    // embedded: renderiza como conteúdo da aba (não como modal fixo).
+    embedded: { type: Boolean, default: false },
   },
   data() {
     return {

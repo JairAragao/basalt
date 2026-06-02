@@ -5,7 +5,10 @@
 // navegador web do FolderPicker).
 
 const path = require('path');
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+
+// Sem menu de aplicação padrão (File/Edit/View/...). A navegação é toda na UI.
+Menu.setApplicationMenu(null);
 
 // Garante instância única (evita 2 backends/janelas).
 const gotLock = app.requestSingleInstanceLock();
@@ -14,7 +17,35 @@ if (!gotLock) {
 }
 
 let mainWindow = null;
+let splashWin = null;
 let serverListener = null;
+let revealed = false;
+
+// Splash de carregamento — abre instantânea (HTML mínimo) enquanto o backend
+// sobe e o app carrega. Frameless, centralizada, ícone + barra de progresso.
+function createSplash() {
+  splashWin = new BrowserWindow({
+    width: 380,
+    height: 260,
+    frame: false,
+    resizable: false,
+    center: true,
+    backgroundColor: '#0c0c0d',
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: true,
+  });
+  splashWin.loadFile(path.join(__dirname, 'splash.html'));
+  splashWin.on('closed', () => { splashWin = null; });
+}
+
+// Mostra a janela principal e fecha a splash (idempotente).
+function reveal() {
+  if (revealed) return;
+  revealed = true;
+  if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+  if (splashWin) { splashWin.close(); splashWin = null; }
+}
 
 function createWindow(url) {
   mainWindow = new BrowserWindow({
@@ -22,9 +53,11 @@ function createWindow(url) {
     height: 820,
     minWidth: 940,
     minHeight: 640,
+    show: false, // só mostra quando o renderer sinaliza pronto (fecha a splash)
     backgroundColor: '#171717', // evita flash branco; combina com o tema dark
     title: 'Basalt',
     icon: path.join(__dirname, '..', 'basalt.png'),
+    frame: false, // janela sem moldura — usamos uma barra de título custom (com abas)
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -33,6 +66,15 @@ function createWindow(url) {
   });
 
   mainWindow.loadURL(url);
+
+  // Revela quando o app avisar que está pronto (IPC) — com fallbacks de segurança.
+  mainWindow.webContents.once('did-finish-load', () => setTimeout(reveal, 6000));
+  setTimeout(reveal, 12000); // hard fallback (caso algo trave)
+
+  // Informa o renderer quando (des)maximiza — pro botão alternar o ícone.
+  const sendMax = () => mainWindow && mainWindow.webContents.send('window:maximized', mainWindow.isMaximized());
+  mainWindow.on('maximize', sendMax);
+  mainWindow.on('unmaximize', sendMax);
 
   // Links externos abrem no navegador padrão, não numa janela Electron.
   mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
@@ -76,11 +118,26 @@ ipcMain.handle('dialog:pickFolder', async () => {
   return res.canceled || !res.filePaths.length ? null : res.filePaths[0];
 });
 
+// ── IPC: controles da janela (barra de título custom, frameless) ─────────────
+ipcMain.on('window:minimize', () => mainWindow && mainWindow.minimize());
+ipcMain.on('window:maximize', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+});
+ipcMain.on('window:close', () => mainWindow && mainWindow.close());
+ipcMain.handle('window:isMaximized', () => !!(mainWindow && mainWindow.isMaximized()));
+
+// Renderer terminou de carregar (bootstrap pronto) → mostra a janela, fecha a splash.
+ipcMain.on('app:ready', () => reveal());
+
 app.whenReady().then(async () => {
+  createSplash(); // splash instantânea enquanto o backend sobe + o app carrega
   try {
     const url = await startServer();
     createWindow(url);
   } catch (e) {
+    if (splashWin) { splashWin.close(); splashWin = null; }
     dialog.showErrorBox('Basalt — falha ao iniciar', String((e && e.message) || e));
     app.quit();
   }

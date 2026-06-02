@@ -113,6 +113,45 @@ router.post('/vault', async (req, res) => {
   }
 });
 
+// ── Vaults configurados (abas) ────────────────────────────────────────────────
+// GET /api/vaults → { active, vaults:[{path,name,...status}] }
+router.get('/vaults', (req, res) => {
+  try { res.json(config.listVaults()); } catch (err) { fail(res, err); }
+});
+
+// POST /api/vaults/switch { path } → troca o vault ativo (deve já existir) + reload.
+router.post('/vaults/switch', async (req, res) => {
+  try {
+    const p = (req.body || {}).path;
+    if (typeof p !== 'string' || p.trim() === '') {
+      return res.status(400).json({ error: 'validação: o campo "path" é obrigatório' });
+    }
+    const result = config.setVault(p);
+    res.json({
+      status: result.status,
+      git: result.git,
+      schema: config.schema,
+      board: config.board,
+      gute: config.gute,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/vaults { path } → tira o vault da lista (não apaga a pasta).
+router.delete('/vaults', (req, res) => {
+  try {
+    const p = (req.body || {}).path;
+    if (typeof p !== 'string' || p.trim() === '') {
+      return res.status(400).json({ error: 'validação: o campo "path" é obrigatório' });
+    }
+    res.json(config.removeVault(p));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── Navegador de pastas (para o picker do SetupWizard) ───────────────────────
 // GET /api/fs/list?path=... → lista SÓ subpastas do diretório (nunca arquivos,
 // nunca conteúdo). Sem path → home do usuário. Path-safe: resolve absoluto,

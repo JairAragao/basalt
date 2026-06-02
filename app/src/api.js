@@ -92,6 +92,22 @@ export function setVault(path) {
   })
 }
 
+// --- Vaults configurados (abas) ---
+// { active, vaults:[{path,name,exists,hasConfig,hasTasks,hasGit,needsSetup,isDefault}] }
+export function listVaults() {
+  return request(`${BASE}/vaults`)
+}
+
+// Troca o vault ativo (deve já estar na lista). Retorna status + config nova.
+export function switchVault(path) {
+  return request(`${BASE}/vaults/switch`, { method: 'POST', body: JSON.stringify({ path }) })
+}
+
+// Remove um vault da lista (não apaga a pasta). Retorna a lista atualizada.
+export function removeVault(path) {
+  return request(`${BASE}/vaults`, { method: 'DELETE', body: JSON.stringify({ path }) })
+}
+
 // --- Navegador de pastas (picker do SetupWizard) ---
 // Lista só subpastas do diretório. Sem path → home. Retorna
 // { path, parent, dirs:[{name,path}], roots:[string], sep, home }.
@@ -170,6 +186,9 @@ export default {
   deleteTask,
   getVault,
   setVault,
+  listVaults,
+  switchVault,
+  removeVault,
   listDir,
   getHealthGit,
   syncPull,

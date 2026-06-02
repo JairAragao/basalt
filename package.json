@@ -12,6 +12,7 @@
     "start": "node server/index.js",
     "electron": "electron .",
     "electron:dev": "npm run build && electron .",
+    "electron:pack": "npm run build && electron-builder --dir",
     "electron:build": "npm run build && electron-builder",
     "test": "vitest run"
   },

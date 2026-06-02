@@ -341,11 +341,47 @@ configObj.setVault = function setVault(p) {
   // Persiste a escolha e recarrega a config a partir do novo vault.
   const settings = readSettings();
   settings.vaultPath = vault;
+  // Registra na lista de vaults (abas), sem duplicar.
+  const vaults = Array.isArray(settings.vaults) ? settings.vaults.filter((v) => typeof v === 'string') : [];
+  if (!vaults.includes(vault)) vaults.push(vault);
+  settings.vaults = vaults;
   writeSettings(settings);
 
   load();
 
   return { status: statusOf(configObj.VAULT), git: gitResult };
+};
+
+// listVaults(): vaults configurados (abas) + o ativo. Migração: se a lista estiver
+// vazia mas houver um vault ativo não-default, trata-o como a única aba.
+configObj.listVaults = function listVaults() {
+  const settings = readSettings();
+  let vaults = Array.isArray(settings.vaults) ? settings.vaults.filter((v) => typeof v === 'string') : [];
+  const active = configObj.VAULT;
+  if (!vaults.length && active && active !== ROOT) vaults = [active];
+  return {
+    active,
+    vaults: vaults.map((p) => ({ ...statusOf(p), name: path.basename(p) })),
+  };
+};
+
+// removeVault(p): tira um vault da lista (NÃO apaga a pasta). Se era o ativo, troca
+// pro primeiro restante; se a lista esvaziar, volta ao default (app-root).
+configObj.removeVault = function removeVault(p) {
+  const target = path.resolve((p || '').trim());
+  const settings = readSettings();
+  const vaults = (Array.isArray(settings.vaults) ? settings.vaults : [])
+    .filter((v) => typeof v === 'string' && path.resolve(v) !== target);
+  settings.vaults = vaults;
+  if (configObj.VAULT === target) {
+    if (vaults.length) settings.vaultPath = vaults[0];
+    else delete settings.vaultPath;
+    writeSettings(settings);
+    load();
+  } else {
+    writeSettings(settings);
+  }
+  return configObj.listVaults();
 };
 
 // clearVault(): volta ao default (remove vaultPath do settings). Util/teste.

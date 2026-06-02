@@ -1,12 +1,17 @@
 <template>
   <div class="flex h-screen flex-col bg-ink-900 text-txt font-sans">
-    <!-- Topbar -->
-    <header class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 bg-ink-850 px-4">
-      <div class="flex items-center gap-2 text-sm font-medium">
-        <span class="grid h-6 w-6 place-items-center overflow-hidden rounded-md border border-ink-500 bg-ink-600 shadow-[0_0_12px_rgba(217,160,30,0.15)]"><img src="/basalt.png" alt="Basalt" class="h-5 w-5 max-w-none scale-[1.6] object-contain" /></span>
-        Basalt
-      </div>
+    <!-- Barra de título custom: logo + abas (vaults) + controles de janela -->
+    <TitleBar
+      :vaults="vaults"
+      :active-path="activeVault"
+      :configuring="configuring"
+      @switch="switchToVault"
+      @add="startAddVault"
+      @remove="removeVaultTab"
+    />
 
+    <!-- Toolbar (filtros/view/ações) — só com vault ativo e fora da configuração -->
+    <header v-if="config && !loadError && !configuring" class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 bg-ink-850 px-4">
       <div class="flex-1"></div>
 
       <template v-if="config && !loadError">
@@ -110,6 +115,18 @@
 
     <!-- Conteúdo -->
     <main class="relative flex-1 overflow-hidden">
+      <!-- Configuração do vault (wizard como conteúdo da aba ativa) -->
+      <SetupWizard
+        v-if="configuring"
+        embedded
+        :health="gitHealth"
+        :vault="vaultStatus"
+        @vault-set="onVaultSet"
+        @revalidated="onSetupRevalidated"
+        @dismiss="onWizardDismiss"
+      />
+
+      <template v-else>
       <div v-if="loading && !config" class="grid h-full place-items-center text-muted text-sm">
         Carregando…
       </div>
@@ -146,6 +163,7 @@
           @sort="(s) => (sort = s)"
         />
       </template>
+      </template>
     </main>
 
     <!-- Peek lateral (criar/editar) -->
@@ -165,16 +183,6 @@
       :config="config"
       @saved="onConfigSaved"
       @close="settingsOpen = false"
-    />
-
-    <!-- Setup: vault + saúde do git (vault.needsSetup ou getHealthGit().ok === false) -->
-    <SetupWizard
-      v-if="setupOpen"
-      :health="gitHealth"
-      :vault="vaultStatus"
-      @vault-set="onVaultSet"
-      @revalidated="onSetupRevalidated"
-      @dismiss="setupOpen = false"
     />
 
     <!-- Confirmação de exclusão -->
@@ -213,13 +221,14 @@ import TaskPeek from './components/TaskPeek.vue';
 import Settings from './components/Settings.vue';
 import SetupWizard from './components/SetupWizard.vue';
 import Dropdown from './components/Dropdown.vue';
-import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, getVault } from './api';
+import TitleBar from './components/TitleBar.vue';
+import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault } from './api';
 
 const COLOR_KEY = 'basalt.colorColumns';
 
 export default {
   name: 'App',
-  components: { Board, TableView, TaskPeek, Settings, SetupWizard, Dropdown },
+  components: { Board, TableView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar },
   data() {
     return {
       config: null,
@@ -238,7 +247,9 @@ export default {
       syncing: false,
       gitHealth: null,
       vaultStatus: null,
-      setupOpen: false,
+      vaults: [],          // vaults configurados (abas)
+      activeVault: '',     // path do vault ativo
+      configuring: false,  // true = mostrando o SetupWizard (1ª run / adicionar aba)
       toast: { show: false, text: '', type: 'success', timer: null },
     };
   },
@@ -290,8 +301,10 @@ export default {
       return this.tasks.filter((t) => active.every((k) => t[k] === this.filters[k]));
     },
   },
-  created() {
-    this.bootstrap();
+  async created() {
+    await this.bootstrap();
+    // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
+    try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
   },
   methods: {
     loadColorColumns() {
@@ -314,8 +327,34 @@ export default {
     async bootstrap() {
       this.loading = true;
       this.loadError = '';
-      // 1) estado do vault primeiro — se needsSetup, abre o wizard na etapa de vault.
-      await this.checkVault();
+      await this.loadVaults();
+      // Primeira run: nenhum vault configurado → wizard (1ª aba = configuração).
+      if (!this.vaults.length) {
+        this.configuring = true;
+        this.loading = false;
+        this.checkGitHealth();
+        return;
+      }
+      this.configuring = false;
+      await this.loadActive();
+      this.loading = false;
+      this.checkGitHealth();
+    },
+    // Lista os vaults (abas) + define o ativo.
+    async loadVaults() {
+      try {
+        const r = await listVaults();
+        this.vaults = (r && r.vaults) || [];
+        this.activeVault = (r && r.active) || '';
+        const act = this.vaults.find((v) => v.path === this.activeVault);
+        if (act) this.vaultStatus = act;
+      } catch (e) {
+        this.vaults = [];
+        this.activeVault = '';
+      }
+    },
+    // Carrega config + tarefas do vault ativo.
+    async loadActive() {
       try {
         const [cfg, tasks] = await Promise.all([getConfig(), listTasks()]);
         this.config = cfg || { schema: {}, board: {}, gute: {} };
@@ -327,50 +366,76 @@ export default {
         if (s && s.by) this.sort = { by: s.by, dir: s.dir || 'desc' };
       } catch (e) {
         this.loadError = e.message || 'Erro desconhecido.';
+      }
+    },
+    // Troca a aba ativa (vault).
+    async switchToVault(path) {
+      if (!path) return;
+      if (!this.configuring && path === this.activeVault) return;
+      this.loading = true;
+      try {
+        await switchVault(path);
+        this.configuring = false;
+        await this.loadVaults();
+        await this.loadActive();
+        this.checkGitHealth();
+      } catch (e) {
+        this.notify(e.message || 'Falha ao trocar de vault.', 'error');
       } finally {
         this.loading = false;
       }
-      // checagem de saúde do git (não bloqueia o board)
-      this.checkGitHealth();
     },
-    async checkVault() {
+    // "+" — abre o wizard pra configurar um novo vault (nova aba).
+    startAddVault() {
+      this.configuring = true;
+    },
+    // Remove uma aba (NÃO apaga a pasta do vault).
+    async removeVaultTab(path) {
       try {
-        const v = await getVault();
-        this.vaultStatus = v;
-        // Primeira run: vault sem config (needsSetup) OU ainda usando a pasta do
-        // app como fallback (isDefault) — usuário ainda não escolheu um vault próprio.
-        if (v && (v.needsSetup || v.isDefault)) this.setupOpen = true;
+        const r = await removeVault(path);
+        this.vaults = (r && r.vaults) || [];
+        this.activeVault = (r && r.active) || '';
+        if (!this.vaults.length) {
+          this.configuring = true;
+          this.config = null;
+        } else {
+          this.configuring = false;
+          await this.loadActive();
+        }
+        this.notify('Aba removida.');
       } catch (e) {
-        // endpoint indisponível (ex.: backend antigo): não trava a app.
-        this.vaultStatus = null;
+        this.notify(e.message || 'Falha ao remover a aba.', 'error');
       }
     },
     async checkGitHealth() {
       try {
-        const h = await getHealthGit();
-        this.gitHealth = h;
-        // só abre por causa do git se o vault já estiver pronto
-        const vaultOk = !this.vaultStatus || this.vaultStatus.needsSetup === false;
-        if (vaultOk && h && h.ok === false) this.setupOpen = true;
+        this.gitHealth = await getHealthGit();
       } catch (e) {
-        // health indisponível: não trava a app, só não abre o wizard
         this.gitHealth = null;
       }
     },
-    // O wizard semeou/definiu um vault novo: recarrega tudo a partir dele.
-    async onVaultSet(v) {
-      this.vaultStatus = v || this.vaultStatus;
-      // recarrega config + tasks do vault recém-definido
-      await this.bootstrap();
+    // O wizard definiu/semeou um vault: atualiza as abas + carrega o board atrás.
+    async onVaultSet() {
+      await this.loadVaults();
+      await this.loadActive();
       this.notify('Vault definido.');
     },
-    // Revalidação do wizard: recebe { health, vault } atualizados. Só atualiza o
-    // estado — o stepper controla quando fechar (botão "Ir pro board" → dismiss).
+    // Revalidação do wizard: recebe { health, vault } atualizados.
     onSetupRevalidated(payload) {
       const h = payload && payload.health;
       const v = payload && payload.vault;
       if (v) this.vaultStatus = v;
       if (h) this.gitHealth = h;
+    },
+    // Fecha o wizard ("Ir pro board" / "Pular") → mostra o board do vault ativo.
+    async onWizardDismiss() {
+      this.configuring = false;
+      if (!this.config) {
+        this.loading = true;
+        await this.loadVaults();
+        await this.loadActive();
+        this.loading = false;
+      }
     },
     async doSync() {
       if (this.syncing) return;
