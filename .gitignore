@@ -1,5 +1,6 @@
 node_modules/
 app/dist/
+release/
 *.log
 .DS_Store
 # arquivos temporários da escrita atômica de tarefas

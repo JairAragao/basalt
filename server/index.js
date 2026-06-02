@@ -28,9 +28,14 @@ if (fs.existsSync(DIST)) {
 // Lê config.TASKS_DIR/schema do VAULT corrente; o watcher relê o schema vivo.
 startWatcher({ TASKS_DIR: config.TASKS_DIR, schema: config.schema });
 
+// Auto-escuta SÓ quando rodado direto (`node server/index.js` / `npm start`).
+// Quando requerido por outro processo (ex.: Electron main), o consumidor chama
+// `app.listen(port, cb)` ele mesmo — incluindo porta 0 (livre) pra evitar conflito.
 const PORT = process.env.PORT || 4317;
-app.listen(PORT, () => {
-  console.log(`orchestra-tasks server on :${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`orchestra-tasks server on :${PORT}`);
+  });
+}
 
 module.exports = app;
