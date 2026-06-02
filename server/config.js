@@ -248,6 +248,8 @@ function load() {
 
   const CONFIG_DIR = path.join(vault, 'config');
   const TASKS_DIR = path.join(vault, 'tasks');
+  // Garante a pasta de tarefas (o engine não versiona tasks/ — é criada aqui).
+  try { fs.mkdirSync(TASKS_DIR, { recursive: true }); } catch { /* noop */ }
 
   const schema = readJson(CONFIG_DIR, 'schema.json');
   const board = readJson(CONFIG_DIR, 'board.json');

@@ -13,90 +13,11 @@
       "label": "Status",
       "system": true,
       "options": [
-        "Análise",
-        "Não especificado",
-        "Aguardando Início",
-        "Pausado",
-        "Em Andamento",
-        "Aguardando Validação",
-        "Aguardando deploy",
-        "Finalizado",
-        "Recusado"
+        "A fazer",
+        "Em andamento",
+        "Concluído"
       ],
-      "default": "Aguardando Início"
-    },
-    "responsavel": {
-      "type": "string",
-      "label": "Responsável"
-    },
-    "modulo": {
-      "type": "enum",
-      "label": "Módulo",
-      "options": [
-        "Admin",
-        "Administrativo",
-        "Comercial",
-        "Contratos",
-        "Engenharia",
-        "Estoque",
-        "Financeiro",
-        "Geral",
-        "IMS",
-        "Item",
-        "Maestro",
-        "Marketing",
-        "Produção",
-        "Qualidade"
-      ]
-    },
-    "tipo": {
-      "type": "enum",
-      "label": "Tipo",
-      "options": [
-        "bug",
-        "feature",
-        "melhoria",
-        "doc"
-      ]
-    },
-    "branche": {
-      "type": "string",
-      "label": "Branch"
-    },
-    "G": {
-      "type": "int",
-      "label": "Gravidade",
-      "min": 1,
-      "max": 5
-    },
-    "U": {
-      "type": "int",
-      "label": "Urgência",
-      "min": 1,
-      "max": 5
-    },
-    "T": {
-      "type": "int",
-      "label": "Tendência",
-      "min": 1,
-      "max": 5
-    },
-    "E": {
-      "type": "int",
-      "label": "Esforço",
-      "min": 1,
-      "max": 5
-    },
-    "GUT": {
-      "type": "formula",
-      "label": "GUT",
-      "expression": "G * U * T"
-    },
-    "prioridade_gute": {
-      "type": "formula",
-      "label": "Prioridade GUTE",
-      "expression": "G * U * T / E",
-      "round": 2
+      "default": "A fazer"
     },
     "created_at": {
       "type": "datetime",

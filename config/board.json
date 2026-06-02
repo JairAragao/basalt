@@ -42,24 +42,11 @@
   },
   "card": {
     "title": "titulo",
-    "subtitle": "responsavel",
-    "badge": "prioridade_gute",
-    "fields": [
-      "responsavel",
-      "modulo",
-      "tipo",
-      "branche",
-      "GUT",
-      "prioridade_gute"
-    ]
+    "fields": []
   },
   "sort": {
-    "by": "prioridade_gute",
+    "by": "created_at",
     "dir": "desc"
   },
-  "filters": [
-    "modulo",
-    "responsavel",
-    "tipo"
-  ]
+  "filters": []
 }
