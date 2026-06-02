@@ -1,6 +1,6 @@
 <template>
   <!-- barra de título custom (frameless). `drag` = arrasta a janela; `no-drag` = interativo -->
-  <div class="titlebar flex h-10 flex-shrink-0 items-stretch bg-ink-950 text-txt select-none">
+  <div class="titlebar drag flex h-10 flex-shrink-0 items-stretch bg-ink-950 text-txt select-none">
     <!-- logo (região arrastável) -->
     <div class="drag flex flex-shrink-0 items-center gap-2 pl-3 pr-2.5">
       <span class="grid h-8 w-8 place-items-center overflow-hidden rounded-lg border border-ink-500 bg-ink-600 shadow-[0_0_12px_rgba(217,160,30,0.15)]">
@@ -8,12 +8,13 @@
       </span>
     </div>
 
-    <!-- abas (uma por vault) -->
-    <div class="no-drag flex min-w-0 flex-1 items-end gap-1 overflow-x-auto px-1 pt-1">
+    <!-- abas (uma por vault) — o container herda `drag` (área vazia arrasta a janela);
+         cada aba/botão é `no-drag` (clicável) -->
+    <div class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto px-1 pt-1">
       <div
         v-for="v in vaults"
         :key="v.path"
-        class="group/tab mt-1 flex max-w-[200px] flex-shrink-0 cursor-pointer items-center gap-2 rounded-t-lg px-3 py-1.5 text-[13px] transition-colors"
+        class="group/tab no-drag mt-1 flex max-w-[200px] flex-shrink-0 cursor-pointer items-center gap-2 rounded-t-lg px-3 py-1.5 text-[13px] transition-colors"
         :class="(!configuring && v.path === activePath) ? 'bg-ink-850 text-txt' : 'text-faint hover:bg-ink-850/50 hover:text-muted'"
         :title="v.path"
         @click="$emit('switch', v.path)"
@@ -43,7 +44,7 @@
 
       <!-- + adicionar vault -->
       <button
-        class="ml-1 grid h-7 w-7 flex-shrink-0 self-center place-items-center rounded-md text-faint transition-colors hover:bg-ink-700 hover:text-txt"
+        class="no-drag ml-1 grid h-7 w-7 flex-shrink-0 self-center place-items-center rounded-md text-faint transition-colors hover:bg-ink-700 hover:text-txt"
         title="Adicionar vault (nova aba)"
         @click="$emit('add')"
       >
