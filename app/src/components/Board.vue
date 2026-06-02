@@ -1,11 +1,11 @@
 <template>
-  <div class="h-full overflow-x-auto overflow-y-hidden">
+  <div class="thin-scroll h-full overflow-x-auto overflow-y-hidden">
     <div class="flex h-full items-start gap-5 p-4">
       <!-- Cada grupo macro (A fazer / Em andamento / Concluído) -->
       <div
         v-for="grp in groups"
         :key="grp.id"
-        class="flex h-full flex-shrink-0 flex-col"
+        class="flex h-full min-h-0 flex-shrink-0 flex-col"
       >
         <!-- rótulo macro do grupo (editável inline; placeholder invisível mantém alinhamento do fallback) -->
         <div class="mb-2 px-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
@@ -31,18 +31,18 @@
           <span v-else class="opacity-0">·</span>
         </div>
 
-        <!-- colunas de etapa do grupo -->
-        <div class="flex h-full items-start gap-3">
+        <!-- colunas de etapa do grupo (flex-1 + min-h-0 = ocupa abaixo do rótulo sem estourar) -->
+        <div class="flex min-h-0 flex-1 items-start gap-3">
           <div
             v-for="col in grp.columns"
             :key="col.id"
-            class="flex h-full w-[280px] flex-shrink-0 flex-col"
+            class="flex h-full min-h-0 w-[280px] flex-shrink-0 flex-col"
             :class="colorColumns ? 'rounded-xl border p-1.5' : ''"
             :style="columnStyle(col)"
           >
             <!-- header da coluna (tingível, editável inline) -->
             <div
-              class="group/hdr mb-2 flex items-center gap-2 rounded-md px-2 py-2"
+              class="group/hdr mb-2 flex flex-shrink-0 items-center gap-2 rounded-md px-2 py-2"
               :style="headerStyle(col)"
             >
               <!-- bolinha de cor: clica abre swatches (só etapas reais) -->
@@ -108,7 +108,7 @@
               item-key="id"
               ghost-class="board-ghost"
               drag-class="board-drag"
-              class="flex min-h-[60px] flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1"
+              class="thin-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1"
               @change="(evt) => onChange(evt, col.id)"
             >
               <template #item="{ element: task }">
@@ -123,7 +123,7 @@
             </draggable>
 
             <button
-              class="mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
+              class="mt-1 flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
               @click="$emit('open', { status: col.id })"
             >
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M10 4v12M4 10h12" stroke-linecap="round" /></svg>
