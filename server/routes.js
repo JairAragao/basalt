@@ -68,14 +68,30 @@ function withWarning(payload, warning) {
 }
 
 // Autor da mudança = usuário do git do vault (created_by/updated_by). Local-first,
-// sem login: o mesmo nome que assina os commits. Nunca lança.
+// sem login: o mesmo nome que assina os commits. Nunca lança. CACHEADO por vault
+// (getIdentity spawna git; cache tira do caminho crítico). Invalidado ao trocar vault.
+let _actorCache = null;
+if (typeof config.onVaultChange === 'function') config.onVaultChange(() => { _actorCache = null; });
 async function gitActor() {
+  if (_actorCache !== null) return _actorCache;
   try {
     const id = await git.getIdentity();
-    return (id && id.name) || '';
+    _actorCache = (id && id.name) || '';
   } catch {
-    return '';
+    _actorCache = '';
   }
+  return _actorCache;
+}
+
+// Fila git SERIALIZADA — roda commit/push em BACKGROUND (depois de responder ao
+// cliente), uma op de cada vez (evita lock concorrente do git). Falha não derruba
+// a request: loga warning. É o que deixa o front instantâneo (o arquivo já foi
+// gravado de forma síncrona = fonte da verdade; git é bookkeeping).
+let gitChain = Promise.resolve();
+function enqueueGit(fn, label) {
+  gitChain = gitChain.then(fn).catch((e) => {
+    console.warn(`[git] ${label || 'op'} falhou:`, (e && e.message) || e);
+  });
 }
 
 // ── Tarefas ──────────────────────────────────────────────────────────────────
@@ -213,9 +229,8 @@ router.post('/tasks', async (req, res) => {
     // Lê o que ficou gravado para a mensagem refletir o id/titulo finais.
     const after = safeGetData(id) || { ...cleanData, id };
     const msg = describeChanges(null, after, 'create', id);
-    await git.commitTask(taskFile(id), msg);
-    const warning = await pushOrWarn();
-    res.status(201).json(withWarning({ id }, warning));
+    res.status(201).json({ id }); // responde já; git em background
+    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `create ${id}`);
   } catch (err) { fail(res, err); }
 });
 
@@ -234,9 +249,8 @@ router.put('/tasks/:id', async (req, res) => {
     const after = safeGetData(id) || { ...cleanData, id };
 
     const msg = describeChanges(before, after, 'update', id);
-    await git.commitTask(taskFile(id), msg);
-    const warning = await pushOrWarn();
-    res.json(withWarning({ id }, warning));
+    res.json({ id }); // responde já; git em background
+    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `update ${id}`);
   } catch (err) { fail(res, err); }
 });
 
@@ -251,9 +265,8 @@ router.patch('/tasks/:id/move', async (req, res) => {
     const after = safeGetData(id) || { ...current.data, status: novoStatus };
 
     const msg = describeChanges(before, after, 'move', id);
-    await git.commitTask(taskFile(id), msg);
-    const warning = await pushOrWarn();
-    res.json(withWarning({ id, status: novoStatus }, warning));
+    res.json({ id, status: novoStatus }); // responde já; git em background
+    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `move ${id}`);
   } catch (err) { fail(res, err); }
 });
 
@@ -265,9 +278,8 @@ router.delete('/tasks/:id', async (req, res) => {
     const before = safeGetData(id);
     tasksRepo.remove(id);
     const msg = describeChanges(before, null, 'delete', id);
-    await git.removeAndCommit(file, msg);
-    const warning = await pushOrWarn();
-    res.json(withWarning({ id }, warning));
+    res.json({ id }); // responde já; git em background
+    enqueueGit(async () => { await git.removeAndCommit(file, msg); await git.pushNow(); }, `delete ${id}`);
   } catch (err) { fail(res, err); }
 });
 

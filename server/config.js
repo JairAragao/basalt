@@ -28,6 +28,9 @@ const DEFAULTS_DIR = path.join(ROOT, 'defaults'); // <appRoot>/defaults — temp
 // Settings persistidos do usuário (escolha de vault).
 const SETTINGS_DIR = path.join(os.homedir(), '.basalt');
 const SETTINGS_FILE = path.join(SETTINGS_DIR, 'settings.json');
+// Vault default (fallback) — pasta GRAVÁVEL em ~/.basalt (NÃO a raiz do app, que
+// no app empacotado é o app.asar read-only). Semeado do template `defaults/`.
+const DEFAULT_VAULT = path.join(SETTINGS_DIR, 'default-vault');
 
 // ── Settings (~/.basalt/settings.json) ───────────────────────────────────────
 function readSettings() {
@@ -48,7 +51,7 @@ function writeSettings(obj) {
 }
 
 // ── Resolução do VAULT ───────────────────────────────────────────────────────
-// Prioridade: setting persistido > env BASALT_VAULT > ROOT do app.
+// Prioridade: setting persistido > env BASALT_VAULT > DEFAULT_VAULT (gravável).
 function resolveVault() {
   const settings = readSettings();
   const fromSetting = settings && typeof settings.vaultPath === 'string' ? settings.vaultPath.trim() : '';
@@ -57,7 +60,7 @@ function resolveVault() {
   const fromEnv = typeof process.env.BASALT_VAULT === 'string' ? process.env.BASALT_VAULT.trim() : '';
   if (fromEnv) return path.resolve(fromEnv);
 
-  return ROOT;
+  return DEFAULT_VAULT;
 }
 
 // ── Leitura/validação de config ──────────────────────────────────────────────
@@ -190,9 +193,9 @@ function statusOf(vault) {
     hasTasks,
     hasGit,
     needsSetup: !hasConfig,
-    // true quando ainda usando a pasta do app como vault (fallback legado, não
-    // escolhido pelo usuário) — sinaliza "primeira run" pro SetupWizard.
-    isDefault: vault === ROOT,
+    // true quando ainda no vault default/fallback (não escolhido pelo usuário) —
+    // sinaliza "primeira run" pro SetupWizard.
+    isDefault: vault === DEFAULT_VAULT,
   };
 }
 
@@ -358,7 +361,7 @@ configObj.listVaults = function listVaults() {
   const settings = readSettings();
   let vaults = Array.isArray(settings.vaults) ? settings.vaults.filter((v) => typeof v === 'string') : [];
   const active = configObj.VAULT;
-  if (!vaults.length && active && active !== ROOT) vaults = [active];
+  if (!vaults.length && active && active !== DEFAULT_VAULT) vaults = [active];
   return {
     active,
     vaults: vaults.map((p) => ({ ...statusOf(p), name: path.basename(p) })),

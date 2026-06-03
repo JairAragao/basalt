@@ -202,9 +202,10 @@ export default {
     statusGroups() { return this.boardCfg.statusGroups || []; },
     fallbackColumn() { return this.boardCfg.fallbackColumn || { id: '_none', label: 'Sem status', color: '#4b4b4b' }; },
     sortCfg() { return this.sort || this.boardCfg.sort || { by: 'prioridade_gute', dir: 'desc' }; },
-    // Grupos macro + suas colunas de etapa; o fallback vira um grupo final.
+    // Grupos macro + suas colunas de etapa. Sem coluna "Sem status": status é
+    // obrigatório (enum com default), então toda tarefa cai numa etapa válida.
     groups() {
-      const out = this.statusGroups.map((g) => ({
+      return this.statusGroups.map((g) => ({
         id: g.id,
         label: g.label,
         columns: (g.stages || []).map((s) => ({
@@ -213,13 +214,6 @@ export default {
           color: s.color || '#6f6f6f',
         })),
       }));
-      const fb = this.fallbackColumn;
-      out.push({
-        id: '__fallback',
-        label: ' ',
-        columns: [{ id: fb.id, label: fb.label, color: fb.color || '#4b4b4b' }],
-      });
-      return out;
     },
     // Grupos macro reais (sem o fallback sintético) — pro picker de adicionar etapa.
     realGroups() {
