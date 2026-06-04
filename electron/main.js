@@ -33,6 +33,7 @@ function createSplash() {
     center: true,
     backgroundColor: '#0a0a0b',
     skipTaskbar: true,
+    alwaysOnTop: true, // fica por cima até fechar — o app não aparece "antes"
     show: true,
   });
   splashWin.maximize(); // tela cheia (combina com a janela principal maximizada)
@@ -47,7 +48,12 @@ function reveal() {
   const waited = splashAt ? Date.now() - splashAt : MIN_SPLASH_MS;
   if (waited < MIN_SPLASH_MS) { setTimeout(reveal, MIN_SPLASH_MS - waited); return; }
   revealed = true;
-  if (mainWindow && !mainWindow.isVisible()) mainWindow.show();
+  if (mainWindow) {
+    // maximize() já EXIBE a janela — por isso só chamamos aqui (não na criação),
+    // senão o app apareceria antes da splash terminar.
+    mainWindow.maximize();
+    if (!mainWindow.isVisible()) mainWindow.show();
+  }
   if (splashWin) { splashWin.close(); splashWin = null; }
 }
 
@@ -69,7 +75,6 @@ function createWindow(url) {
     },
   });
 
-  mainWindow.maximize(); // abre em tela cheia (maximizada); barra de título custom visível
   mainWindow.loadURL(url);
 
   // Revela quando o app avisar que está pronto (IPC) — com fallbacks de segurança.
