@@ -1,9 +1,11 @@
 <template>
-  <transition name="hist">
+  <transition :name="inline ? 'histfade' : 'hist'">
     <aside
       v-if="open"
-      class="fixed inset-y-0 z-40 flex w-[440px] max-w-[94vw] flex-col border-l border-ink-500 bg-ink-850 shadow-2xl"
-      :style="{ right: offsetRight + 'px' }"
+      :class="inline
+        ? 'relative flex w-[420px] max-w-[34vw] flex-shrink-0 flex-col border-r border-ink-500 bg-ink-850'
+        : 'fixed inset-y-0 z-40 flex w-[440px] max-w-[94vw] flex-col border-l border-ink-500 bg-ink-850 shadow-2xl'"
+      :style="inline ? null : { right: offsetRight + 'px' }"
     >
       <!-- header -->
       <header class="flex h-11 flex-shrink-0 items-center gap-2 border-b border-ink-500 px-3">
@@ -122,8 +124,10 @@ export default {
   props: {
     open: { type: Boolean, default: false },
     taskId: { type: String, default: '' },
-    // deslocamento da direita (px) — usado p/ encostar ao lado do peek lateral
+    // deslocamento da direita (px) — usado p/ encostar ao lado do peek lateral (modo fixo legado)
     offsetRight: { type: Number, default: 0 },
+    // inline: renderiza como item flex grudado ao dialog (em vez de painel fixo)
+    inline: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -236,4 +240,7 @@ export default {
 <style scoped>
 .hist-enter-active, .hist-leave-active { transition: transform .22s ease, opacity .22s ease; }
 .hist-enter-from, .hist-leave-to { transform: translateX(100%); opacity: 0; }
+/* inline (grudado): só fade (não desliza, pra não brigar com o layout flex) */
+.histfade-enter-active, .histfade-leave-active { transition: opacity .18s ease; }
+.histfade-enter-from, .histfade-leave-to { opacity: 0; }
 </style>

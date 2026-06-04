@@ -4,7 +4,16 @@
     <div v-if="open" class="no-drag-region fixed inset-0 z-30" :class="wrapperClass">
       <div class="absolute inset-0 bg-black/40" @click="requestClose"></div>
 
-      <aside class="relative flex flex-col overflow-hidden bg-ink-800 shadow-2xl" :class="panelClass">
+      <!-- par grudado: histórico (se aberto) à esquerda + dialog -->
+      <div class="relative flex items-stretch overflow-hidden shadow-2xl" :class="unitClass">
+        <CardHistory
+          v-if="isEdit"
+          inline
+          :open="open && historyOpen"
+          :task-id="task && task.id ? String(task.id) : ''"
+          @close="historyOpen = false"
+        />
+        <aside class="peek-panel relative flex min-w-0 flex-col overflow-hidden bg-ink-800" :class="panelClass">
         <!-- toolbar -->
         <header class="flex h-11 flex-shrink-0 items-center gap-1 border-b border-ink-500 px-3">
           <button class="icon-btn h-7 w-7" title="Fechar" @click="requestClose">
@@ -120,17 +129,9 @@
           >{{ saving ? 'Salvando…' : 'Salvar' }}</button>
         </footer>
       </aside>
+      </div>
     </div>
   </transition>
-
-  <!-- Histórico de versões (painel lateral, ao lado do card) -->
-  <CardHistory
-    v-if="isEdit"
-    :open="open && historyOpen"
-    :task-id="task && task.id ? String(task.id) : ''"
-    :offset-right="historyOffset"
-    @close="historyOpen = false"
-  />
   </div>
 </template>
 
@@ -214,21 +215,22 @@ export default {
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';
-      return ''; // side e full posicionam o aside diretamente
+      return ''; // side e full posicionam o par diretamente
+    },
+    // Posicionamento do PAR (histórico + dialog grudados) por modo.
+    unitClass() {
+      if (this.mode === 'side') return 'absolute inset-y-0 right-0 border-l border-ink-500';
+      if (this.mode === 'center') return 'max-h-[92vh] rounded-xl border border-ink-500';
+      return 'absolute inset-0'; // full
     },
     panelClass() {
-      if (this.mode === 'side') return 'absolute inset-y-0 right-0 w-[480px] max-w-[92vw] border-l border-ink-500';
-      if (this.mode === 'center') return 'w-[760px] max-w-[94vw] h-[86vh] rounded-xl border border-ink-500';
-      return 'absolute inset-0'; // full
+      if (this.mode === 'side') return 'w-[640px] max-w-[92vw]';
+      if (this.mode === 'center') return 'w-[1040px] max-w-[92vw] h-[88vh]';
+      return 'flex-1'; // full
     },
     contentClass() {
       // center/full centralizam a coluna de conteúdo (estilo página do Notion)
-      return this.mode === 'side' ? '' : 'mx-auto w-full max-w-2xl';
-    },
-    // No modo lateral, encosta o histórico à esquerda do peek (largura 480px).
-    // Nos demais modos, o histórico desliza da borda direita da tela.
-    historyOffset() {
-      return this.mode === 'side' ? 480 : 0;
+      return this.mode === 'side' ? '' : 'mx-auto w-full max-w-3xl';
     },
   },
   watch: {
@@ -351,17 +353,17 @@ export default {
 <style scoped>
 /* side: desliza da direita */
 .peek-side-enter-active, .peek-side-leave-active { transition: opacity .22s ease; }
-.peek-side-enter-active aside, .peek-side-leave-active aside { transition: transform .22s ease; }
+.peek-side-enter-active .peek-panel, .peek-side-leave-active .peek-panel { transition: transform .22s ease; }
 .peek-side-enter-from, .peek-side-leave-to { opacity: 0; }
-.peek-side-enter-from aside, .peek-side-leave-to aside { transform: translateX(100%); }
+.peek-side-enter-from .peek-panel, .peek-side-leave-to .peek-panel { transform: translateX(100%); }
 
 /* center e full: fade + leve scale */
 .peek-center-enter-active, .peek-center-leave-active,
 .peek-full-enter-active, .peek-full-leave-active { transition: opacity .2s ease; }
-.peek-center-enter-active aside, .peek-center-leave-active aside,
-.peek-full-enter-active aside, .peek-full-leave-active aside { transition: transform .2s ease; }
+.peek-center-enter-active .peek-panel, .peek-center-leave-active .peek-panel,
+.peek-full-enter-active .peek-panel, .peek-full-leave-active .peek-panel { transition: transform .2s ease; }
 .peek-center-enter-from, .peek-center-leave-to,
 .peek-full-enter-from, .peek-full-leave-to { opacity: 0; }
-.peek-center-enter-from aside, .peek-center-leave-to aside,
-.peek-full-enter-from aside, .peek-full-leave-to aside { transform: scale(.97); }
+.peek-center-enter-from .peek-panel, .peek-center-leave-to .peek-panel,
+.peek-full-enter-from .peek-panel, .peek-full-leave-to .peek-panel { transform: scale(.97); }
 </style>
