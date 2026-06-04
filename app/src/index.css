@@ -17,6 +17,10 @@
   ::-webkit-scrollbar-thumb:hover { @apply bg-ink-line; }
   ::-webkit-scrollbar-track { background: transparent; }
 
+  /* overlays/modais sobre a barra de título precisam furar a região de arraste
+     (frameless) pra ficarem clicáveis no topo */
+  .no-drag-region { -webkit-app-region: no-drag; }
+
   /* scrollbar fina — colunas do board e listas */
   .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
   .thin-scroll::-webkit-scrollbar-thumb { @apply rounded-full bg-ink-500/70; }

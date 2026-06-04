@@ -310,7 +310,8 @@ export default {
   },
   methods: {
     loadColorColumns() {
-      try { return localStorage.getItem(COLOR_KEY) === '1'; } catch (e) { return false; }
+      // default ATIVO: só fica off se o usuário tiver desligado explicitamente ('0').
+      try { const v = localStorage.getItem(COLOR_KEY); return v === null ? true : v === '1'; } catch (e) { return true; }
     },
     toggleColorColumns() {
       this.colorColumns = !this.colorColumns;

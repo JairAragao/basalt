@@ -1,7 +1,7 @@
 <template>
   <div>
   <transition :name="'peek-' + mode">
-    <div v-if="open" class="fixed inset-0 z-30" :class="wrapperClass">
+    <div v-if="open" class="no-drag-region fixed inset-0 z-30" :class="wrapperClass">
       <div class="absolute inset-0 bg-black/40" @click="requestClose"></div>
 
       <aside class="relative flex flex-col overflow-hidden bg-ink-800 shadow-2xl" :class="panelClass">
@@ -253,7 +253,7 @@ export default {
         const m = localStorage.getItem(MODE_KEY);
         if (m === 'side' || m === 'center' || m === 'full') return m;
       } catch (e) { /* ignore */ }
-      return 'side';
+      return 'center';
     },
     setMode(m) {
       this.mode = m;

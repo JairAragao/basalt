@@ -21,7 +21,7 @@ let splashWin = null;
 let serverListener = null;
 let revealed = false;
 let splashAt = 0;
-const MIN_SPLASH_MS = 3000; // tempo mínimo de splash (pra dar pra ver a animação)
+const MIN_SPLASH_MS = 3800; // tempo mínimo de splash (a barra enche em ~3.4s)
 
 // Splash de carregamento — abre instantânea (HTML mínimo) enquanto o backend
 // sobe e o app carrega. Frameless, MESMO TAMANHO da janela principal, animação centralizada.
@@ -31,10 +31,11 @@ function createSplash() {
     height: 820,
     frame: false,
     center: true,
-    backgroundColor: '#0c0c0d',
+    backgroundColor: '#0a0a0b',
     skipTaskbar: true,
     show: true,
   });
+  splashWin.maximize(); // tela cheia (combina com a janela principal maximizada)
   splashWin.loadFile(path.join(__dirname, 'splash.html'));
   splashWin.on('closed', () => { splashWin = null; });
   splashAt = Date.now();
@@ -68,6 +69,7 @@ function createWindow(url) {
     },
   });
 
+  mainWindow.maximize(); // abre em tela cheia (maximizada); barra de título custom visível
   mainWindow.loadURL(url);
 
   // Revela quando o app avisar que está pronto (IPC) — com fallbacks de segurança.

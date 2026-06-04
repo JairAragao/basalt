@@ -5,47 +5,47 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; }
       body {
-        background: radial-gradient(120% 90% at 50% 30%, #1b1b1f 0%, #0c0c0d 60%);
+        background: radial-gradient(130% 100% at 50% 38%, #15151a 0%, #0a0a0b 62%);
         color: #ECECEA;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
         -webkit-user-select: none; user-select: none;
       }
-      .stage { display: flex; flex-direction: column; align-items: center; gap: 20px; animation: rise .6s ease-out both; }
+      .stage { display: flex; flex-direction: column; align-items: center; gap: 16px; animation: rise .7s ease-out both; }
 
-      /* ícone com brilho pulsante */
-      .logo {
-        position: relative;
-        width: 104px; height: 104px; display: grid; place-items: center; overflow: hidden;
-        border-radius: 24px; border: 1px solid #3a3a40; background: #34343b;
-        animation: glow 2.4s ease-in-out infinite;
+      /* logo SEM moldura — só o ícone com uma luz radial atrás pra destacar */
+      .logo { position: relative; display: grid; place-items: center; width: 260px; height: 260px; }
+      .logo::before {
+        content: ''; position: absolute; inset: -20px; border-radius: 50%;
+        background: radial-gradient(circle, rgba(217,160,30,.45) 0%, rgba(217,160,30,.16) 42%, transparent 70%);
+        animation: pulse 2.8s ease-in-out infinite;
       }
-      .logo img { width: 96px; height: 96px; max-width: none; transform: scale(1.6); object-fit: contain; }
+      .logo img {
+        position: relative; z-index: 1;
+        width: 210px; height: 210px; max-width: none; object-fit: contain;
+        transform: scale(1.25);
+        filter: drop-shadow(0 0 24px rgba(217,160,30,.35));
+      }
 
-      .title { font-size: 30px; font-weight: 700; letter-spacing: .3px; text-shadow: 0 0 48px rgba(217,160,30,.3); }
-      .sub { font-size: 13px; color: #9b9b9b; margin-top: -12px; letter-spacing: .3px; }
+      .title { font-size: 32px; font-weight: 700; letter-spacing: .4px; text-shadow: 0 0 50px rgba(217,160,30,.35); }
+      .sub { font-size: 13px; color: #9b9b9b; margin-top: -10px; letter-spacing: .3px; }
 
-      /* barra indeterminada */
-      .bar { width: 280px; height: 4px; background: #1f1f23; border-radius: 999px; overflow: hidden; margin-top: 6px; }
-      .bar::after {
-        content: ''; display: block; height: 100%; width: 38%;
-        background: linear-gradient(90deg, transparent, #d9a01e 40%, #f0c050 60%, transparent);
+      /* barra DETERMINADA — enche de 0 a 100% até completar */
+      .bar { width: 320px; height: 5px; background: #1d1d21; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+      .bar > i {
+        display: block; height: 100%; width: 0;
+        background: linear-gradient(90deg, #b9821a, #d9a01e 55%, #f3c75a);
         border-radius: 999px;
-        animation: slide 1.25s cubic-bezier(.45,0,.55,1) infinite;
+        box-shadow: 0 0 12px rgba(217,160,30,.5);
+        animation: fill 3.4s cubic-bezier(.3,.6,.3,1) forwards;
       }
 
-      @keyframes glow {
-        0%, 100% { box-shadow: 0 0 28px rgba(217,160,30,.18); }
-        50% { box-shadow: 0 0 52px rgba(217,160,30,.42); }
+      @keyframes pulse {
+        0%, 100% { opacity: .6; transform: scale(.94); }
+        50% { opacity: 1; transform: scale(1.06); }
       }
-      @keyframes slide {
-        0% { transform: translateX(-130%); }
-        100% { transform: translateX(360%); }
-      }
-      @keyframes rise {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
+      @keyframes fill { from { width: 0; } to { width: 100%; } }
+      @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     </style>
   </head>
   <body>
@@ -53,7 +53,7 @@
       <div class="logo"><img src="../basalt.png" alt="Basalt" /></div>
       <div class="title">Basalt</div>
       <div class="sub">carregando seu vault…</div>
-      <div class="bar"></div>
+      <div class="bar"><i></i></div>
     </div>
   </body>
 </html>
