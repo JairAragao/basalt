@@ -4,20 +4,14 @@
     <div v-if="open" class="no-drag-region fixed inset-0 z-30" :class="wrapperClass">
       <div class="absolute inset-0 bg-black/40" @click="requestClose"></div>
 
-      <!-- par grudado: histórico (se aberto) à esquerda + dialog -->
+      <!-- par grudado: dialog + histórico (se aberto) à DIREITA -->
       <div class="relative flex items-stretch overflow-hidden shadow-2xl" :class="unitClass">
-        <CardHistory
-          v-if="isEdit"
-          inline
-          :open="open && historyOpen"
-          :task-id="task && task.id ? String(task.id) : ''"
-          @close="historyOpen = false"
-        />
         <aside class="peek-panel relative flex min-w-0 flex-col overflow-hidden bg-ink-800" :class="panelClass">
         <!-- toolbar -->
         <header class="flex h-11 flex-shrink-0 items-center gap-1 border-b border-ink-500 px-3">
-          <button class="icon-btn h-7 w-7" title="Fechar" @click="requestClose">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M13 7l-6 6M7 7l6 6" stroke-linecap="round" /></svg>
+          <!-- excluir à ESQUERDA (no lugar antes ocupado pelo fechar) -->
+          <button v-if="isEdit" class="icon-btn h-7 w-7 hover:!text-red-300" title="Excluir" @click="$emit('delete', task)">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M4 6h12M8 6V4.5h4V6M6.5 6l.6 9h5.8l.6-9" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </button>
           <span class="text-[12px] text-faint">{{ isEdit ? 'Tarefa' : 'Nova tarefa' }}</span>
 
@@ -52,14 +46,45 @@
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </button>
 
-          <button v-if="isEdit" class="icon-btn h-7 w-7 hover:!text-red-300" title="Excluir" @click="$emit('delete', task)">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M4 6h12M8 6V4.5h4V6M6.5 6l.6 9h5.8l.6-9" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          <!-- fechar à DIREITA -->
+          <button class="icon-btn h-7 w-7" title="Fechar" @click="requestClose">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M13 7l-6 6M7 7l6 6" stroke-linecap="round" /></svg>
           </button>
         </header>
 
         <!-- corpo rolável -->
-        <div class="flex-1 overflow-y-auto px-6 py-5">
+        <div class="flex-1 overflow-y-auto">
+          <!-- capa full-bleed (estilo Notion) -->
+          <div v-if="model.cover" class="group/cover relative h-40 w-full overflow-hidden bg-ink-700">
+            <img :src="model.cover" alt="capa" class="h-full w-full object-cover" />
+            <div class="absolute right-3 top-3 flex gap-1.5 opacity-0 transition-opacity group-hover/cover:opacity-100">
+              <button type="button" class="rounded-md bg-black/50 px-2 py-1 text-[12px] text-white backdrop-blur hover:bg-black/70" @click="triggerUpload('cover')">Trocar capa</button>
+              <button type="button" class="rounded-md bg-black/50 px-2 py-1 text-[12px] text-white backdrop-blur hover:bg-black/70" @click="model.cover = ''">Remover</button>
+            </div>
+          </div>
+
+          <div class="px-6 pb-5" :class="model.cover ? 'pt-0' : 'pt-5'">
           <div :class="contentClass">
+            <!-- ícone (sobrepõe a capa quando houver) -->
+            <div v-if="model.icon" class="relative" :class="model.cover ? '-mt-10' : ''">
+              <button type="button" class="inline-flex rounded-lg p-1 transition-colors hover:bg-ink-700" title="Alterar ícone" @click="openIconMenu($event)">
+                <img v-if="isImg(model.icon)" :src="model.icon" alt="ícone" class="h-16 w-16 rounded-lg object-cover shadow-lg" />
+                <span v-else class="grid h-16 w-16 place-items-center text-5xl leading-none">{{ model.icon }}</span>
+              </button>
+            </div>
+
+            <!-- ações: adicionar ícone / capa (aparecem quando faltam) -->
+            <div v-if="!model.icon || !model.cover" class="mb-1 mt-1 flex flex-wrap gap-3">
+              <button v-if="!model.icon" type="button" class="flex items-center gap-1.5 text-[12px] text-faint transition-colors hover:text-muted" @click="openIconMenu($event)">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><circle cx="10" cy="10" r="7" /><path d="M7.4 12c.7.8 1.6 1.2 2.6 1.2s1.9-.4 2.6-1.2" stroke-linecap="round" /><circle cx="7.6" cy="8.4" r=".8" fill="currentColor" stroke="none" /><circle cx="12.4" cy="8.4" r=".8" fill="currentColor" stroke="none" /></svg>
+                Adicionar ícone
+              </button>
+              <button v-if="!model.cover" type="button" class="flex items-center gap-1.5 text-[12px] text-faint transition-colors hover:text-muted" @click="triggerUpload('cover')">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><rect x="3" y="5" width="14" height="10" rx="2" /><path d="M3 13l4-4 3 3 3-3 4 4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                Adicionar capa
+              </button>
+            </div>
+
             <!-- título grande -->
             <textarea
               ref="title"
@@ -71,37 +96,53 @@
             ></textarea>
 
             <!-- propriedades -->
-            <div class="mt-4 space-y-0.5">
-              <div v-for="field in rowFields" :key="field.name" class="prop-row">
-                <div class="prop-label">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></div>
-                <div class="flex-1">
-                  <Dropdown
-                    v-if="field.type === 'enum'"
-                    :value="model[field.name]"
-                    :options="optionsFor(field)"
-                    :placeholder="field.label || field.name"
-                    :clearable="!field.required"
-                    @input="(v) => (model[field.name] = v == null ? '' : v)"
-                  />
-                  <input
-                    v-else-if="field.type === 'int'"
-                    v-model.number="model[field.name]"
-                    type="number"
-                    :min="field.min"
-                    :max="field.max"
-                    class="field !w-24"
-                    placeholder="—"
-                  />
-                  <input v-else v-model="model[field.name]" class="field" :placeholder="field.label || field.name" />
-                </div>
+            <div class="mt-4">
+              <!-- mostrar/ocultar propriedades vazias (estilo Notion) -->
+              <div v-if="emptyCount > 0" class="mb-1 flex justify-end">
+                <button class="rounded px-1.5 py-0.5 text-[12px] text-faint transition-colors hover:bg-ink-700 hover:text-muted" @click="toggleHideEmpty">
+                  {{ hideEmpty ? 'Mostrar' : 'Ocultar' }} {{ emptyCount }} {{ emptyCount === 1 ? 'propriedade vazia' : 'propriedades vazias' }}
+                </button>
               </div>
 
-              <!-- derivados (read-only) -->
-              <div v-for="d in derivedDisplay" :key="d.name" class="prop-row">
-                <div class="prop-label">{{ d.label }}</div>
-                <div class="flex-1 pt-1.5 text-[13px] text-faint">
-                  <span v-if="d.value !== null && d.value !== undefined && d.value !== ''">{{ d.value }}</span>
-                  <span v-else class="italic">— calculado ao salvar</span>
+              <div class="space-y-0.5">
+                <div v-for="field in visibleRowFields" :key="field.name" class="prop-row">
+                  <div class="prop-label">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></div>
+                  <div class="flex-1">
+                    <Dropdown
+                      v-if="field.type === 'enum'"
+                      :value="model[field.name]"
+                      :options="optionsFor(field)"
+                      :placeholder="field.label || field.name"
+                      :clearable="!field.required"
+                      @input="(v) => (model[field.name] = v == null ? '' : v)"
+                    />
+                    <input
+                      v-else-if="field.type === 'int'"
+                      v-model.number="model[field.name]"
+                      type="number"
+                      :min="field.min"
+                      :max="field.max"
+                      class="field !w-24"
+                      placeholder="—"
+                    />
+                    <input
+                      v-else-if="field.type === 'datetime'"
+                      type="datetime-local"
+                      :value="toLocal(model[field.name])"
+                      class="field"
+                      @input="(e) => setDate(field.name, e.target.value)"
+                    />
+                    <input v-else v-model="model[field.name]" class="field" :placeholder="field.label || field.name" />
+                  </div>
+                </div>
+
+                <!-- derivados (read-only): fórmulas calculadas AO VIVO + auditoria -->
+                <div v-for="d in visibleDerived" :key="d.name" class="prop-row">
+                  <div class="prop-label">{{ d.label }}</div>
+                  <div class="flex-1 pt-1.5 text-[13px] text-faint">
+                    <span v-if="d.value !== null && d.value !== undefined && d.value !== ''">{{ d.value }}</span>
+                    <span v-else class="italic">{{ d.placeholder }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -113,9 +154,42 @@
               :value="model.body"
               placeholder="Escreva algo…  ( / para comandos )"
               @input="(v) => (model.body = v)"
+              @warning="(m) => (errorMsg = m)"
             />
           </div>
+          </div>
         </div>
+
+        <!-- input escondido p/ upload de ícone/capa -->
+        <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFilePicked" />
+
+        <!-- seletor de ícone: popover flutuante ACIMA de tudo (Teleport → body) -->
+        <Teleport to="body">
+          <template v-if="iconMenuOpen">
+            <div class="fixed inset-0 z-[90]" @click="iconMenuOpen = false"></div>
+            <div
+              class="icon-pop fixed z-[100] overflow-hidden rounded-xl border border-ink-500 bg-ink-850 shadow-2xl"
+              :style="{ left: iconMenuPos.x + 'px', top: iconMenuPos.y + 'px' }"
+            >
+              <!-- picker de biblioteca: busca + categorias + todos os emojis (offline) -->
+              <EmojiPicker
+                :native="true"
+                theme="dark"
+                :disable-skin-tones="false"
+                @select="onEmojiSelect"
+              />
+              <!-- ações: enviar imagem / remover -->
+              <div class="flex items-center gap-2 border-t border-ink-500 bg-ink-850 px-3 py-2">
+                <button type="button" class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted transition-colors hover:bg-ink-700 disabled:opacity-50" :disabled="uploading" @click="triggerUpload('icon')">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><rect x="3" y="5" width="14" height="10" rx="2" /><path d="M3 13l4-4 3 3 3-3 4 4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  {{ uploading ? 'Enviando…' : 'Enviar imagem' }}
+                </button>
+                <div class="flex-1"></div>
+                <button v-if="model.icon" type="button" class="rounded-md px-2 py-1 text-[12px] text-faint transition-colors hover:bg-ink-700 hover:text-red-300" @click="removeIcon">Remover</button>
+              </div>
+            </div>
+          </template>
+        </Teleport>
 
         <!-- footer -->
         <footer class="flex flex-shrink-0 items-center gap-2 border-t border-ink-500 px-4 py-3">
@@ -129,6 +203,13 @@
           >{{ saving ? 'Salvando…' : 'Salvar' }}</button>
         </footer>
       </aside>
+        <CardHistory
+          v-if="isEdit"
+          inline
+          :open="open && historyOpen"
+          :task-id="task && task.id ? String(task.id) : ''"
+          @close="historyOpen = false"
+        />
       </div>
     </div>
   </transition>
@@ -136,16 +217,21 @@
 </template>
 
 <script>
-import { getTask, createTask, updateTask } from '../api';
+import { getTask, createTask, updateTask, uploadAsset } from '../api';
 import Dropdown from './Dropdown.vue';
 import CardHistory from './CardHistory.vue';
 import BodyEditor from './BodyEditor.vue';
+import EmojiPicker from 'vue3-emoji-picker';
+import 'vue3-emoji-picker/css';
+import { compute as computeFormulas } from '../formula';
+import { displayValue, toDateTimeLocal, fromDateTimeLocal, isImageRef } from '../format';
 
 const MODE_KEY = 'basalt.peekMode';
+const HIDE_EMPTY_KEY = 'basalt.hideEmptyProps';
 
 export default {
   name: 'TaskPeek',
-  components: { Dropdown, CardHistory, BodyEditor },
+  components: { Dropdown, CardHistory, BodyEditor, EmojiPicker },
   props: {
     open: { type: Boolean, default: false },
     config: { type: Object, required: true },
@@ -157,6 +243,12 @@ export default {
       saving: false,
       errorMsg: '',
       historyOpen: false,
+      hideEmpty: this.loadHideEmpty(),
+      // ícone (emoji|URL) + capa (URL) da tarefa — metadados de página
+      iconMenuOpen: false,
+      iconMenuPos: { x: 0, y: 0 },
+      uploadTarget: null,
+      uploading: false,
       mode: this.loadMode(),
       modes: [
         { id: 'side', label: 'Painel lateral' },
@@ -186,32 +278,54 @@ export default {
     rowFields() {
       return this.inputFields.filter((f) => f.name !== this.titleKey);
     },
+    // Chaves de propriedades type 'formula' (derivadas, read-only).
+    formulaKeys() {
+      return Object.keys(this.properties).filter((k) => this.properties[k] && this.properties[k].type === 'formula');
+    },
+    // Fórmulas recalculadas AO VIVO a partir do model atual (estilo Notion):
+    // o resultado aparece assim que os campos usados na expressão são preenchidos.
+    liveFormulas() {
+      return computeFormulas(this.model, this.schema);
+    },
     derivedDisplay() {
-      // Linhas read-only: fórmulas (derivados com spec) + campos de auditoria (auto).
-      const fmtVal = (prop, value) => {
-        if (value == null || value === '') return value;
-        if (prop && prop.type === 'datetime') {
-          const d = new Date(value);
-          if (!Number.isNaN(d.getTime())) {
-            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-          }
-        }
-        return value;
-      };
       const out = [];
-      this.derivedNames
-        .filter((name) => name !== 'computed_at' && this.properties[name])
-        .forEach((name) => {
-          const prop = this.properties[name] || {};
-          out.push({ name, label: prop.label || name, value: fmtVal(prop, this.task ? this.task[name] : null) });
+      // fórmulas: valor calculado ao vivo a partir dos campos preenchidos
+      this.formulaKeys.forEach((name) => {
+        const prop = this.properties[name] || {};
+        out.push({
+          name,
+          label: prop.label || name,
+          value: displayValue(prop, this.liveFormulas[name]),
+          placeholder: '—',
         });
+      });
+      // auditoria (auto): valor vem da task salva
       Object.keys(this.properties)
         .filter((name) => this.properties[name] && this.properties[name].auto)
         .forEach((name) => {
           const prop = this.properties[name];
-          out.push({ name, label: prop.label || name, value: fmtVal(prop, this.task ? this.task[name] : null) });
+          out.push({
+            name,
+            label: prop.label || name,
+            value: displayValue(prop, this.task ? this.task[name] : null),
+            placeholder: this.isEdit ? '—' : 'definido ao salvar',
+          });
         });
       return out;
+    },
+    // ── visibilidade de propriedades vazias (toggle estilo Notion) ──
+    emptyCount() {
+      const rows = this.rowFields.filter((f) => !f.required && this.isEmptyVal(this.model[f.name])).length;
+      const derived = this.derivedDisplay.filter((d) => this.isEmptyVal(d.value)).length;
+      return rows + derived;
+    },
+    visibleRowFields() {
+      if (!this.hideEmpty) return this.rowFields;
+      return this.rowFields.filter((f) => f.required || !this.isEmptyVal(this.model[f.name]));
+    },
+    visibleDerived() {
+      if (!this.hideEmpty) return this.derivedDisplay;
+      return this.derivedDisplay.filter((d) => !this.isEmptyVal(d.value));
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';
@@ -265,6 +379,7 @@ export default {
     initModel() {
       this.errorMsg = '';
       this.saving = false;
+      this.iconMenuOpen = false;
       const m = { body: '' };
       this.inputFields.forEach((field) => {
         if (this.task && this.task[field.name] !== undefined && this.task[field.name] !== null) {
@@ -275,6 +390,9 @@ export default {
           m[field.name] = field.type === 'int' ? null : '';
         }
       });
+      // metadados de página (não-schema): ícone + capa
+      m.icon = (this.task && this.task.icon) || '';
+      m.cover = (this.task && this.task.cover) || '';
       this.model = m;
       if (this.isEdit) this.loadBody();
       this.$nextTick(() => { this.autoGrow(); });
@@ -290,6 +408,8 @@ export default {
                 this.model[field.name] = full.data[field.name];
               }
             });
+            if (full.data.icon !== undefined) this.model.icon = full.data.icon || '';
+            if (full.data.cover !== undefined) this.model.cover = full.data.cover || '';
           }
           this.$nextTick(() => { this.autoGrow(); });
         }
@@ -318,6 +438,9 @@ export default {
         if (field.type === 'int') v = v === '' || v === null || v === undefined ? null : Number(v);
         if (v !== '' && v !== null && v !== undefined) payload[field.name] = v;
       });
+      // metadados de página: só envia quando há valor (omitir = limpar no update)
+      if (this.model.icon) payload.icon = this.model.icon;
+      if (this.model.cover) payload.cover = this.model.cover;
       payload.body = this.model.body || '';
       return payload;
     },
@@ -341,6 +464,77 @@ export default {
     },
     requestClose() {
       if (!this.saving) this.$emit('close');
+    },
+    isEmptyVal(v) {
+      return v === null || v === undefined || v === '';
+    },
+    // ── ícone (emoji|imagem) + capa (imagem) ──
+    isImg(v) { return isImageRef(v); },
+    // Abre o seletor de ícone como popover flutuante posicionado no gatilho.
+    openIconMenu(e) {
+      if (this.iconMenuOpen) { this.iconMenuOpen = false; return; }
+      const el = e && e.currentTarget;
+      const r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 80, top: 80, bottom: 100 };
+      const W = 340, H = 450;
+      let left = r.left;
+      if (left + W > window.innerWidth - 8) left = window.innerWidth - W - 8;
+      if (left < 8) left = 8;
+      let top = r.bottom + 6;
+      if (top + H > window.innerHeight - 8) top = Math.max(8, r.top - H - 6); // abre pra cima
+      this.iconMenuPos = { x: left, y: top };
+      this.iconMenuOpen = true;
+    },
+    // payload do vue3-emoji-picker: { i: '😀', n: [...], r, t }
+    onEmojiSelect(emoji) {
+      if (emoji && emoji.i) this.model.icon = emoji.i;
+      this.iconMenuOpen = false;
+    },
+    removeIcon() { this.model.icon = ''; this.iconMenuOpen = false; },
+    triggerUpload(target) {
+      this.uploadTarget = target;
+      const el = this.$refs.fileInput;
+      if (el) { el.value = ''; el.click(); }
+    },
+    fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('falha ao ler a imagem'));
+        reader.readAsDataURL(file);
+      });
+    },
+    async onFilePicked(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      this.uploading = true;
+      try {
+        const dataUri = await this.fileToDataUrl(file);
+        const r = await uploadAsset({ data: dataUri, mime: file.type });
+        if (r && r.url) {
+          if (this.uploadTarget === 'cover') this.model.cover = r.url;
+          else this.model.icon = r.url;
+          this.iconMenuOpen = false;
+        }
+        if (r && r.warning) this.errorMsg = r.warning;
+      } catch (err) {
+        this.errorMsg = err.message || 'Falha ao enviar a imagem.';
+      } finally {
+        this.uploading = false;
+      }
+    },
+    // datetime: ISO no model <-> valor local do <input type="datetime-local">
+    toLocal(v) {
+      return toDateTimeLocal(v);
+    },
+    setDate(name, localStr) {
+      this.model[name] = localStr ? fromDateTimeLocal(localStr) : '';
+    },
+    loadHideEmpty() {
+      try { return localStorage.getItem(HIDE_EMPTY_KEY) === '1'; } catch (e) { return false; }
+    },
+    toggleHideEmpty() {
+      this.hideEmpty = !this.hideEmpty;
+      try { localStorage.setItem(HIDE_EMPTY_KEY, this.hideEmpty ? '1' : '0'); } catch (e) { /* ignore */ }
     },
     autoGrow() {
       const el = this.$refs.title;
@@ -366,4 +560,12 @@ export default {
 .peek-full-enter-from, .peek-full-leave-to { opacity: 0; }
 .peek-center-enter-from .peek-panel, .peek-center-leave-to .peek-panel,
 .peek-full-enter-from .peek-panel, .peek-full-leave-to .peek-panel { transform: scale(.97); }
+
+/* emoji picker (vue3-emoji-picker) dentro do popover flutuante:
+   a borda/sombra/raio vêm do .icon-pop, então neutraliza os do picker. */
+.icon-pop :deep(.v3-emoji-picker) {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
 </style>

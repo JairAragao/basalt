@@ -282,6 +282,38 @@ function load() {
     ? board.filters.filter((f) => typeof f === 'string' && f.trim() !== '')
     : [];
 
+  // ── Normalização defensiva ──────────────────────────────────────────────
+  // O engine é genérico: config/dados específicos de um vault (ou refs órfãs a
+  // propriedades removidas) NÃO podem quebrar o sistema. Aqui o config viva é
+  // saneado em memória; o arquivo em disco se auto-cura no próximo save.
+  //
+  // 1) Campos de auditoria são gerenciados pelo engine (tasks-repo carimba):
+  //    garante system+auto (read-only no editor) mesmo se o vault não declarou.
+  const AUDIT_FIELDS = ['created_at', 'created_by', 'updated_at', 'updated_by'];
+  for (const k of AUDIT_FIELDS) {
+    if (schema.properties && schema.properties[k]) {
+      schema.properties[k].system = true;
+      schema.properties[k].auto = true;
+    }
+  }
+
+  // 2) Poda refs órfãs do board (propriedade removida/renomeada) — nenhum
+  //    consumidor (front/save) deve travar por uma chave que não existe mais.
+  const propKeys = new Set(Object.keys(schema.properties || {}));
+  const derivedKeys = new Set(Array.isArray(schema.derived) ? schema.derived : []);
+  const knownKey = (k) => propKeys.has(k) || derivedKeys.has(k);
+  if (board.card && typeof board.card === 'object') {
+    if (Array.isArray(board.card.fields)) {
+      board.card.fields = board.card.fields.filter((k) => typeof k === 'string' && knownKey(k));
+    }
+    if (board.card.subtitle && !knownKey(board.card.subtitle)) board.card.subtitle = undefined;
+    if (board.card.badge && !knownKey(board.card.badge)) board.card.badge = undefined;
+  }
+  board.filters = board.filters.filter((k) => knownKey(k));
+  if (board.sort && board.sort.by && !knownKey(board.sort.by)) {
+    board.sort.by = propKeys.has('status') ? 'status' : (Object.keys(schema.properties || {})[0] || 'status');
+  }
+
   configObj.VAULT = vault;
   configObj.CONFIG_DIR = CONFIG_DIR;
   configObj.TASKS_DIR = TASKS_DIR;

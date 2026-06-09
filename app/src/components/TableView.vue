@@ -33,8 +33,8 @@
                 :style="pillStyle(task[col.key])"
               >{{ task[col.key] }}</span>
 
-              <!-- demais células -->
-              <span v-else-if="hasValue(task[col.key])" class="text-txt">{{ task[col.key] }}</span>
+              <!-- demais células (datetime formatado bonito) -->
+              <span v-else-if="hasValue(task[col.key])" class="text-txt">{{ cellValue(col.key, task) }}</span>
               <span v-else class="text-faint">—</span>
             </td>
           </tr>
@@ -51,7 +51,7 @@
 </template>
 
 <script>
-const GUTE_KEY = 'prioridade_gute';
+import { displayValue } from '../format';
 
 export default {
   name: 'TableView',
@@ -65,23 +65,24 @@ export default {
     schema() { return this.config.schema || {}; },
     properties() { return this.schema.properties || {}; },
     statusKey() { return this.boardCfg.groupBy || 'status'; },
+    // Colunas = todas as propriedades do schema (genérico, sem chave fixa).
     columns() {
-      const cols = Object.keys(this.properties).map((key) => ({
+      return Object.keys(this.properties).map((key) => ({
         key,
         label: this.properties[key].label || key,
       }));
-      const gutePropLabel = (this.properties[GUTE_KEY] && this.properties[GUTE_KEY].label) || 'Prioridade GUTE';
-      if (!cols.some((c) => c.key === GUTE_KEY)) {
-        cols.push({ key: GUTE_KEY, label: gutePropLabel });
-      }
-      return cols;
     },
     statusColors() {
       const map = {};
       (this.boardCfg.columns || []).forEach((c) => { map[c.id] = c.color; });
       return map;
     },
-    sortBy() { return (this.sort && this.sort.by) || (this.boardCfg.sort && this.boardCfg.sort.by) || GUTE_KEY; },
+    sortBy() {
+      return (this.sort && this.sort.by)
+        || (this.boardCfg.sort && this.boardCfg.sort.by)
+        || (this.columns[0] && this.columns[0].key)
+        || 'created_at';
+    },
     sortDir() { return (this.sort && this.sort.dir) || (this.boardCfg.sort && this.boardCfg.sort.dir) || 'desc'; },
     sortedTasks() {
       const by = this.sortBy;
@@ -101,6 +102,7 @@ export default {
   },
   methods: {
     hasValue(v) { return v !== null && v !== undefined && v !== ''; },
+    cellValue(key, task) { return displayValue(this.properties[key], task[key]); },
     pillStyle(value) {
       const color = this.statusColors[value] || '#6f6f6f';
       return { background: color + '22', color, border: '1px solid ' + color + '55' };

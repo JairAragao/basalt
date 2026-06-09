@@ -82,8 +82,10 @@ import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import Image from '@tiptap/extension-image';
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu';
 import { Markdown } from 'tiptap-markdown';
+import { uploadAsset } from '../api';
 
 // Itens do menu de blocos (slash). `keywords` ajuda o filtro.
 // `action(editor)` recebe uma chain já com .focus() e .deleteRange() aplicados
@@ -142,6 +144,11 @@ export default {
         index: 0,
         query: '',
         range: null, // { from, to } do trecho "/..."
+        // posição do caret (relativa ao host + viewport) p/ decidir abrir ↓ ou ↑
+        caretTop: 0,
+        caretBottom: 0,
+        vpTop: 0,
+        vpBottom: 0,
       },
       slashItems: buildSlashItems(),
     };
@@ -221,8 +228,10 @@ export default {
         }),
         Placeholder.configure({
           placeholder: this.placeholder,
-          // mostra placeholder em qualquer bloco vazio (estilo Notion)
-          includeChildren: true,
+          // Só no 1º bloco e só quando o doc inteiro está vazio: o texto-guia
+          // some assim que você escolhe um tipo de bloco (/) OU começa a digitar
+          // — sem duplicar em headings/listas vazias. (Ver CSS: só is-editor-empty.)
+          includeChildren: false,
         }),
         Link.configure({
           openOnClick: false,
@@ -231,6 +240,9 @@ export default {
         }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        // Imagens: src = URL (/api/assets/...). Nada de base64 inline (incha o .md);
+        // o paste/drop sobe o arquivo pro vault e insere a URL servível.
+        Image.configure({ inline: false, allowBase64: false }),
         Markdown.configure({
           html: false,
           tightLists: true,
@@ -246,6 +258,9 @@ export default {
         attributes: {
           class: 'be-prose',
         },
+        // Ctrl+V / arrastar imagem → sobe pro vault e insere a URL.
+        handlePaste: (view, event) => self.handleImagePaste(event),
+        handleDrop: (view, event) => self.handleImageDrop(event),
       },
       onUpdate: () => {
         this.$emit('input', this.getMarkdown());
@@ -386,13 +401,35 @@ export default {
         return;
       }
       const host = this.$el.getBoundingClientRect();
-      // posiciona logo abaixo do caret, relativo ao container do componente
+      // guarda a posição do caret (relativa ao host + viewport) p/ decidir a direção
       this.slash.x = coords.left - host.left;
-      this.slash.y = coords.bottom - host.top + 4;
+      this.slash.caretTop = coords.top - host.top;
+      this.slash.caretBottom = coords.bottom - host.top;
+      this.slash.vpTop = coords.top;
+      this.slash.vpBottom = coords.bottom;
+      // padrão: abre logo abaixo do caret; placeSlashMenu pode inverter p/ cima
+      this.slash.y = this.slash.caretBottom + 4;
       if (!this.slash.open) {
         this.slash.open = true;
         this.slash.index = 0;
         document.addEventListener('mousedown', this.onDocMouseDown, true);
+      }
+      // mede a altura real do menu já renderizado e decide ↓/↑ (como o Notion)
+      this.$nextTick(this.placeSlashMenu);
+    },
+    // Abre pra baixo (padrão) ou pra cima quando falta espaço embaixo e sobra
+    // em cima — evita o menu ficar cortado no fim da página.
+    placeSlashMenu() {
+      const menu = this.$refs.slashMenu;
+      if (!menu) return;
+      const h = menu.offsetHeight || 0;
+      const margin = 8;
+      const spaceBelow = window.innerHeight - this.slash.vpBottom;
+      const spaceAbove = this.slash.vpTop;
+      if (spaceBelow < h + margin && spaceAbove > spaceBelow) {
+        this.slash.y = this.slash.caretTop - h - 4; // pra cima
+      } else {
+        this.slash.y = this.slash.caretBottom + 4; // pra baixo
       }
     },
     closeSlash() {
@@ -430,6 +467,54 @@ export default {
       if (menu && menu.contains(e.target)) return;
       this.closeSlash();
     },
+
+    // ---- colar / arrastar imagem (Ctrl+V, drag-and-drop) ----
+    // Sobe a imagem pro vault (<vault>/assets/) e insere <img src=/api/assets/..>.
+    // Retorna true só quando há imagem (senão deixa o paste/drop normal seguir).
+    handleImagePaste(event) {
+      const items = (event.clipboardData && event.clipboardData.items) || [];
+      const files = [];
+      for (const it of items) {
+        if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (!files.length) return false;
+      event.preventDefault();
+      files.forEach((f) => this.uploadAndInsertImage(f));
+      return true;
+    },
+    handleImageDrop(event) {
+      const dt = event.dataTransfer;
+      const files = dt && dt.files ? [...dt.files].filter((f) => f.type && f.type.startsWith('image/')) : [];
+      if (!files.length) return false;
+      event.preventDefault();
+      files.forEach((f) => this.uploadAndInsertImage(f));
+      return true;
+    },
+    fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('falha ao ler a imagem'));
+        reader.readAsDataURL(file);
+      });
+    },
+    async uploadAndInsertImage(file) {
+      if (!this.editor) return;
+      try {
+        const dataUri = await this.fileToBase64(file);
+        const r = await uploadAsset({ data: dataUri, mime: file.type });
+        if (r && r.url) {
+          this.editor.chain().focus().setImage({ src: r.url }).run();
+          if (r.warning) this.$emit('warning', r.warning);
+        }
+      } catch (e) {
+        // best-effort: não trava o editor; sinaliza pro pai mostrar um toast.
+        this.$emit('warning', e.message || 'Falha ao colar a imagem.');
+      }
+    },
   },
 };
 </script>
@@ -454,9 +539,9 @@ export default {
   margin-top: 0.5em;
 }
 
-/* placeholder (vazio) */
-.body-editor__surface :deep(.ProseMirror p.is-editor-empty:first-child::before),
-.body-editor__surface :deep(.ProseMirror .is-empty::before) {
+/* placeholder: SÓ no 1º parágrafo quando o documento está totalmente vazio.
+   Em heading/lista vazios (após escolher um tipo pelo "/") NÃO aparece. */
+.body-editor__surface :deep(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);
   color: #6f6f6f;
   pointer-events: none;
@@ -592,6 +677,18 @@ export default {
   padding-left: 0.9em;
   margin: 0.5em 0;
   color: #b9b9b7;
+}
+
+/* imagens (coladas/arrastadas → /api/assets/...) */
+.body-editor__surface :deep(.ProseMirror img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+.body-editor__surface :deep(.ProseMirror img.ProseMirror-selectednode) {
+  outline: 2px solid rgba(217, 160, 30, 0.6);
 }
 
 /* divisor (hr) */

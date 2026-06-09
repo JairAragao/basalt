@@ -238,7 +238,8 @@ export default {
       loading: false,
       loadError: '',
       view: 'kanban',
-      sort: { by: 'prioridade_gute', dir: 'desc' },
+      // default genérico; o board.sort do vault sobrescreve em loadActive()
+      sort: { by: 'created_at', dir: 'desc' },
       colorColumns: this.loadColorColumns(),
       settingsOpen: false,
       peekOpen: false,
@@ -280,19 +281,13 @@ export default {
         return { name, label: prop.label || name, options };
       });
     },
-    // Props ordenáveis: propriedades + prioridade_gute + GUT (derivados úteis).
+    // Ordenável por qualquer propriedade do schema (genérico — sem chaves fixas;
+    // props type 'formula' já estão em properties, então também entram aqui).
     sortFields() {
-      const out = Object.keys(this.properties).map((key) => ({
+      return Object.keys(this.properties).map((key) => ({
         value: key,
         label: this.properties[key].label || key,
       }));
-      ['prioridade_gute', 'GUT'].forEach((d) => {
-        if (!out.some((o) => o.value === d)) {
-          const lbl = (this.properties[d] && this.properties[d].label) || (d === 'GUT' ? 'GUT' : 'Prioridade GUTE');
-          out.push({ value: d, label: lbl });
-        }
-      });
-      return out;
     },
     filteredTasks() {
       const active = Object.keys(this.filters).filter((k) => {

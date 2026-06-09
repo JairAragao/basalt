@@ -10,6 +10,7 @@ const express = require('express');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 const config = require('./config');
 const tasksRepo = require('./tasks-repo');
@@ -424,11 +425,13 @@ router.put('/board/filters', async (req, res) => {
     const { filters } = req.body || {};
     if (!Array.isArray(filters)) throw new Error('validação: filters deve ser um array');
     const props = (config.schema && config.schema.properties) || {};
+    // Self-heal: descarta refs a propriedades inexistentes (ex.: removidas) em
+    // vez de quebrar — a config do board não deve travar por uma chave órfã.
     const clean = [];
     for (const f of filters) {
-      if (typeof f !== 'string' || !f.trim()) throw new Error('validação: cada filtro deve ser uma string não-vazia');
+      if (typeof f !== 'string' || !f.trim()) continue;
       const key = f.trim();
-      if (!(key in props)) throw new Error(`validação: a propriedade "${key}" não existe no schema`);
+      if (!(key in props)) continue;
       if (!clean.includes(key)) clean.push(key);
     }
 
@@ -453,21 +456,22 @@ router.put('/board/card', async (req, res) => {
     const known = (k) => k in props || derived.has(k);
 
     if (!Array.isArray(fields)) throw new Error('validação: fields deve ser um array');
+    // Self-heal: ignora campos que apontam p/ propriedades inexistentes
+    // (removidas/renomeadas) — salvar o cartão não pode travar por ref órfã.
     const clean = [];
     for (const f of fields) {
-      if (typeof f !== 'string' || !f.trim()) throw new Error('validação: cada campo deve ser uma string não-vazia');
+      if (typeof f !== 'string' || !f.trim()) continue;
       const key = f.trim();
-      if (!known(key)) throw new Error(`validação: a propriedade "${key}" não existe`);
+      if (!known(key)) continue;
       if (!clean.includes(key)) clean.push(key);
     }
-    for (const k of [subtitle, badge]) {
-      if (k != null && k !== '' && !known(k)) throw new Error(`validação: a propriedade "${k}" não existe`);
-    }
+    // subtitle/badge órfãos viram vazio (em vez de lançar erro).
+    const cleanRef = (k) => (k != null && k !== '' && known(k) ? k : undefined);
 
     const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
     board.card = { ...(board.card || {}), fields: clean };
-    if (subtitle !== undefined) board.card.subtitle = subtitle || undefined;
-    if (badge !== undefined) board.card.badge = badge || undefined;
+    if (subtitle !== undefined) board.card.subtitle = cleanRef(subtitle);
+    if (badge !== undefined) board.card.badge = cleanRef(badge);
     writeJsonAtomic(boardFile(), board);
 
     config.reload();
@@ -589,5 +593,73 @@ function validateProperties(props) {
     if (specErr) throw new Error(`validação: ${specErr}`);
   }
 }
+
+// ── Assets (imagens coladas/arrastadas no editor de corpo) ───────────────────
+// Guardadas em <vault>/assets/ (versionadas no git do vault, viajam no push/pull).
+// Servidas por /api/assets/<name> — resolve em dev (proxy), prod (estático) e
+// Electron (same-origin). O markdown referencia /api/assets/<name>.
+const ASSET_EXT = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif',
+  'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/avif': 'avif',
+};
+const ASSET_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', avif: 'image/avif',
+};
+function assetsDir() {
+  return path.join(config.VAULT, 'assets');
+}
+// nome path-safe: só [A-Za-z0-9._-], sem travessia de diretório.
+function safeAssetName(name) {
+  return typeof name === 'string' && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes('..');
+}
+const MAX_ASSET_BYTES = 10 * 1024 * 1024;
+
+// POST /assets — body { data: base64|dataURI, mime } → grava + commita (best-effort).
+router.post('/assets', async (req, res) => {
+  try {
+    const { data, mime } = req.body || {};
+    if (typeof data !== 'string' || !data) throw new Error('validação: data (base64) é obrigatório');
+    const ext = ASSET_EXT[String(mime || '').toLowerCase()];
+    if (!ext) throw new Error('validação: tipo de imagem não suportado');
+    // aceita data URI ("data:...;base64,XXXX") ou base64 cru
+    const b64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const buf = Buffer.from(b64, 'base64');
+    if (!buf.length) throw new Error('validação: imagem vazia');
+    if (buf.length > MAX_ASSET_BYTES) throw new Error('validação: imagem acima de 10MB');
+
+    const dir = assetsDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const name = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const file = path.join(dir, name);
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, buf);       // escrita atômica (.tmp + rename), como nas tarefas
+    fs.renameSync(tmp, file);
+
+    // Versiona o asset (best-effort): se git falhar, o arquivo já existe e a
+    // imagem aparece localmente — só não viaja no push (vira warning).
+    let warning;
+    try {
+      await git.commitPaths([file], `assets: ${name}`);
+      warning = await pushOrWarn();
+    } catch (e) {
+      warning = `imagem salva, mas não versionada: ${e.message}`;
+    }
+    res.json(withWarning({ url: `/api/assets/${name}`, name }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+// GET /assets/:name — serve o arquivo do vault corrente (path-safe).
+router.get('/assets/:name', (req, res) => {
+  try {
+    const name = req.params.name || '';
+    if (!safeAssetName(name)) return res.status(400).json({ error: 'nome inválido' });
+    const file = path.join(assetsDir(), name);
+    if (!fs.existsSync(file)) return res.status(404).json({ error: 'asset não encontrado' });
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    if (ASSET_MIME[ext]) res.type(ASSET_MIME[ext]);
+    res.sendFile(file);
+  } catch (err) { fail(res, err); }
+});
 
 module.exports = router;

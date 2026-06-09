@@ -3,8 +3,8 @@
     <aside
       v-if="open"
       :class="inline
-        ? 'relative flex w-[420px] max-w-[34vw] flex-shrink-0 flex-col border-r border-ink-500 bg-ink-850'
-        : 'fixed inset-y-0 z-40 flex w-[440px] max-w-[94vw] flex-col border-l border-ink-500 bg-ink-850 shadow-2xl'"
+        ? 'relative flex w-[520px] max-w-[44vw] flex-shrink-0 flex-col border-l border-ink-500 bg-ink-850'
+        : 'fixed inset-y-0 z-40 flex w-[520px] max-w-[94vw] flex-col border-l border-ink-500 bg-ink-850 shadow-2xl'"
       :style="inline ? null : { right: offsetRight + 'px' }"
     >
       <!-- header -->

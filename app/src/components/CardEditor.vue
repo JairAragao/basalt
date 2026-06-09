@@ -53,10 +53,15 @@ export default {
   props: { config: { type: Object, required: true } },
   data() {
     const card = (this.config.board && this.config.board.card) || {};
+    // Descarta refs órfãs (propriedades removidas) já na carga — o editor não
+    // pode arrastar pra frente uma chave que não existe mais e travar o save.
+    const props = (this.config.schema && this.config.schema.properties) || {};
+    const derived = (this.config.schema && this.config.schema.derived) || [];
+    const known = (k) => !!k && (Object.prototype.hasOwnProperty.call(props, k) || derived.includes(k));
     return {
-      fields: Array.isArray(card.fields) ? [...card.fields] : [],
-      subtitle: card.subtitle || '',
-      badge: card.badge || '',
+      fields: Array.isArray(card.fields) ? card.fields.filter((k) => typeof k === 'string' && known(k)) : [],
+      subtitle: known(card.subtitle) ? card.subtitle : '',
+      badge: known(card.badge) ? card.badge : '',
       saving: false,
       error: '',
     };

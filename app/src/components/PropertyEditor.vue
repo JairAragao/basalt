@@ -105,7 +105,7 @@
             <input
               v-model="prop.expression"
               class="field !py-1 font-mono text-[12px]"
-              placeholder="ex: G * U * T / E"
+              placeholder="use os nomes das propriedades abaixo, ex: (a * b) / c"
             />
 
             <!-- propriedades numéricas clicáveis -->

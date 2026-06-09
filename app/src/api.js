@@ -171,6 +171,16 @@ export function saveProperties(payload) {
   return request(`${BASE}/schema/properties`, { method: 'PUT', body: JSON.stringify(body) })
 }
 
+// --- Assets (imagens coladas/arrastadas no editor) ---
+// { data: base64|dataURI, mime } → backend grava em <vault>/assets/, versiona e
+// devolve { url, name }. url é servível (/api/assets/<name>).
+export function uploadAsset({ data, mime }) {
+  return request(`${BASE}/assets`, {
+    method: 'POST',
+    body: JSON.stringify({ data, mime })
+  })
+}
+
 export default {
   getConfig,
   getBoard,
@@ -193,5 +203,6 @@ export default {
   getHealthGit,
   syncPull,
   getHistory,
-  getDiff
+  getDiff,
+  uploadAsset
 }

@@ -13,56 +13,73 @@
           :placeholder="'Grupo ' + (gi + 1)"
         />
 
-        <!-- etapas -->
-        <div class="space-y-1.5">
-          <div v-for="(stage, si) in grp.stages" :key="stage._uid" class="flex items-center gap-2">
-            <!-- botão de cor + popover de swatches -->
-            <div class="relative flex-shrink-0">
+        <!-- etapas (arraste pela alça p/ reordenar dentro do grupo macro) -->
+        <draggable
+          :list="grp.stages"
+          item-key="_uid"
+          handle=".stage-handle"
+          :animation="160"
+          ghost-class="stage-ghost"
+          class="space-y-1.5"
+        >
+          <template #item="{ element: stage, index: si }">
+            <div class="flex items-center gap-2">
+              <!-- alça de arraste -->
+              <span
+                class="stage-handle grid h-7 w-5 flex-shrink-0 cursor-grab place-items-center text-faint hover:text-muted active:cursor-grabbing"
+                title="Arrastar para reordenar"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7.5" cy="5" r="1.25" /><circle cx="12.5" cy="5" r="1.25" /><circle cx="7.5" cy="10" r="1.25" /><circle cx="12.5" cy="10" r="1.25" /><circle cx="7.5" cy="15" r="1.25" /><circle cx="12.5" cy="15" r="1.25" /></svg>
+              </span>
+
+              <!-- botão de cor + popover de swatches -->
+              <div class="relative flex-shrink-0">
+                <button
+                  type="button"
+                  class="grid h-7 w-7 place-items-center rounded-md border border-ink-500 hover:border-ink-line"
+                  title="Cor da etapa"
+                  @click="toggleSwatch(stage._uid)"
+                >
+                  <span class="h-3.5 w-3.5 rounded-full" :style="{ background: stage.color }"></span>
+                </button>
+                <transition name="dd">
+                  <div
+                    v-if="openSwatch === stage._uid"
+                    ref="swatchPop"
+                    class="absolute left-0 top-9 z-50 grid w-[156px] grid-cols-5 gap-1.5 rounded-lg border border-ink-line bg-ink-700 p-2 shadow-xl"
+                  >
+                    <button
+                      v-for="p in palette"
+                      :key="p.value"
+                      type="button"
+                      class="h-5 w-5 rounded-full ring-offset-2 ring-offset-ink-700 hover:ring-2 hover:ring-ink-line"
+                      :class="{ 'ring-2 ring-accent': stage.color === p.value }"
+                      :style="{ background: p.value }"
+                      :title="p.name"
+                      @click="pickColor(stage, p.value)"
+                    ></button>
+                  </div>
+                </transition>
+              </div>
+
+              <input
+                v-model="stage.label"
+                class="field flex-1"
+                placeholder="Nome da etapa"
+              />
+
               <button
                 type="button"
-                class="grid h-7 w-7 place-items-center rounded-md border border-ink-500 hover:border-ink-line"
-                title="Cor da etapa"
-                @click="toggleSwatch(stage._uid)"
+                class="icon-btn h-7 w-7 flex-shrink-0 disabled:opacity-30"
+                title="Remover etapa"
+                :disabled="grp.stages.length <= 1"
+                @click="removeStage(grp, si)"
               >
-                <span class="h-3.5 w-3.5 rounded-full" :style="{ background: stage.color }"></span>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
               </button>
-              <transition name="dd">
-                <div
-                  v-if="openSwatch === stage._uid"
-                  ref="swatchPop"
-                  class="absolute left-0 top-9 z-50 grid w-[156px] grid-cols-5 gap-1.5 rounded-lg border border-ink-line bg-ink-700 p-2 shadow-xl"
-                >
-                  <button
-                    v-for="p in palette"
-                    :key="p.value"
-                    type="button"
-                    class="h-5 w-5 rounded-full ring-offset-2 ring-offset-ink-700 hover:ring-2 hover:ring-ink-line"
-                    :class="{ 'ring-2 ring-accent': stage.color === p.value }"
-                    :style="{ background: p.value }"
-                    :title="p.name"
-                    @click="pickColor(stage, p.value)"
-                  ></button>
-                </div>
-              </transition>
             </div>
-
-            <input
-              v-model="stage.label"
-              class="field flex-1"
-              placeholder="Nome da etapa"
-            />
-
-            <button
-              type="button"
-              class="icon-btn h-7 w-7 flex-shrink-0 disabled:opacity-30"
-              title="Remover etapa"
-              :disabled="grp.stages.length <= 1"
-              @click="removeStage(grp, si)"
-            >
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
-            </button>
-          </div>
-        </div>
+          </template>
+        </draggable>
 
         <button
           type="button"
@@ -89,6 +106,7 @@
 </template>
 
 <script>
+import draggable from 'vuedraggable';
 import { saveStatus } from '../api';
 import { PALETTE, DEFAULT_COLOR } from '../palette';
 
@@ -97,6 +115,7 @@ const nextUid = () => `s${++UID}`;
 
 export default {
   name: 'StatusEditor',
+  components: { draggable },
   props: {
     config: { type: Object, required: true },
   },
@@ -207,4 +226,7 @@ export default {
 <style scoped>
 .dd-enter-active, .dd-leave-active { transition: opacity .12s ease, transform .12s ease; }
 .dd-enter-from, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
+/* etapa sendo arrastada (ghost do vuedraggable) */
+.stage-ghost { opacity: .5; }
+.stage-ghost :deep(.field) { border-color: #d9a01e; }
 </style>

@@ -201,7 +201,7 @@ export default {
     groupByKey() { return this.boardCfg.groupBy || 'status'; },
     statusGroups() { return this.boardCfg.statusGroups || []; },
     fallbackColumn() { return this.boardCfg.fallbackColumn || { id: '_none', label: 'Sem status', color: '#4b4b4b' }; },
-    sortCfg() { return this.sort || this.boardCfg.sort || { by: 'prioridade_gute', dir: 'desc' }; },
+    sortCfg() { return this.sort || this.boardCfg.sort || { by: 'created_at', dir: 'desc' }; },
     // Grupos macro + suas colunas de etapa. Sem coluna "Sem status": status é
     // obrigatório (enum com default), então toda tarefa cai numa etapa válida.
     groups() {

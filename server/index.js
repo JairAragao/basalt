@@ -10,7 +10,9 @@ const routes = require('./routes');
 const { startWatcher } = require('./watcher');
 
 const app = express();
-app.use(express.json());
+// limite generoso: uploads de imagem (ícone/capa/colar no corpo) chegam como
+// base64 em JSON; o default do express (100kb) estoura e devolve 413.
+app.use(express.json({ limit: '20mb' }));
 
 app.use('/api', routes);
 

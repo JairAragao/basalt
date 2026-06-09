@@ -1,13 +1,13 @@
 <template>
   <div
-    class="group relative cursor-pointer rounded-lg border p-2.5 shadow-sm transition-colors"
+    class="group relative cursor-pointer overflow-hidden rounded-lg border p-2.5 shadow-sm transition-colors"
     :class="tint ? 'hover:brightness-125' : 'border-ink-500 bg-ink-700 hover:border-ink-line hover:bg-ink-600'"
     :style="tint ? { backgroundColor: tint + '30', borderColor: tint + '60' } : {}"
     @click="$emit('open', task)"
   >
     <!-- excluir (hover) -->
     <button
-      class="icon-btn absolute right-1.5 top-1.5 h-6 w-6 opacity-0 group-hover:opacity-100"
+      class="icon-btn absolute right-1.5 top-1.5 z-10 h-6 w-6 bg-ink-800/60 opacity-0 group-hover:opacity-100"
       title="Excluir"
       @click.stop="$emit('delete', task)"
     >
@@ -16,7 +16,19 @@
       </svg>
     </button>
 
+    <!-- capa (sangra até as bordas do card) -->
+    <img
+      v-if="coverValue"
+      :src="coverValue"
+      alt=""
+      class="-mx-2.5 -mt-2.5 mb-2 block h-16 w-[calc(100%+1.25rem)] max-w-none object-cover"
+    />
+
     <div class="flex items-start gap-2 pr-5">
+      <span v-if="iconValue" class="flex-shrink-0 leading-none">
+        <img v-if="isImg(iconValue)" :src="iconValue" alt="" class="h-5 w-5 rounded object-cover" />
+        <span v-else class="text-base leading-none">{{ iconValue }}</span>
+      </span>
       <div class="flex-1 text-[13px] font-medium leading-snug text-txt">
         {{ titleValue || '(sem título)' }}
       </div>
@@ -33,7 +45,7 @@
         v-if="badgeValue !== null && badgeValue !== undefined && badgeValue !== ''"
         class="pill"
         :class="badgeClass"
-        :title="'Prioridade GUTE'"
+        :title="badgeLabel"
       >⚡ {{ badgeValue }}</span>
     </div>
 
@@ -47,6 +59,8 @@
 </template>
 
 <script>
+import { displayValue, isImageRef } from '../format';
+
 export default {
   name: 'TaskCard',
   props: {
@@ -54,12 +68,23 @@ export default {
     config: { type: Object, required: true },
     tint: { type: String, default: null },
   },
+  methods: {
+    isImg(v) { return isImageRef(v); },
+  },
   computed: {
     cardCfg() { return (this.config.board && this.config.board.card) || {}; },
+    properties() { return (this.config.schema && this.config.schema.properties) || {}; },
+    coverValue() { return this.task.cover || null; },
+    iconValue() { return this.task.icon || null; },
     titleValue() { return this.task[this.cardCfg.title || 'titulo']; },
     subtitleValue() { return this.cardCfg.subtitle ? this.task[this.cardCfg.subtitle] : null; },
     initial() { return (this.subtitleValue || '?').toString().charAt(0); },
     badgeValue() { return this.cardCfg.badge ? this.task[this.cardCfg.badge] : null; },
+    // Rótulo do badge vem da propriedade configurada (genérico, não fixo).
+    badgeLabel() {
+      const k = this.cardCfg.badge;
+      return (k && this.properties[k] && this.properties[k].label) || k || '';
+    },
     badgeClass() {
       const n = Number(this.badgeValue);
       if (Number.isNaN(n)) return 'bg-ink-600 text-muted';
@@ -67,11 +92,11 @@ export default {
       if (n >= 8) return 'bg-amber-500/15 text-amber-300';
       return 'bg-ink-600 text-muted';
     },
-    // Campos exibidos na face do cartão = config board.card.fields (escolhidos
-    // nas Configurações). Fallback p/ modulo/tipo se nunca foi configurado.
+    // Campos exibidos na face do cartão = board.card.fields (Configurações).
+    // Sem fallback fixo: se nada foi configurado, não inventa chaves.
     fieldKeys() {
       const c = this.cardCfg;
-      const fields = Array.isArray(c.fields) ? c.fields : ['modulo', 'tipo'];
+      const fields = Array.isArray(c.fields) ? c.fields : [];
       const used = new Set([c.title, c.subtitle, c.badge]);
       return fields.filter((k) => k && !used.has(k));
     },
@@ -79,7 +104,7 @@ export default {
       const out = [];
       this.fieldKeys.forEach((key) => {
         const v = this.task[key];
-        if (v !== null && v !== undefined && v !== '') out.push({ key, value: v });
+        if (v !== null && v !== undefined && v !== '') out.push({ key, value: displayValue(this.properties[key], v) });
       });
       return out;
     },
