@@ -5,7 +5,7 @@
       <div class="absolute inset-0 bg-black/40" @click="requestClose"></div>
 
       <!-- par grudado: dialog + histórico (se aberto) à DIREITA -->
-      <div class="relative flex items-stretch overflow-hidden shadow-2xl" :class="unitClass">
+      <div class="flex items-stretch overflow-hidden shadow-2xl" :class="unitClass">
         <aside class="peek-panel relative flex min-w-0 flex-col overflow-hidden bg-ink-800" :class="panelClass">
         <!-- toolbar -->
         <header class="flex h-11 flex-shrink-0 items-center gap-1 border-b border-ink-500 px-3">
@@ -97,24 +97,46 @@
 
             <!-- propriedades -->
             <div class="mt-4">
-              <!-- mostrar/ocultar propriedades vazias (estilo Notion) -->
-              <div v-if="emptyCount > 0" class="mb-1 flex justify-end">
-                <button class="rounded px-1.5 py-0.5 text-[12px] text-faint transition-colors hover:bg-ink-700 hover:text-muted" @click="toggleHideEmpty">
-                  {{ hideEmpty ? 'Mostrar' : 'Ocultar' }} {{ emptyCount }} {{ emptyCount === 1 ? 'propriedade vazia' : 'propriedades vazias' }}
-                </button>
-              </div>
-
               <div class="space-y-0.5">
-                <div v-for="field in visibleRowFields" :key="field.name" class="prop-row">
-                  <div class="prop-label">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></div>
+                <div
+                  v-for="field in visibleRowFields"
+                  :key="field.name"
+                  class="prop-row group/prop"
+                  :class="{ 'opacity-60': field.hidden }"
+                >
+                  <div class="prop-label flex items-center gap-1">
+                    <span class="truncate">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></span>
+                    <button
+                      type="button"
+                      class="icon-btn h-5 w-5 flex-shrink-0 opacity-0 transition-opacity group-hover/prop:opacity-100"
+                      title="Opções da propriedade"
+                      @click.stop="openPropMenu(field, $event)"
+                    >
+                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
+                    </button>
+                  </div>
                   <div class="flex-1">
-                    <Dropdown
-                      v-if="field.type === 'enum'"
+                    <!-- status: select agrupado por etapa macro + edição inline (cor/label/mover/excluir) -->
+                    <StatusSelect
+                      v-if="field.name === statusKey"
                       :value="model[field.name]"
-                      :options="optionsFor(field)"
+                      :config="config"
+                      :placeholder="field.label || field.name"
+                      @input="(v) => (model[field.name] = v == null ? '' : v)"
+                      @save-status="onSaveStatus"
+                    />
+                    <!-- enum/multiselect/user: select editável (renomear/excluir/criar opção) -->
+                    <PropSelect
+                      v-else-if="field.type === 'enum' || field.type === 'multiselect' || field.type === 'user'"
+                      :value="model[field.name]"
+                      :type="field.type"
+                      :options="optionsForSelect(field)"
                       :placeholder="field.label || field.name"
                       :clearable="!field.required"
                       @input="(v) => (model[field.name] = v == null ? '' : v)"
+                      @create-option="(v) => createOption(field, v)"
+                      @rename-option="(e) => renameOption(field, e.from, e.to)"
+                      @delete-option="(v) => deleteOption(field, v)"
                     />
                     <input
                       v-else-if="field.type === 'int'"
@@ -144,6 +166,16 @@
                     <span v-else class="italic">{{ d.placeholder }}</span>
                   </div>
                 </div>
+              </div>
+
+              <!-- toggle TEMPORÁRIO (não salvo) p/ revelar propriedades ocultas — estilo Notion, no fim -->
+              <div v-if="hiddenCount > 0" class="mt-1">
+                <button
+                  class="rounded px-1.5 py-0.5 text-[12px] text-faint transition-colors hover:bg-ink-700 hover:text-muted"
+                  @click="showHidden = !showHidden"
+                >
+                  {{ showHidden ? 'Ocultar propriedades ocultas' : `Mostrar ${hiddenCount} ${hiddenCount === 1 ? 'propriedade oculta' : 'propriedades ocultas'}` }}
+                </button>
               </div>
             </div>
 
@@ -191,16 +223,42 @@
           </template>
         </Teleport>
 
-        <!-- footer -->
-        <footer class="flex flex-shrink-0 items-center gap-2 border-t border-ink-500 px-4 py-3">
+        <!-- menu da propriedade (kebab): renomear / mudar tipo / ocultar — popover flutuante -->
+        <Teleport to="body">
+          <template v-if="propMenu.open">
+            <div class="fixed inset-0 z-[90]" @click="closePropMenu"></div>
+            <div
+              class="prop-pop fixed z-[100] w-60 rounded-xl border border-ink-500 bg-ink-850 p-2 shadow-2xl"
+              :style="{ left: propMenu.x + 'px', top: propMenu.y + 'px' }"
+            >
+              <div class="mb-1 text-[11px] text-faint">Renomear</div>
+              <input
+                v-model="propMenu.label"
+                class="field !py-1 text-[13px]"
+                placeholder="Nome do campo"
+                @keydown.enter.prevent="renameProp"
+                @click.stop
+              />
+              <div class="mb-1 mt-2 text-[11px] text-faint">Tipo</div>
+              <Dropdown :value="propMenu.type" :options="propTypeOptions" @input="changePropType" />
+              <button
+                type="button"
+                class="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted transition-colors hover:bg-ink-700"
+                @click="renameProp"
+              >Salvar nome</button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted transition-colors hover:bg-ink-700"
+                @click="toggleHiddenProp"
+              >{{ propMenu.hidden ? 'Mostrar em todas as tarefas' : 'Ocultar em todas as tarefas' }}</button>
+            </div>
+          </template>
+        </Teleport>
+
+        <!-- footer: SEM botões — salva sozinho (a cada mudança / ao fechar). Fechar é o X no topo. -->
+        <footer class="flex flex-shrink-0 items-center gap-2 border-t border-ink-500 px-4 py-2">
           <span v-if="errorMsg" class="flex-1 truncate text-[12px] text-red-300" :title="errorMsg">{{ errorMsg }}</span>
-          <span v-else class="flex-1"></span>
-          <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" :disabled="saving" @click="requestClose">Cancelar</button>
-          <button
-            class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
-            :disabled="saving"
-            @click="save"
-          >{{ saving ? 'Salvando…' : 'Salvar' }}</button>
+          <span v-else class="flex-1 text-[12px] text-faint">{{ autosaving ? 'Salvando…' : (savedNote ? 'Salvo ✓' : (dirty ? '' : 'Tudo salvo')) }}</span>
         </footer>
       </aside>
         <CardHistory
@@ -218,8 +276,10 @@
 
 <script>
 import { defineAsyncComponent } from 'vue';
-import { getTask, createTask, updateTask, uploadAsset } from '../api';
+import { getTask, createTask, updateTask, uploadAsset, saveProperties, saveStatus, syncPull } from '../api';
 import Dropdown from './Dropdown.vue';
+import PropSelect from './PropSelect.vue';
+import StatusSelect from './StatusSelect.vue';
 import CardHistory from './CardHistory.vue';
 import 'vue3-emoji-picker/css';
 import { compute as computeFormulas } from '../formula';
@@ -231,15 +291,15 @@ const BodyEditor = defineAsyncComponent(() => import('./BodyEditor.vue'));
 const EmojiPicker = defineAsyncComponent(() => import('vue3-emoji-picker'));
 
 const MODE_KEY = 'basalt.peekMode';
-const HIDE_EMPTY_KEY = 'basalt.hideEmptyProps';
 
 export default {
   name: 'TaskPeek',
-  components: { Dropdown, CardHistory, BodyEditor, EmojiPicker },
+  components: { Dropdown, PropSelect, StatusSelect, CardHistory, BodyEditor, EmojiPicker },
   props: {
     open: { type: Boolean, default: false },
     config: { type: Object, required: true },
     task: { type: Object, default: null }, // null ou {status} → create; {id} → edit
+    users: { type: Array, default: () => [] }, // roster (p/ campos tipo 'user')
   },
   data() {
     return {
@@ -248,7 +308,27 @@ export default {
       errorMsg: '',
       historyOpen: false,
       bodyEdited: false, // usuário mexeu no corpo? evita o loadBody tardio clobberar o que foi digitado
-      hideEmpty: this.loadHideEmpty(),
+      // auto-save (edição): grava+commita+push+pull sozinho, com debounce
+      ready: false,        // trava o watcher durante o initModel
+      dirty: false,        // há mudança pendente de salvar
+      createdId: null,     // id gerado quando a tarefa nova é auto-criada
+      autosaving: false,
+      savedNote: false,    // "Salvo ✓" efêmero
+      saveTimer: null,
+      pullTimer: null,
+      savedTimer: null,
+      // revelar propriedades ocultas — APENAS visual e temporário (não salvo)
+      showHidden: false,
+      // menu kebab da propriedade (renomear/tipo/ocultar)
+      propMenu: { open: false, key: '', label: '', type: '', hidden: false, x: 0, y: 0 },
+      propTypeOptions: [
+        { value: 'string', label: 'Texto' },
+        { value: 'enum', label: 'Seleção' },
+        { value: 'multiselect', label: 'Seleção múltipla' },
+        { value: 'user', label: 'Usuário' },
+        { value: 'int', label: 'Número' },
+        { value: 'datetime', label: 'Data' },
+      ],
       // ícone (emoji|URL) + capa (URL) da tarefa — metadados de página
       iconMenuOpen: false,
       iconMenuPos: { x: 0, y: 0 },
@@ -264,6 +344,9 @@ export default {
   },
   computed: {
     isEdit() { return !!(this.task && this.task.id); },
+    // id "vivo": tarefa existente OU a recém auto-criada nesta sessão do dialog
+    currentId() { return (this.task && this.task.id) ? this.task.id : this.createdId; },
+    titleEmpty() { return !String(this.model[this.titleKey] || '').trim(); },
     schema() { return this.config.schema || {}; },
     properties() { return this.schema.properties || {}; },
     derivedNames() { return this.schema.derived || []; },
@@ -320,30 +403,39 @@ export default {
         });
       return out;
     },
-    // ── visibilidade de propriedades vazias (toggle estilo Notion) ──
-    // Campos de auditoria (kind 'auto') NUNCA contam como "vazios ocultáveis" —
-    // sempre serão preenchidos ao salvar; esconder created_at numa tarefa nova confunde.
-    emptyCount() {
-      const rows = this.rowFields.filter((f) => !f.required && this.isEmptyVal(this.model[f.name])).length;
-      const derived = this.derivedDisplay.filter((d) => d.kind === 'formula' && this.isEmptyVal(d.value)).length;
-      return rows + derived;
+    // propriedades type 'user' usam o roster do time como opções (id → nome)
+    userOptions() {
+      return (this.users || []).map((u) => ({ value: u.id, label: u.nome || u.id }));
+    },
+    // ── visibilidade por propriedade (hidden no schema) + revelar temporário ──
+    // 'hidden' é flag da propriedade no schema (vale p/ TODAS as tarefas).
+    // showHidden é só visual e temporário (não salvo).
+    hiddenCount() {
+      return this.rowFields.filter((f) => f.hidden).length;
     },
     visibleRowFields() {
-      if (!this.hideEmpty) return this.rowFields;
-      return this.rowFields.filter((f) => f.required || !this.isEmptyVal(this.model[f.name]));
+      if (this.showHidden) return this.rowFields;
+      return this.rowFields.filter((f) => !f.hidden);
     },
     visibleDerived() {
-      if (!this.hideEmpty) return this.derivedDisplay;
-      return this.derivedDisplay.filter((d) => d.kind !== 'formula' || !this.isEmptyVal(d.value));
+      if (this.showHidden) return this.derivedDisplay;
+      return this.derivedDisplay.filter((d) => {
+        const p = this.properties[d.name];
+        return !(p && p.hidden);
+      });
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';
       return ''; // side e full posicionam o par diretamente
     },
     // Posicionamento do PAR (histórico + dialog grudados) por modo.
+    // IMPORTANTE: NÃO misturar 'relative' fixo aqui — no Tailwind o .relative é
+    // emitido depois do .absolute e venceria, fazendo side/full perderem a
+    // altura cheia (ficavam só com a altura do conteúdo). Cada modo define a
+    // própria posição.
     unitClass() {
       if (this.mode === 'side') return 'absolute inset-y-0 right-0 border-l border-ink-500';
-      if (this.mode === 'center') return 'max-h-[92vh] rounded-xl border border-ink-500';
+      if (this.mode === 'center') return 'relative max-h-[92vh] rounded-xl border border-ink-500';
       return 'absolute inset-0'; // full
     },
     panelClass() {
@@ -359,10 +451,12 @@ export default {
   watch: {
     open(v) {
       if (v) { this.initModel(); }
-      else { this.historyOpen = false; this.closeIconMenu(); }
+      else { this.historyOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
     },
     // troca de tarefa fecha o histórico aberto (evita mostrar histórico antigo)
     task() { this.historyOpen = false; },
+    // auto-save: qualquer mudança no model dispara save com debounce (só edição)
+    model: { handler() { this.onModelChange(); }, deep: true },
   },
   methods: {
     // Opções do Dropdown para um campo enum. Para "status", anexa a cor da etapa.
@@ -404,7 +498,20 @@ export default {
       m.icon = (this.task && this.task.icon) || '';
       m.cover = (this.task && this.task.cover) || '';
       this.model = m;
-      if (this.isEdit) this.loadBody();
+      // estado de auto-save / UI por abertura
+      this.ready = false;
+      this.dirty = false;
+      this.createdId = null;
+      this.showHidden = false;
+      this.savedNote = false;
+      this.cancelTimers();
+      if (this.isEdit) {
+        // só libera o watcher de auto-save DEPOIS de carregar o corpo (senão o
+        // load do body dispararia um save imediato no-op).
+        this.loadBody().finally(() => { this.$nextTick(() => { this.ready = true; }); });
+      } else {
+        this.$nextTick(() => { this.ready = true; });
+      }
       this.$nextTick(() => { this.autoGrow(); });
     },
     async loadBody() {
@@ -466,8 +573,189 @@ export default {
     toggleHistory() {
       this.historyOpen = !this.historyOpen;
     },
-    requestClose() {
-      if (!this.saving) this.$emit('close');
+    async requestClose() {
+      if (this.saving) return;
+      this.cancelTimers();
+      // flush: grava pendências antes de fechar (edição). O corpo salva aqui se
+      // o usuário fechar antes do debounce ocioso disparar.
+      if (this.isEdit && this.dirty) {
+        try { await this.autosave(); } catch (e) { /* erro já foi pro errorMsg */ }
+      }
+      this.$emit('close');
+    },
+    // ── auto-save (criação E edição — sem botões, estilo Notion) ──
+    onModelChange() {
+      if (!this.ready) return;
+      this.dirty = true;
+      this.scheduleAutosave();
+    },
+    scheduleAutosave() {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = setTimeout(() => { this.autosave(); }, 800);
+    },
+    async autosave() {
+      if (!this.dirty) return;
+      const err = this.validate();
+      if (err) {
+        // criação: não nag enquanto o título ainda nem foi digitado
+        if (!this.currentId && this.titleEmpty) return;
+        this.errorMsg = err; return; // não salva inválido; mantém dirty
+      }
+      this.errorMsg = '';
+      this.autosaving = true;
+      try {
+        const payload = this.buildPayload();
+        const id = this.currentId;
+        let saved;
+        if (id) {
+          saved = await updateTask(id, payload); // back commita + push
+          this.$emit('autosaved', saved); // App atualiza o board sem fechar
+        } else {
+          saved = await createTask(payload); // 1ª mudança válida CRIA a tarefa
+          if (saved && saved.id) this.createdId = saved.id; // vira edição daqui pra frente
+          this.$emit('created', saved);
+        }
+        this.dirty = false;
+        this.flashSaved();
+        if (saved && saved.warning) this.errorMsg = saved.warning;
+        this.schedulePull(); // push E pull a cada mudança
+      } catch (e) {
+        this.errorMsg = e.message;
+      } finally {
+        this.autosaving = false;
+      }
+    },
+    flashSaved() {
+      this.savedNote = true;
+      clearTimeout(this.savedTimer);
+      this.savedTimer = setTimeout(() => { this.savedNote = false; }, 2000);
+    },
+    schedulePull() {
+      clearTimeout(this.pullTimer);
+      this.pullTimer = setTimeout(() => { this.pullAfterSave(); }, 1500);
+    },
+    async pullAfterSave() {
+      try {
+        const r = await syncPull();
+        this.$emit('synced', r); // App reaproveita p/ atualizar board + notificações
+      } catch (e) { /* pull é best-effort; silencioso */ }
+    },
+    cancelTimers() {
+      clearTimeout(this.saveTimer);
+      clearTimeout(this.pullTimer);
+    },
+    // ── multiselect (valor = opções separadas por ';') ──
+    msValues(name) {
+      return String(this.model[name] || '').split(';').map((s) => s.trim()).filter(Boolean);
+    },
+    msSelected(name, opt) {
+      return this.msValues(name).includes(opt);
+    },
+    toggleMulti(name, opt) {
+      const set = this.msValues(name);
+      const i = set.indexOf(opt);
+      if (i === -1) set.push(opt); else set.splice(i, 1);
+      this.model[name] = set.join(';');
+    },
+    // ── menu kebab da propriedade (renomear / mudar tipo / ocultar) ──
+    openPropMenu(field, e) {
+      const el = e && e.currentTarget;
+      const r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 80, bottom: 100 };
+      const W = 240;
+      let left = r.left;
+      if (left + W > window.innerWidth - 8) left = window.innerWidth - W - 8;
+      if (left < 8) left = 8;
+      this.propMenu = {
+        open: true, key: field.name, label: field.label || field.name,
+        type: field.type, hidden: !!field.hidden, x: left, y: r.bottom + 6,
+      };
+    },
+    closePropMenu() { if (this.propMenu.open) this.propMenu = { ...this.propMenu, open: false }; },
+    // grava uma mudança numa propriedade do SCHEMA (vale p/ TODAS as tarefas)
+    async applyPropChange(changes) {
+      const key = this.propMenu.key;
+      if (!key) return;
+      const props = JSON.parse(JSON.stringify(this.properties));
+      if (!props[key]) { this.closePropMenu(); return; }
+      Object.assign(props[key], changes);
+      try {
+        await saveProperties({ properties: props, renames: [] });
+        this.$emit('config-changed'); // App recarrega config + tarefas
+        this.closePropMenu();
+      } catch (e) {
+        this.errorMsg = e.message || 'Falha ao alterar a propriedade.';
+      }
+    },
+    renameProp() {
+      const label = (this.propMenu.label || '').trim();
+      if (!label) return;
+      this.applyPropChange({ label });
+    },
+    changePropType(v) {
+      if (!v || v === this.propMenu.type) return;
+      this.propMenu.type = v;
+      this.applyPropChange({ type: v });
+    },
+    toggleHiddenProp() {
+      this.applyPropChange({ hidden: !this.propMenu.hidden });
+    },
+    // ── opções de select/multiselect (CRUD inline, migra todas as tarefas) ──
+    optionsForSelect(field) {
+      if (field.type === 'user') return this.userOptions; // [{value,label}] do roster
+      return field.options || []; // strings
+    },
+    // grava as options de um campo no schema (+ optionRenames p/ migrar tarefas)
+    async saveFieldOptions(fieldName, newOptions, optionRenames) {
+      const props = JSON.parse(JSON.stringify(this.properties));
+      if (!props[fieldName]) return;
+      props[fieldName].options = newOptions;
+      try {
+        await saveProperties({ properties: props, renames: [], optionRenames: optionRenames || [] });
+        this.$emit('config-changed');
+      } catch (e) { this.errorMsg = e.message || 'Falha ao salvar opções.'; }
+    },
+    async createOption(field, value) {
+      const v = (value || '').trim();
+      if (!v) return;
+      const opts = [...(field.options || [])];
+      if (!opts.includes(v)) opts.push(v);
+      await this.saveFieldOptions(field.name, opts);
+      // já seleciona a opção recém-criada (o schema novo já a contém)
+      if (field.type === 'multiselect') {
+        const set = this.msValues(field.name);
+        if (!set.includes(v)) set.push(v);
+        this.model[field.name] = set.join(';');
+      } else {
+        this.model[field.name] = v;
+      }
+    },
+    async renameOption(field, from, to) {
+      to = (to || '').trim();
+      if (!to || to === from) return;
+      const opts = (field.options || []).map((o) => (o === from ? to : o));
+      await this.saveFieldOptions(field.name, opts, [{ property: field.name, from, to }]);
+      // migra o valor do model atual (a migração do servidor cobre as outras tarefas)
+      if (field.type === 'multiselect') {
+        this.model[field.name] = this.msValues(field.name).map((x) => (x === from ? to : x)).join(';');
+      } else if (this.model[field.name] === from) {
+        this.model[field.name] = to;
+      }
+    },
+    async deleteOption(field, value) {
+      const opts = (field.options || []).filter((o) => o !== value);
+      await this.saveFieldOptions(field.name, opts);
+      if (field.type === 'multiselect') {
+        this.model[field.name] = this.msValues(field.name).filter((x) => x !== value).join(';');
+      } else if (this.model[field.name] === value) {
+        this.model[field.name] = '';
+      }
+    },
+    // status: salva grupos/etapas (cor/label/mover/excluir) — migra tarefas em renames
+    async onSaveStatus(payload) {
+      try {
+        await saveStatus(payload);
+        this.$emit('config-changed');
+      } catch (e) { this.errorMsg = e.message || 'Falha ao salvar status.'; }
     },
     onBodyInput(v) {
       this.model.body = v;
@@ -492,13 +780,20 @@ export default {
       this.iconMenuPos = { x: left, y: top };
       this.iconMenuOpen = true;
       // popover é position:fixed (Teleport) — fecha em scroll/resize pra não flutuar
-      // desalinhado do gatilho (o corpo do peek é rolável). capture pega scroll interno.
-      window.addEventListener('scroll', this.closeIconMenu, true);
+      // desalinhado do gatilho (o corpo do peek é rolável). onScrollClose IGNORA o
+      // scroll interno do próprio picker (lista/categorias de emoji) — senão rolar
+      // ou clicar numa categoria (que rola a lista) fechava o seletor.
+      window.addEventListener('scroll', this.onScrollClose, true);
       window.addEventListener('resize', this.closeIconMenu, true);
+    },
+    onScrollClose(e) {
+      const t = e && e.target;
+      if (t && t.nodeType === 1 && t.closest && t.closest('.icon-pop')) return; // scroll dentro do picker → mantém aberto
+      this.closeIconMenu();
     },
     closeIconMenu() {
       if (this.iconMenuOpen) this.iconMenuOpen = false;
-      window.removeEventListener('scroll', this.closeIconMenu, true);
+      window.removeEventListener('scroll', this.onScrollClose, true);
       window.removeEventListener('resize', this.closeIconMenu, true);
     },
     // payload do vue3-emoji-picker: { i: '😀', u, n, r, t }. O glifo é `i` no modo
@@ -548,13 +843,6 @@ export default {
     setDate(name, localStr) {
       this.model[name] = localStr ? fromDateTimeLocal(localStr) : '';
     },
-    loadHideEmpty() {
-      try { return localStorage.getItem(HIDE_EMPTY_KEY) === '1'; } catch (e) { return false; }
-    },
-    toggleHideEmpty() {
-      this.hideEmpty = !this.hideEmpty;
-      try { localStorage.setItem(HIDE_EMPTY_KEY, this.hideEmpty ? '1' : '0'); } catch (e) { /* ignore */ }
-    },
     autoGrow() {
       const el = this.$refs.title;
       if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
@@ -562,8 +850,9 @@ export default {
   },
   beforeUnmount() {
     // limpa listeners do popover de ícone caso o componente seja destruído aberto
-    window.removeEventListener('scroll', this.closeIconMenu, true);
+    window.removeEventListener('scroll', this.onScrollClose, true);
     window.removeEventListener('resize', this.closeIconMenu, true);
+    this.cancelTimers();
   },
 };
 </script>
@@ -591,5 +880,12 @@ export default {
   border: none;
   box-shadow: none;
   border-radius: 0;
+  width: 320px;
+}
+/* garante que a LISTA de emojis tenha altura própria e role internamente —
+   sem isso o popover cortava os emojis (não dava pra ver/rolar o resto). */
+.icon-pop :deep(.v3-body) {
+  height: 264px;
+  overflow-y: auto;
 }
 </style>

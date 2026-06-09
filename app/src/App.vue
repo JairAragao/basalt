@@ -94,6 +94,41 @@
           </svg>
         </button>
 
+        <!-- Notificações (sino + painel) -->
+        <div class="relative z-50">
+          <button class="icon-btn relative h-8 w-8" title="Notificações" @click="toggleNotif">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8.5 16a1.5 1.5 0 0 0 3 0" stroke-linecap="round" /></svg>
+            <span v-if="notifications.length" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-white">{{ notifications.length > 9 ? '9+' : notifications.length }}</span>
+          </button>
+          <template v-if="notifOpen">
+            <div class="fixed inset-0 z-40" @click="notifOpen = false"></div>
+            <div class="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-ink-500 bg-ink-850 shadow-2xl">
+              <div class="flex items-center justify-between border-b border-ink-500 px-3 py-2">
+                <span class="text-[13px] font-medium">Notificações</span>
+                <button v-if="notifications.length" class="text-[12px] text-faint hover:text-muted" @click="clearAllNotif">Limpar tudo</button>
+              </div>
+              <div class="max-h-96 overflow-y-auto">
+                <div v-if="!notifications.length" class="px-3 py-6 text-center text-[12px] text-faint">Nada por aqui.</div>
+                <div
+                  v-for="n in notifications"
+                  :key="n.id"
+                  class="group/n flex cursor-pointer items-start gap-2 border-b border-ink-500/40 px-3 py-2 transition-colors hover:bg-ink-700"
+                  @click="openNotif(n)"
+                >
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-[13px] text-txt">{{ n.title }}</div>
+                    <div class="truncate text-[12px] text-muted">{{ n.summary }}</div>
+                    <div class="mt-0.5 text-[11px] text-faint">por {{ n.author }}</div>
+                  </div>
+                  <button class="icon-btn h-6 w-6 flex-shrink-0 opacity-0 group-hover/n:opacity-100" title="Dispensar" @click.stop="clearOneNotif(n.id)">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
         <!-- Recarregar -->
         <button class="icon-btn h-8 w-8" title="Recarregar" :disabled="loading" @click="reload">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" :class="{ 'animate-spin': loading }">
@@ -124,6 +159,7 @@
         :vault="vaultStatus"
         @vault-set="onVaultSet"
         @revalidated="onSetupRevalidated"
+        @registered="onRegistered"
         @dismiss="onWizardDismiss"
       />
 
@@ -167,13 +203,18 @@
       </template>
     </main>
 
-    <!-- Peek lateral (criar/editar) -->
+    <!-- Peek lateral (criar/editar) — auto-save, sem botões -->
     <TaskPeek
       v-if="config"
       :open="peekOpen"
       :config="config"
       :task="editingTask"
+      :users="users"
       @saved="onSaved"
+      @autosaved="onAutosaved"
+      @created="onCreated"
+      @synced="onSynced"
+      @config-changed="onConfigChanged"
       @delete="confirmDelete"
       @close="peekOpen = false"
     />
@@ -216,6 +257,7 @@
 </template>
 
 <script>
+import { computed } from 'vue';
 import Board from './components/Board.vue';
 import TableView from './components/TableView.vue';
 import TaskPeek from './components/TaskPeek.vue';
@@ -223,13 +265,18 @@ import Settings from './components/Settings.vue';
 import SetupWizard from './components/SetupWizard.vue';
 import Dropdown from './components/Dropdown.vue';
 import TitleBar from './components/TitleBar.vue';
-import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault } from './api';
+import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications } from './api';
 
 const COLOR_KEY = 'basalt.colorColumns';
+const AUTO_PULL_MS = 60000; // auto-pull periódico p/ trazer mudanças + notificações
 
 export default {
   name: 'App',
   components: { Board, TableView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar },
+  // disponibiliza o roster (reativo) para componentes filhos (ex.: TaskCard resolve user id → nome)
+  provide() {
+    return { basaltUsers: computed(() => this.users) };
+  },
   data() {
     return {
       config: null,
@@ -254,6 +301,10 @@ export default {
       configuring: false,  // true = mostrando o SetupWizard (1ª run / adicionar aba)
       addingVault: false,  // true = "+" (vault NOVO, do zero) vs 1ª run
       toast: { show: false, text: '', type: 'success', timer: null },
+      users: [],           // roster do time (config/users.json)
+      notifications: [],   // notificações locais do vault ativo
+      notifOpen: false,    // painel de notificações aberto?
+      pullTimer: null,     // intervalo do auto-pull
     };
   },
   computed: {
@@ -362,6 +413,10 @@ export default {
         this.filters = f;
         const s = this.config.board && this.config.board.sort;
         if (s && s.by) this.sort = { by: s.by, dir: s.dir || 'desc' };
+        // roster + notificações (best-effort — não bloqueiam o board)
+        try { this.users = (await getUsers()) || []; } catch (e) { this.users = []; }
+        try { this.notifications = (await getNotifications()) || []; } catch (e) { this.notifications = []; }
+        this.startAutoPull();
       } catch (e) {
         this.loadError = e.message || 'Erro desconhecido.';
       }
@@ -421,6 +476,10 @@ export default {
       await this.loadActive();
       this.notify('Vault definido.');
     },
+    // Usuário se cadastrou/atualizou no wizard → atualiza o roster em memória.
+    onRegistered(r) {
+      if (r && Array.isArray(r.users)) this.users = r.users;
+    },
     // Revalidação do wizard: recebe { health, vault } atualizados.
     onSetupRevalidated(payload) {
       const h = payload && payload.health;
@@ -446,6 +505,7 @@ export default {
         const res = await syncPull();
         if (res && res.ok) {
           this.notify(res.message || 'Sincronizado.');
+          this.applyPull(res);
           await this.reload();
         } else {
           this.notify((res && (res.error || res.message)) || 'Falha ao sincronizar.', 'error');
@@ -455,6 +515,63 @@ export default {
       } finally {
         this.syncing = false;
       }
+    },
+    // Aplica o resultado do pull: atualiza notificações + avisa se vieram novas.
+    applyPull(res) {
+      if (!res) return;
+      if (Array.isArray(res.notifications)) this.notifications = res.notifications;
+      const fresh = (res.newNotifications || []).length;
+      if (fresh) this.notify(`${fresh} ${fresh === 1 ? 'nova notificação' : 'novas notificações'}`);
+    },
+    // ── auto-pull periódico (traz mudanças de outros + dispara notificações) ──
+    startAutoPull() {
+      this.stopAutoPull();
+      this.pullTimer = setInterval(() => { this.silentPull(); }, AUTO_PULL_MS);
+    },
+    stopAutoPull() {
+      if (this.pullTimer) { clearInterval(this.pullTimer); this.pullTimer = null; }
+    },
+    async silentPull() {
+      if (this.syncing || !this.config) return;
+      try {
+        const res = await syncPull();
+        if (res && res.ok) {
+          this.applyPull(res);
+          const tasks = await listTasks();
+          this.tasks = Array.isArray(tasks) ? tasks : [];
+        }
+      } catch (e) { /* silencioso */ }
+    },
+    // ── eventos do TaskPeek (auto-save / auto-create) ──
+    async onAutosaved(saved) {
+      if (saved && saved.warning) this.notify(saved.warning, 'error');
+      await this.reload(); // atualiza o board, mantém o dialog aberto
+    },
+    async onCreated(saved) {
+      if (saved && saved.warning) this.notify(saved.warning, 'error');
+      await this.reload();
+    },
+    async onSynced(res) {
+      this.applyPull(res);
+      await this.reload();
+    },
+    // kebab da propriedade alterou o schema (label/tipo/oculto): recarrega config + tarefas
+    async onConfigChanged() {
+      await this.loadActive();
+    },
+    // ── notificações (UI) ──
+    toggleNotif() { this.notifOpen = !this.notifOpen; },
+    openNotif(n) {
+      this.notifOpen = false;
+      const t = this.tasks.find((x) => x.id === (n && n.taskId));
+      if (t) this.openEdit(t);
+      else this.notify('Tarefa não encontrada (pode ter sido removida).', 'error');
+    },
+    async clearOneNotif(id) {
+      try { this.notifications = (await clearNotifications(id)) || []; } catch (e) { /* noop */ }
+    },
+    async clearAllNotif() {
+      try { this.notifications = (await clearNotifications()) || []; this.notifOpen = false; } catch (e) { /* noop */ }
     },
     async reload() {
       if (!this.config) return this.bootstrap();
@@ -516,6 +633,9 @@ export default {
       this.toast = { show: true, text, type, timer: null };
       this.toast.timer = setTimeout(() => { this.toast.show = false; }, 3200);
     },
+  },
+  beforeUnmount() {
+    this.stopAutoPull();
   },
 };
 </script>

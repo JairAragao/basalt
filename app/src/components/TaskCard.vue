@@ -29,24 +29,25 @@
         <img v-if="isImg(iconValue)" :src="iconValue" alt="" class="h-5 w-5 rounded object-cover" />
         <span v-else class="text-base leading-none">{{ iconValue }}</span>
       </span>
-      <div class="flex-1 text-[13px] font-medium leading-snug text-txt">
+      <div class="line-clamp-3 flex-1 text-[13px] font-medium leading-snug text-txt">
         {{ titleValue || '(sem título)' }}
       </div>
     </div>
 
-    <div v-if="hasMeta" class="mt-2 flex flex-wrap items-center gap-1.5">
-      <span
+    <!-- propriedades: UMA por linha (estilo Notion) — não cortam mais por overflow -->
+    <div v-if="hasMeta" class="mt-2 space-y-1">
+      <div
         v-for="chip in extraChips"
         :key="chip.key"
-        class="pill border border-ink-500 bg-ink-600 text-muted"
-      >{{ chip.value }}</span>
+        class="flex items-baseline gap-1.5 text-[12px]"
+      >
+        <span class="flex-shrink-0 text-faint">{{ chip.label }}</span>
+        <span class="min-w-0 break-words text-muted">{{ chip.value }}</span>
+      </div>
 
-      <span
-        v-if="badgeValue !== null && badgeValue !== undefined && badgeValue !== ''"
-        class="pill"
-        :class="badgeClass"
-        :title="badgeLabel"
-      >⚡ {{ badgeValue }}</span>
+      <div v-if="badgeValue !== null && badgeValue !== undefined && badgeValue !== ''">
+        <span class="pill" :class="badgeClass" :title="badgeLabel">⚡ {{ badgeValue }}</span>
+      </div>
     </div>
 
     <div v-if="subtitleValue" class="mt-2 flex items-center gap-1.5 text-[11px] text-faint">
@@ -63,6 +64,7 @@ import { displayValue, isImageRef } from '../format';
 
 export default {
   name: 'TaskCard',
+  inject: { injectedUsers: { from: 'basaltUsers', default: null } },
   props: {
     task: { type: Object, required: true },
     config: { type: Object, required: true },
@@ -70,8 +72,23 @@ export default {
   },
   methods: {
     isImg(v) { return isImageRef(v); },
+    // formata valor p/ exibição: multiselect (a;b;c → "a, b, c"), user (id → nome).
+    formatVal(prop, v) {
+      if (prop && prop.type === 'multiselect') {
+        return String(v).split(';').map((s) => s.trim()).filter(Boolean).join(', ');
+      }
+      if (prop && prop.type === 'user') {
+        const u = this.usersList.find((x) => x.id === v);
+        return u ? (u.nome || u.id) : v;
+      }
+      return displayValue(prop, v);
+    },
   },
   computed: {
+    usersList() {
+      const i = this.injectedUsers;
+      return (i && i.value) ? i.value : [];
+    },
     cardCfg() { return (this.config.board && this.config.board.card) || {}; },
     properties() { return (this.config.schema && this.config.schema.properties) || {}; },
     coverValue() { return this.task.cover || null; },
@@ -104,7 +121,10 @@ export default {
       const out = [];
       this.fieldKeys.forEach((key) => {
         const v = this.task[key];
-        if (v !== null && v !== undefined && v !== '') out.push({ key, value: displayValue(this.properties[key], v) });
+        if (v === null || v === undefined || v === '') return;
+        const prop = this.properties[key] || {};
+        if (prop.hidden) return; // propriedade oculta não aparece no card
+        out.push({ key, label: prop.label || key, value: this.formatVal(prop, v) });
       });
       return out;
     },

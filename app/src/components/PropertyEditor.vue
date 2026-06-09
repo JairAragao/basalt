@@ -43,9 +43,9 @@
 
         <!-- editores específicos do tipo (ocultos p/ sistema) -->
         <div v-if="!prop.system" class="mt-2 space-y-2">
-          <!-- options (enum): cada opção editável (rename) + excluir + adicionar -->
-          <div v-if="prop.type === 'enum'" class="rounded-md border border-ink-500 bg-ink-800 p-2">
-            <div class="mb-1.5 text-[11px] text-faint">Opções</div>
+          <!-- options (enum/multiselect): cada opção editável (rename) + excluir + adicionar -->
+          <div v-if="prop.type === 'enum' || prop.type === 'multiselect'" class="rounded-md border border-ink-500 bg-ink-800 p-2">
+            <div class="mb-1.5 text-[11px] text-faint">Opções{{ prop.type === 'multiselect' ? ' (múltipla escolha — gravadas separadas por “;”)' : '' }}</div>
             <div class="space-y-1.5">
               <div
                 v-for="opt in prop.options"
@@ -175,7 +175,7 @@ const nextUid = () => `p${++UID}`;
 let OUID = 0;
 const nextOptUid = () => `o${++OUID}`;
 
-const TYPE_LABELS = { string: 'Texto', enum: 'Lista', int: 'Número', formula: 'Fórmula' };
+const TYPE_LABELS = { string: 'Texto', enum: 'Seleção', multiselect: 'Seleção múltipla', user: 'Usuário', int: 'Número', formula: 'Fórmula' };
 
 function slugify(label) {
   return (label || '')
@@ -200,7 +200,9 @@ export default {
       error: '',
       typeOptions: [
         { value: 'string', label: 'Texto' },
-        { value: 'enum', label: 'Lista' },
+        { value: 'enum', label: 'Seleção' },
+        { value: 'multiselect', label: 'Seleção múltipla' },
+        { value: 'user', label: 'Usuário' },
         { value: 'int', label: 'Número' },
         { value: 'formula', label: 'Fórmula' },
       ],
@@ -233,6 +235,7 @@ export default {
           round: spec.type === 'formula' && spec.round !== undefined && spec.round !== null ? spec.round : undefined,
           required: !!spec.required,
           system: !!spec.system,
+          hidden: !!spec.hidden,
           default: spec.default,
         };
       });
@@ -240,7 +243,7 @@ export default {
     typeLabel(t) { return TYPE_LABELS[t] || t; },
     changeType(prop, v) {
       prop.type = v;
-      if (v === 'enum' && !Array.isArray(prop.options)) prop.options = [];
+      if ((v === 'enum' || v === 'multiselect') && !Array.isArray(prop.options)) prop.options = [];
       if (v === 'formula' && prop.expression === undefined) prop.expression = '';
     },
     addProp() {
@@ -258,6 +261,7 @@ export default {
         round: undefined,
         required: false,
         system: false,
+        hidden: false,
         default: undefined,
       });
     },
@@ -305,13 +309,14 @@ export default {
         if (!p.system && p.type === 'formula') {
           if (!(p.expression || '').trim()) return `A fórmula "${p.label.trim()}" precisa de uma expressão.`;
         }
-        if (!p.system && p.type === 'enum') {
+        if (!p.system && (p.type === 'enum' || p.type === 'multiselect')) {
           const vals = (p.options || []).map((o) => (o.value || '').trim());
-          if (!vals.length) return `A lista "${p.label.trim()}" precisa de ao menos uma opção.`;
-          if (vals.some((v) => !v)) return `A lista "${p.label.trim()}" tem uma opção sem nome.`;
+          if (!vals.length) return `A seleção "${p.label.trim()}" precisa de ao menos uma opção.`;
+          if (vals.some((v) => !v)) return `A seleção "${p.label.trim()}" tem uma opção sem nome.`;
+          if (vals.some((v) => v.includes(';'))) return `A opção "${vals.find((v) => v.includes(';'))}" não pode conter “;” (é o separador de múltipla escolha).`;
           const seenOpt = new Set();
           for (const v of vals) {
-            if (seenOpt.has(v)) return `A lista "${p.label.trim()}" tem a opção "${v}" duplicada.`;
+            if (seenOpt.has(v)) return `A seleção "${p.label.trim()}" tem a opção "${v}" duplicada.`;
             seenOpt.add(v);
           }
         }
@@ -344,7 +349,7 @@ export default {
         usedKeys.add(key);
 
         const spec = { type: p.type, label: (p.label || '').trim() };
-        if (p.type === 'enum') {
+        if (p.type === 'enum' || p.type === 'multiselect') {
           // achata opções (objeto -> string) e coleta renames de valor
           spec.options = (p.options || []).map((o) => (o.value || '').trim());
           for (const o of (p.options || [])) {
@@ -354,6 +359,7 @@ export default {
             }
           }
         }
+        if (p.hidden) spec.hidden = true;
         if (p.type === 'int') {
           if (p.min !== undefined && p.min !== null && p.min !== '') spec.min = Number(p.min);
           if (p.max !== undefined && p.max !== null && p.max !== '') spec.max = Number(p.max);

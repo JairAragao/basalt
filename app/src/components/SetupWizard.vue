@@ -129,6 +129,37 @@
           <span v-if="copied" class="text-[12px] text-green-400">Copiado!</span>
         </section>
 
+        <!-- ETAPA: VOCÊ (identidade local vinculada ao git) -->
+        <section v-else-if="step.id === 'voce'" class="space-y-3">
+          <div>
+            <h2 class="text-[15px] font-medium text-txt">Você</h2>
+            <p class="mt-1 text-[13px] leading-relaxed text-muted">
+              O Basalt identifica quem fez cada mudança pela <strong class="text-txt">identidade do git</strong>.
+              Confirme como você quer aparecer pro time — esse nome vai pro roster (<code class="font-mono">config/users.json</code>)
+              e é usado em campos do tipo <strong class="text-txt">Usuário</strong> e nas notificações. Dá pra editar depois.
+            </p>
+          </div>
+
+          <div class="rounded-md border border-ink-500 bg-ink-850 px-3 py-2 text-[11px] text-faint">
+            git: <span class="text-muted">{{ (me && me.gitName) || '—' }} &lt;{{ (me && me.gitEmail) || '—' }}&gt;</span>
+            <span v-if="me && me.userId"> · id: <span class="font-mono text-muted">{{ me.userId }}</span></span>
+          </div>
+
+          <label class="block">
+            <span class="mb-1 block text-[12px] text-faint">Nome visível</span>
+            <input v-model="myName" class="field" placeholder="Como você aparece pro time" @keydown.enter.prevent="registerMe" />
+          </label>
+
+          <div class="flex items-center gap-2">
+            <button
+              class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+              :disabled="savingMe || !myName.trim()"
+              @click="registerMe"
+            >{{ savingMe ? 'Salvando…' : (me && me.entry ? 'Atualizar meu nome' : 'Cadastrar-me') }}</button>
+            <span v-if="meMsg" class="text-[12px]" :class="meMsgType === 'error' ? 'text-red-300' : 'text-green-400'">{{ meMsg }}</span>
+          </div>
+        </section>
+
         <!-- ETAPA: PRONTO -->
         <section v-else-if="step.id === 'done'" class="grid place-items-center gap-3 py-8 text-center">
           <span class="grid h-12 w-12 place-items-center rounded-full bg-green-500/15 text-green-400">
@@ -181,7 +212,7 @@
 
 <script>
 import FolderPicker from './FolderPicker.vue';
-import { getHealthGit, getVault, setVault } from '../api';
+import { getHealthGit, getVault, setVault, getMe, registerUser } from '../api';
 
 export default {
   name: 'SetupWizard',
@@ -205,6 +236,12 @@ export default {
       vaultMsg: '',
       vaultMsgType: 'success',
       picked: false, // um vault foi escolhido/validado nesta sessão do wizard
+      // passo "Você" — identidade local vinculada ao git
+      me: null,
+      myName: '',
+      savingMe: false,
+      meMsg: '',
+      meMsgType: 'success',
       welcomeFacts: [
         { t: 'Arquivos, não banco', d: 'Cada tarefa é um .md legível, commitado no git. Versionável, portável, à prova de lock-in.', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M5 3h6l4 4v10H5z"/><path d="M11 3v4h4" stroke-linejoin="round"/></svg>' },
         { t: 'Local-first', d: 'Roda na sua máquina. Sem servidor remoto obrigatório, sem login. Você controla os dados.', icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><rect x="3" y="4" width="14" height="9" rx="1"/><path d="M7 17h6M10 13v4" stroke-linecap="round"/></svg>' },
@@ -224,6 +261,7 @@ export default {
         { id: 'welcome', label: 'Início' },
         { id: 'folder', label: 'Pasta' },
         { id: 'git', label: 'Git' },
+        { id: 'voce', label: 'Você' },
         { id: 'done', label: 'Pronto' },
       ];
     },
@@ -239,8 +277,14 @@ export default {
       return true;
     },
     nextLabel() {
-      if (this.step.id === 'git') return 'Concluir';
+      if (this.step.id === 'voce') return 'Concluir';
       return 'Próximo';
+    },
+  },
+  watch: {
+    idx() {
+      // ao chegar no passo "Você", carrega a identidade (1ª vez)
+      if (this.step.id === 'voce' && !this.me) this.loadMe();
     },
   },
   mounted() {
@@ -311,6 +355,33 @@ export default {
           navigator.clipboard.writeText(text).then(done).catch(() => {});
         }
       } catch (e) { /* ignore */ }
+    },
+    // ── passo "Você" ──
+    async loadMe() {
+      try {
+        this.me = await getMe();
+        this.myName = (this.me && this.me.entry && this.me.entry.nome) || (this.me && this.me.gitName) || '';
+      } catch (e) {
+        this.me = null;
+      }
+    },
+    async registerMe() {
+      const nome = (this.myName || '').trim();
+      if (!nome) return;
+      this.savingMe = true;
+      this.meMsg = '';
+      try {
+        const r = await registerUser(nome);
+        this.meMsgType = 'success';
+        this.meMsg = 'Salvo.';
+        if (r && r.entry) this.me = { ...(this.me || {}), userId: r.userId, entry: r.entry };
+        this.$emit('registered', r);
+      } catch (e) {
+        this.meMsgType = 'error';
+        this.meMsg = e.message || 'Falha ao salvar.';
+      } finally {
+        this.savingMe = false;
+      }
     },
   },
 };

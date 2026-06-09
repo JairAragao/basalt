@@ -71,6 +71,30 @@
       </div>
       <div v-else class="be-slash__empty">Nenhum bloco</div>
     </div>
+
+    <!-- handle de bloco (6 pontinhos) à esquerda do bloco sob o cursor -->
+    <button
+      v-show="bh.visible && !bm.open"
+      class="be-blockhandle"
+      :style="{ top: bh.top + 'px' }"
+      title="Opções do bloco"
+      @mousedown.prevent
+      @click="openBlockMenu"
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
+    </button>
+
+    <!-- menu do bloco: transformar (dentro do que o .md suporta) / duplicar / excluir -->
+    <div v-show="bm.open" ref="blockMenu" class="be-blockmenu" :style="{ left: bm.x + 'px', top: bm.y + 'px' }">
+      <div class="be-blockmenu__label">Transformar em</div>
+      <button v-for="item in turnIntoItems" :key="item.id" class="be-slash__item" @mousedown.prevent @click="turnInto(item)">
+        <span class="be-slash__icon" v-html="item.icon"></span>
+        <span class="be-slash__title">{{ item.title }}</span>
+      </button>
+      <div class="be-blockmenu__sep"></div>
+      <button class="be-slash__item" @mousedown.prevent @click="duplicateBlock"><span class="be-slash__title">Duplicar</span></button>
+      <button class="be-slash__item be-blockmenu__danger" @mousedown.prevent @click="deleteBlock"><span class="be-slash__title">Excluir</span></button>
+    </div>
   </div>
 </template>
 
@@ -151,9 +175,16 @@ export default {
         vpBottom: 0,
       },
       slashItems: buildSlashItems(),
+      // handle de bloco (6 pontinhos) + menu do bloco sob o cursor
+      bh: { visible: false, top: 0, start: 0, end: 0 },
+      bm: { open: false, x: 0, y: 0 },
     };
   },
   computed: {
+    // itens de "transformar em" = blocos do slash, menos o divisor (não é um bloco-alvo)
+    turnIntoItems() {
+      return this.slashItems.filter((i) => i.id !== 'divider');
+    },
     filteredSlashItems() {
       const q = norm(this.slash.query);
       if (!q) return this.slashItems;
@@ -304,9 +335,24 @@ export default {
     );
 
     this.refreshMarks();
+
+    // handle de bloco: segue o cursor sobre a superfície de edição
+    this._onSurfaceMove = (e) => self.onSurfaceMouseMove(e);
+    this._onSurfaceLeave = () => { if (!self.bm.open) self.bh.visible = false; };
+    const surf = this.$refs.editor;
+    if (surf) {
+      surf.addEventListener('mousemove', this._onSurfaceMove);
+      surf.addEventListener('mouseleave', this._onSurfaceLeave);
+    }
   },
   beforeUnmount() {
     document.removeEventListener('mousedown', this.onDocMouseDown, true);
+    document.removeEventListener('mousedown', this.onBlockDocMouseDown, true);
+    const surf = this.$refs.editor;
+    if (surf) {
+      surf.removeEventListener('mousemove', this._onSurfaceMove);
+      surf.removeEventListener('mouseleave', this._onSurfaceLeave);
+    }
     this.editor && this.editor.destroy();
     this.editor = null;
   },
@@ -465,6 +511,61 @@ export default {
       const menu = this.$refs.slashMenu;
       if (menu && menu.contains(e.target)) return;
       this.closeSlash();
+    },
+
+    // ---- handle de bloco (6 pontinhos por linha, estilo Notion) ----
+    onSurfaceMouseMove(e) {
+      if (!this.editor || this.bm.open) return;
+      const view = this.editor.view;
+      let res;
+      try { res = view.posAtCoords({ left: e.clientX, top: e.clientY }); } catch (_) { res = null; }
+      if (!res) return;
+      let $pos;
+      try { $pos = view.state.doc.resolve(res.pos); } catch (_) { return; }
+      if ($pos.depth < 1) return;
+      const start = $pos.before(1); // limite do bloco top-level
+      const end = $pos.after(1);
+      let coords;
+      try { coords = view.coordsAtPos(start + 1); } catch (_) { return; }
+      const host = this.$el.getBoundingClientRect();
+      this.bh = { visible: true, top: coords.top - host.top, start, end };
+    },
+    openBlockMenu() {
+      this.bm = { open: true, x: 6, y: this.bh.top };
+      this.$nextTick(() => { document.addEventListener('mousedown', this.onBlockDocMouseDown, true); });
+    },
+    closeBlockMenu() {
+      this.bm.open = false;
+      document.removeEventListener('mousedown', this.onBlockDocMouseDown, true);
+    },
+    onBlockDocMouseDown(e) {
+      const menu = this.$refs.blockMenu;
+      if (menu && menu.contains(e.target)) return;
+      this.closeBlockMenu();
+    },
+    turnInto(item) {
+      if (!this.editor || !item) return;
+      const start = this.bh.start;
+      this.closeBlockMenu();
+      const chain = this.editor.chain().focus().setTextSelection(start + 1);
+      item.action(chain); // a action já chama .run()
+      this.refreshMarks();
+    },
+    deleteBlock() {
+      if (!this.editor) return;
+      const { start, end } = this.bh;
+      this.closeBlockMenu();
+      this.bh.visible = false;
+      this.editor.chain().focus().deleteRange({ from: start, to: end }).run();
+    },
+    duplicateBlock() {
+      if (!this.editor) return;
+      const { start, end } = this.bh;
+      this.closeBlockMenu();
+      let node;
+      try { node = this.editor.state.doc.nodeAt(start); } catch (_) { node = null; }
+      if (!node) return;
+      this.editor.chain().focus().insertContentAt(end, node.toJSON()).run();
     },
 
     // ---- colar / arrastar imagem (Ctrl+V, drag-and-drop) ----
@@ -827,4 +928,36 @@ export default {
   font-size: 12px;
   color: #6f6f6f;
 }
+
+/* ====== handle de bloco (6 pontinhos) ====== */
+.be-blockhandle {
+  position: absolute;
+  left: -22px;
+  width: 18px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: #6f6f6f;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.be-blockhandle:hover { background: #2a2a2a; color: #c8c8c6; }
+.be-blockhandle svg { width: 13px; height: 13px; }
+.be-blockmenu {
+  position: absolute;
+  z-index: 60;
+  width: 196px;
+  background: #252525;
+  border: 1px solid #373737;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+}
+.be-blockmenu__label { font-size: 11px; color: #6f6f6f; padding: 2px 8px 4px; }
+.be-blockmenu__sep { height: 1px; background: #373737; margin: 4px 0; }
+.be-blockmenu__danger .be-slash__title { color: #e0566b; }
 </style>

@@ -122,9 +122,36 @@ export function getHealthGit() {
   return request(`${BASE}/health/git`)
 }
 
-// Pull sob demanda (git pull --ff-only) -> { ok, message?, error? }
+// Pull sob demanda (git pull --ff-only) -> { ok, message?, error?, newNotifications, notifications }
 export function syncPull() {
   return request(`${BASE}/sync/pull`, { method: 'POST' })
+}
+
+// --- Usuários (roster) + identidade ---
+// roster do time: [{ id, nome, gitEmails, gitNames }]
+export function getUsers() {
+  return request(`${BASE}/users`)
+}
+// quem sou eu: { userId, gitName, gitEmail, entry }
+export function getMe() {
+  return request(`${BASE}/me`)
+}
+// identifica/cadastra o usuário local (gera/vincula userId no git config) -> { userId, entry, users }
+export function registerUser(nome) {
+  return request(`${BASE}/users/register`, { method: 'POST', body: JSON.stringify({ nome }) })
+}
+// edita o nome visível de uma entrada do roster -> { entry, users }
+export function updateUser(id, nome) {
+  return request(`${BASE}/users/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ nome }) })
+}
+
+// --- Notificações (locais por vault) ---
+export function getNotifications() {
+  return request(`${BASE}/notifications`)
+}
+// limpa uma (id) ou todas (sem id) -> lista restante
+export function clearNotifications(id) {
+  return request(`${BASE}/notifications/clear`, { method: 'POST', body: JSON.stringify(id ? { id } : {}) })
 }
 
 // --- Histórico / diff de uma tarefa ---
@@ -202,6 +229,12 @@ export default {
   listDir,
   getHealthGit,
   syncPull,
+  getUsers,
+  getMe,
+  registerUser,
+  updateUser,
+  getNotifications,
+  clearNotifications,
   getHistory,
   getDiff,
   uploadAsset
