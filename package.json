@@ -63,11 +63,12 @@
       "app/dist/**/*",
       "defaults/**/*",
       "basalt.png",
+      "basalt.ico",
       "package.json"
     ],
     "win": {
       "target": "nsis",
-      "icon": "basalt.png"
+      "icon": "basalt.ico"
     },
     "mac": {
       "target": "dmg",
