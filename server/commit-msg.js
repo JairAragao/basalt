@@ -85,26 +85,28 @@ function titleOf(data, titleKey) {
 }
 
 function describeChanges(oldData, newData, kind, id, titleKey) {
-  const tag = `task ${id}`;
+  // Usa o TÍTULO da tarefa (não o nome do arquivo) — a mensagem descreve o que
+  // mudou; o arquivo em si é rastreado pelo git (git log -- <arquivo>).
+  const title = titleOf(newData || oldData, titleKey);
 
   switch (kind) {
     case 'create':
-      return `${tag}: criada — ${titleOf(newData, titleKey)}`;
+      return `Criou: ${title}`;
 
     case 'delete':
-      return `${tag}: removida — ${titleOf(oldData, titleKey)}`;
+      return `Removeu: ${title}`;
 
     case 'move': {
       const de = fmt(oldData && oldData.status);
       const para = fmt(newData && newData.status);
-      return `${tag}: status ${de}→${para}`;
+      return `${title}: status ${de} → ${para}`;
     }
 
     case 'update':
     default: {
       const parts = diffFields(oldData, newData);
-      if (!parts.length) return `${tag}: sem alterações`;
-      return `${tag}: ${parts.join('; ')}`;
+      if (!parts.length) return `${title}: sem alterações`;
+      return `${title}: ${parts.join('; ')}`;
     }
   }
 }
