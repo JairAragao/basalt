@@ -237,6 +237,8 @@ export default {
           openOnClick: false,
           autolink: true,
           HTMLAttributes: { rel: 'noopener noreferrer nofollow' },
+          // só http(s)/mailto viram link — bloqueia javascript:/data: (XSS latente)
+          validate: (href) => /^(https?:\/\/|mailto:)/i.test(href),
         }),
         TaskList,
         TaskItem.configure({ nested: true }),
@@ -372,15 +374,12 @@ export default {
       // só em parágrafo (evita slash dentro de heading/lista já existentes)
       if ($from.parent.type.name !== 'paragraph') { this.closeSlash(); return; }
       const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n');
-      const match = /(?:^|\s)(\/[^\s/]*)$/.exec(textBefore);
-      // exige "/" no começo do bloco (ou após espaço) e sem espaço depois
+      // exige "/" no começo do bloco e sem espaço depois (Notion abre só no início)
       const startMatch = /^\/([^\s/]*)$/.exec(textBefore);
       if (!startMatch) {
-        // permite também slash isolado em bloco já com algum texto? Notion abre só no início.
         this.closeSlash();
         return;
       }
-      void match;
       const query = startMatch[1];
       // range absoluto do trecho "/..." p/ deletar ao aplicar
       const to = $from.pos;
@@ -701,9 +700,9 @@ export default {
   border-top-color: #d9a01e;
 }
 
-/* links */
+/* links — usa o accent âmbar da paleta (não indigo/violeta, fora do design system) */
 .body-editor__surface :deep(.ProseMirror a) {
-  color: #6a78d1;
+  color: #d9a01e;
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;

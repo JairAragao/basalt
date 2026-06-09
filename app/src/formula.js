@@ -52,14 +52,15 @@ export function formulaSpecs(schema) {
   return out;
 }
 
-// Escopo = só props numéricas finitas. Tolera string numérica ("4") vinda de
-// inputs ainda não coeridos — o save converte de qualquer modo (buildPayload).
+// Escopo = só props NUMÉRICAS finitas. Idêntico ao server (server/formula.js):
+// nada de coerção de string aqui, senão o preview ao vivo mostra um número que o
+// watcher gravaria como null (divergência preview × valor salvo). Os inputs int do
+// peek já usam v-model.number, então chegam como number.
 function numericScope(data) {
   const scope = {};
   if (data && typeof data === 'object') {
     for (const [k, v] of Object.entries(data)) {
       if (isNum(v)) scope[k] = v;
-      else if (typeof v === 'string' && v.trim() !== '' && isNum(Number(v))) scope[k] = Number(v);
     }
   }
   return scope;

@@ -153,7 +153,7 @@
             <BodyEditor
               :value="model.body"
               placeholder="Escreva algo…  ( / para comandos )"
-              @input="(v) => (model.body = v)"
+              @input="onBodyInput"
               @warning="(m) => (errorMsg = m)"
             />
           </div>
@@ -166,7 +166,7 @@
         <!-- seletor de ícone: popover flutuante ACIMA de tudo (Teleport → body) -->
         <Teleport to="body">
           <template v-if="iconMenuOpen">
-            <div class="fixed inset-0 z-[90]" @click="iconMenuOpen = false"></div>
+            <div class="fixed inset-0 z-[90]" @click="closeIconMenu"></div>
             <div
               class="icon-pop fixed z-[100] overflow-hidden rounded-xl border border-ink-500 bg-ink-850 shadow-2xl"
               :style="{ left: iconMenuPos.x + 'px', top: iconMenuPos.y + 'px' }"
@@ -217,14 +217,18 @@
 </template>
 
 <script>
+import { defineAsyncComponent } from 'vue';
 import { getTask, createTask, updateTask, uploadAsset } from '../api';
 import Dropdown from './Dropdown.vue';
 import CardHistory from './CardHistory.vue';
-import BodyEditor from './BodyEditor.vue';
-import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import { compute as computeFormulas } from '../formula';
 import { displayValue, toDateTimeLocal, fromDateTimeLocal, isImageRef } from '../format';
+
+// Lazy: tira o TipTap (BodyEditor) e o emoji picker do bundle inicial — só carregam
+// quando o peek/popover abre (melhora o cold start do app desktop).
+const BodyEditor = defineAsyncComponent(() => import('./BodyEditor.vue'));
+const EmojiPicker = defineAsyncComponent(() => import('vue3-emoji-picker'));
 
 const MODE_KEY = 'basalt.peekMode';
 const HIDE_EMPTY_KEY = 'basalt.hideEmptyProps';
@@ -243,6 +247,7 @@ export default {
       saving: false,
       errorMsg: '',
       historyOpen: false,
+      bodyEdited: false, // usuário mexeu no corpo? evita o loadBody tardio clobberar o que foi digitado
       hideEmpty: this.loadHideEmpty(),
       // ícone (emoji|URL) + capa (URL) da tarefa — metadados de página
       iconMenuOpen: false,
@@ -297,6 +302,7 @@ export default {
           label: prop.label || name,
           value: displayValue(prop, this.liveFormulas[name]),
           placeholder: '—',
+          kind: 'formula',
         });
       });
       // auditoria (auto): valor vem da task salva
@@ -309,14 +315,17 @@ export default {
             label: prop.label || name,
             value: displayValue(prop, this.task ? this.task[name] : null),
             placeholder: this.isEdit ? '—' : 'definido ao salvar',
+            kind: 'auto',
           });
         });
       return out;
     },
     // ── visibilidade de propriedades vazias (toggle estilo Notion) ──
+    // Campos de auditoria (kind 'auto') NUNCA contam como "vazios ocultáveis" —
+    // sempre serão preenchidos ao salvar; esconder created_at numa tarefa nova confunde.
     emptyCount() {
       const rows = this.rowFields.filter((f) => !f.required && this.isEmptyVal(this.model[f.name])).length;
-      const derived = this.derivedDisplay.filter((d) => this.isEmptyVal(d.value)).length;
+      const derived = this.derivedDisplay.filter((d) => d.kind === 'formula' && this.isEmptyVal(d.value)).length;
       return rows + derived;
     },
     visibleRowFields() {
@@ -325,7 +334,7 @@ export default {
     },
     visibleDerived() {
       if (!this.hideEmpty) return this.derivedDisplay;
-      return this.derivedDisplay.filter((d) => !this.isEmptyVal(d.value));
+      return this.derivedDisplay.filter((d) => d.kind !== 'formula' || !this.isEmptyVal(d.value));
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';
@@ -350,7 +359,7 @@ export default {
   watch: {
     open(v) {
       if (v) { this.initModel(); }
-      else { this.historyOpen = false; }
+      else { this.historyOpen = false; this.closeIconMenu(); }
     },
     // troca de tarefa fecha o histórico aberto (evita mostrar histórico antigo)
     task() { this.historyOpen = false; },
@@ -379,7 +388,8 @@ export default {
     initModel() {
       this.errorMsg = '';
       this.saving = false;
-      this.iconMenuOpen = false;
+      this.bodyEdited = false;
+      this.closeIconMenu();
       const m = { body: '' };
       this.inputFields.forEach((field) => {
         if (this.task && this.task[field.name] !== undefined && this.task[field.name] !== null) {
@@ -400,19 +410,13 @@ export default {
     async loadBody() {
       try {
         const full = await getTask(this.task.id);
-        if (full) {
-          this.model.body = full.body || '';
-          if (full.data) {
-            this.inputFields.forEach((field) => {
-              if (full.data[field.name] !== undefined && (this.model[field.name] === '' || this.model[field.name] === null)) {
-                this.model[field.name] = full.data[field.name];
-              }
-            });
-            if (full.data.icon !== undefined) this.model.icon = full.data.icon || '';
-            if (full.data.cover !== undefined) this.model.cover = full.data.cover || '';
-          }
-          this.$nextTick(() => { this.autoGrow(); });
-        }
+        if (!full) return;
+        // O frontmatter (campos, icon, cover) já veio da lista em initModel — aqui
+        // só falta o CORPO. NÃO reescreve campos (evitaria clobberar o que o usuário
+        // digitou/esvaziou entre abrir e o GET voltar). E só seta o body se o usuário
+        // ainda não o editou (o watcher do BodyEditor já protege a exibição com foco).
+        if (!this.bodyEdited) this.model.body = full.body || '';
+        this.$nextTick(() => { this.autoGrow(); });
       } catch (e) {
         this.errorMsg = e.message;
       }
@@ -465,6 +469,10 @@ export default {
     requestClose() {
       if (!this.saving) this.$emit('close');
     },
+    onBodyInput(v) {
+      this.model.body = v;
+      this.bodyEdited = true; // a partir daqui o loadBody tardio não sobrescreve o corpo
+    },
     isEmptyVal(v) {
       return v === null || v === undefined || v === '';
     },
@@ -472,7 +480,7 @@ export default {
     isImg(v) { return isImageRef(v); },
     // Abre o seletor de ícone como popover flutuante posicionado no gatilho.
     openIconMenu(e) {
-      if (this.iconMenuOpen) { this.iconMenuOpen = false; return; }
+      if (this.iconMenuOpen) { this.closeIconMenu(); return; }
       const el = e && e.currentTarget;
       const r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 80, top: 80, bottom: 100 };
       const W = 340, H = 450;
@@ -483,13 +491,24 @@ export default {
       if (top + H > window.innerHeight - 8) top = Math.max(8, r.top - H - 6); // abre pra cima
       this.iconMenuPos = { x: left, y: top };
       this.iconMenuOpen = true;
+      // popover é position:fixed (Teleport) — fecha em scroll/resize pra não flutuar
+      // desalinhado do gatilho (o corpo do peek é rolável). capture pega scroll interno.
+      window.addEventListener('scroll', this.closeIconMenu, true);
+      window.addEventListener('resize', this.closeIconMenu, true);
     },
-    // payload do vue3-emoji-picker: { i: '😀', n: [...], r, t }
+    closeIconMenu() {
+      if (this.iconMenuOpen) this.iconMenuOpen = false;
+      window.removeEventListener('scroll', this.closeIconMenu, true);
+      window.removeEventListener('resize', this.closeIconMenu, true);
+    },
+    // payload do vue3-emoji-picker: { i: '😀', u, n, r, t }. O glifo é `i` no modo
+    // native; cai pra `u`/`native` se algum grupo (flag/skin-tone) vier sem `i`.
     onEmojiSelect(emoji) {
-      if (emoji && emoji.i) this.model.icon = emoji.i;
-      this.iconMenuOpen = false;
+      const glyph = emoji && (emoji.i || emoji.u || emoji.native);
+      if (glyph) this.model.icon = glyph;
+      this.closeIconMenu();
     },
-    removeIcon() { this.model.icon = ''; this.iconMenuOpen = false; },
+    removeIcon() { this.model.icon = ''; this.closeIconMenu(); },
     triggerUpload(target) {
       this.uploadTarget = target;
       const el = this.$refs.fileInput;
@@ -513,7 +532,7 @@ export default {
         if (r && r.url) {
           if (this.uploadTarget === 'cover') this.model.cover = r.url;
           else this.model.icon = r.url;
-          this.iconMenuOpen = false;
+          this.closeIconMenu();
         }
         if (r && r.warning) this.errorMsg = r.warning;
       } catch (err) {
@@ -540,6 +559,11 @@ export default {
       const el = this.$refs.title;
       if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
     },
+  },
+  beforeUnmount() {
+    // limpa listeners do popover de ícone caso o componente seja destruído aberto
+    window.removeEventListener('scroll', this.closeIconMenu, true);
+    window.removeEventListener('resize', this.closeIconMenu, true);
   },
 };
 </script>

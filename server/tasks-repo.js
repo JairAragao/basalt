@@ -141,6 +141,19 @@ function update(id, data, body, actor) {
     if (k in ex) clean[k] = ex[k];
   }
   if ('computed_at' in ex) clean.computed_at = ex.computed_at;
+
+  // Preserva chaves ESTRANGEIRAS do frontmatter — adicionadas à mão, fora do schema
+  // e fora das geridas pela UI. O update não pode destruir dado que não conhece.
+  // Exclui: props do schema (omitir = limpar), icon/cover (metadados geridos pela
+  // UI, limpos por omissão) e derivados/auto/computed_at (tratados acima).
+  const props = (config.schema && config.schema.properties) || {};
+  const autoSet = new Set(autoKeys());
+  const PAGE_META = new Set(['icon', 'cover']);
+  for (const k of Object.keys(ex)) {
+    if (k === 'id' || k in clean) continue;
+    if (k in props || derivedKeys.includes(k) || k === 'computed_at' || autoSet.has(k) || PAGE_META.has(k)) continue;
+    clean[k] = ex[k];
+  }
   // Auditoria: preserva a criação; carimba a edição.
   const now = new Date().toISOString();
   const who = actor || '';

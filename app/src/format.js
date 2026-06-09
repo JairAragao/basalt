@@ -37,8 +37,10 @@ export function fromDateTimeLocal(localStr) {
   return d.toISOString();
 }
 
-// true se o valor é referência de IMAGEM (asset do vault / URL / data-uri) e não
-// um emoji/texto. Usado por ícone de tarefa e capa de card.
+// true se o valor é referência de IMAGEM (asset do vault ou data-uri) e não um
+// emoji/texto. Usado por ícone de tarefa e capa de card. SEM http(s) remoto:
+// alinhado com a CSP (img-src 'self' data: blob:) — um https colado à mão cai no
+// ramo de emoji/texto em vez de virar uma <img> quebrada pela CSP.
 export function isImageRef(v) {
-  return typeof v === 'string' && (/^\/api\/assets\//.test(v) || /^https?:\/\//.test(v) || /^data:image\//.test(v));
+  return typeof v === 'string' && (/^\/api\/assets\//.test(v) || /^data:image\//.test(v));
 }

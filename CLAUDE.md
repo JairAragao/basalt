@@ -67,7 +67,7 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 
 ### Vault (separação engine × dados)
 - **Vault** = pasta com `config/` + `tasks/` + **git próprio**. O engine é genérico; cada projeto = um vault.
-- Resolução do caminho (config.js, prioridade): `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › raiz do app (default).
+- Resolução do caminho (config.js, prioridade): `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › `~/.basalt/default-vault` (fallback gravável — não a raiz do app, que no empacotado é o `app.asar` read-only).
 - Vault novo/vazio é **semeado** copiando o template (`<appRoot>/defaults/*.json`); cria `config/`+`tasks/`; `git init` se faltar.
 - Endpoints: `GET /api/vault` (status, com flag **`isDefault`** = ainda no fallback da pasta do app), `POST /api/vault {path}` (define/seed/persiste/reload), `GET /api/fs/list` (navegador de pastas do picker). UI: **SetupWizard** (stepper) + **FolderPicker** (web) / diálogo nativo (Electron).
 - **`isDefault`**: enquanto o vault for a pasta do app, o wizard trata como "primeira run" e pede um vault próprio (ex.: `basalt-vault`). Resolve a antiga pendência de "tarefas no repo do engine".
@@ -93,7 +93,11 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 - chokidar observa `tasks/*.md`; recalcula campos fórmula; **anti-loop** (só grava se mudou); stamp `computed_at`; **NUNCA commita**. Re-observa o vault novo ao trocar.
 
 ### Git automático
-- Todo CRUD de tarefa **commita** (mensagem automática via `describeChanges` comparando frontmatter antes/depois) + **push** (best-effort; se falhar, resposta traz `warning` → toast). Identidade = git user do repo do vault. `created_*/updated_*/computed_at` são ignorados na mensagem (senão poluem).
+- Todo CRUD de tarefa (e edições de board/schema/asset) **commita** (mensagem automática via `describeChanges`) + **push** best-effort. Identidade = git user do repo do vault. `created_*/updated_*/computed_at` ignorados na mensagem.
+- **Serialização:** toda escrita git passa por uma fila única (`gitSerial`) **e** o `simple-git` usa `maxConcurrentProcesses:1` → nunca há 2 processos git ao mesmo tempo (sem colisão de `index.lock`); commits usam pathspec (`commit -- <paths>`).
+- **Commit é aguardado** (rápido, local) → erro de commit (ex.: identidade ausente) volta no `warning` da resposta na hora. **Push roda em background, coalescido** (resposta instantânea); falha de push é logada e surfaciada no `warning` da **próxima** resposta (1 op de atraso) — e em `GET /health/git` / botão de sync.
+- **Pull** (`/sync/pull`) é `--ff-only --autostash`; se o pop do autostash conflitar, o working tree é restaurado pro remoto (`reset --hard HEAD`) e a resposta vem `ok:false` — as mudanças locais ficam no stash (`git stash list`), **nunca corrompe o `.md`**.
+- ⚠️ Edges conhecidos (BAIXA, single-user): um `git` morto pelo timeout de 8s pode deixar `index.lock` stale; trocar de vault com um commit em voo pode não versionar aquele save (fica salvo no disco). Recuperação: novo save / `git status`.
 
 ## API REST (`/api`)
 `GET /config` · `GET /tasks` · `GET /tasks/:id` · `POST /tasks` · `PUT /tasks/:id` · `PATCH /tasks/:id/move` · `DELETE /tasks/:id` · `GET /tasks/:id/history` · `GET /tasks/:id/diff?hash=H` · `GET /vault` · `POST /vault` · `GET /fs/list?path=` · `GET /health/git` · `POST /sync/pull` · `PUT /board/status {statusGroups,renames}` · `PUT /board/filters {filters}` · `PUT /board/card {fields,subtitle,badge}` · `PUT /schema/properties {properties,renames,optionRenames}`.
@@ -109,8 +113,12 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 
 ## Pendente / próximos passos
 1. **Plugins (código)** — direção escolhida pra extensibilidade. Por ora a config declarativa cobre; o passo é presets/plugins de campos (ex.: GUTE, Dev) que injetam propriedades + ajustes de board com 1 clique (reusa `PUT /schema/properties`). GUTE é o 1º candidato.
-2. **Publicar releases** — rodar `npm run electron:build` e subir os instaladores no GitHub Releases (os botões da `basalt-lp` apontam pra lá).
-3. Otimizar bundle (TipTap deixa o JS ~800KB; lazy-load/manualChunks).
+2. **Publicar releases** — rodar `npm run electron:build` e subir os instaladores no GitHub Releases (os botões da `basalt-lp` apontam pra lá). Dívidas de release conhecidas:
+   - **Não assinado** — sem certificado → SmartScreen (Win)/Gatekeeper (Mac) avisam. Precisa de cert de code-signing.
+   - **Auto-update NÃO fiado** — o electron-builder gera `latest.yml`/`app-update.yml` (provider github), mas **não há `electron-updater` nem `build.publish` ligados** → o app não checa updates. Update é **manual** via basalt-lp. Pra fiar de verdade: add `electron-updater` + `build.publish`.
+   - **Ícone** — `basalt.png` é 461×443 (não-quadrado); ideal um `.ico`/`.icns` quadrado ≥256² por plataforma.
+   - **Electron** atualizado p/ **42** (electron-builder **26**) em 2026-06-09 (zerou as vulns de toolchain) — **fazer smoke-test do app empacotado** (abre, splash, `/api`, picker de pasta) ao validar um release.
+3. ~~Otimizar bundle~~ ✅ feito: BodyEditor (TipTap) e o emoji picker viraram chunks **lazy** (`defineAsyncComponent`) — bundle inicial caiu de ~1.05MB → **~448KB** (chunks sob demanda: BodyEditor ~510KB, emoji ~149KB).
 4. (opcional) `computed_at`/derivados: revisar exibição no peek.
 
 > Feito recentemente: migração Vue 3, app Electron, vault separado (`basalt-vault`), split de repos (engine/vault/lp), default mínimo, edição direta de etapas no board.

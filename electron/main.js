@@ -5,7 +5,7 @@
 // navegador web do FolderPicker).
 
 const path = require('path');
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session } = require('electron');
 
 // Sem menu de aplicação padrão (File/Edit/View/...). A navegação é toda na UI.
 Menu.setApplicationMenu(null);
@@ -142,6 +142,22 @@ ipcMain.handle('window:isMaximized', () => !!(mainWindow && mainWindow.isMaximiz
 ipcMain.on('app:ready', () => reveal());
 
 app.whenReady().then(async () => {
+  // CSP (defense-in-depth): o XSS já está fechado (markdown `html:false`), mas isto
+  // barra exfiltração caso uma regressão reabra HTML. App é offline/same-origin:
+  // só /api ('self') + data:/blob: pra imagens (assets + base64). Ajuste se quebrar.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; " +
+          "object-src 'none'; base-uri 'self'",
+        ],
+      },
+    });
+  });
+
   createSplash(); // splash instantânea enquanto o backend sobe + o app carrega
   try {
     const url = await startServer();

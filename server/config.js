@@ -6,7 +6,8 @@
 // VAULT (path absoluto) é resolvido por prioridade:
 //   (1) setting persistido em ~/.basalt/settings.json { "vaultPath": "..." }
 //   (2) env BASALT_VAULT
-//   (3) ROOT do app (default, retrocompat)
+//   (3) ~/.basalt/default-vault (fallback GRAVÁVEL — não a raiz do app, que no
+//       app empacotado é o app.asar read-only)
 //
 // Expõe: config.VAULT, config.CONFIG_DIR (=VAULT/config), config.TASKS_DIR
 // (=VAULT/tasks), config.ROOT (=appRoot, fonte dos defaults/seed), reload(),

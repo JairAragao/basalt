@@ -77,21 +77,22 @@ function diffFields(oldData, newData) {
   return parts;
 }
 
-function titleOf(data) {
+function titleOf(data, titleKey) {
   const d = data && typeof data === 'object' ? data : {};
-  const t = d.titulo;
+  // engine genérico: a chave do título vem do board (card.title), não é fixa.
+  const t = d[titleKey || 'titulo'];
   return isAbsent(t) ? '(sem título)' : String(t).trim();
 }
 
-function describeChanges(oldData, newData, kind, id) {
+function describeChanges(oldData, newData, kind, id, titleKey) {
   const tag = `task ${id}`;
 
   switch (kind) {
     case 'create':
-      return `${tag}: criada — ${titleOf(newData)}`;
+      return `${tag}: criada — ${titleOf(newData, titleKey)}`;
 
     case 'delete':
-      return `${tag}: removida — ${titleOf(oldData)}`;
+      return `${tag}: removida — ${titleOf(oldData, titleKey)}`;
 
     case 'move': {
       const de = fmt(oldData && oldData.status);

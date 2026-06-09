@@ -35,8 +35,10 @@ startWatcher({ TASKS_DIR: config.TASKS_DIR, schema: config.schema });
 // `app.listen(port, cb)` ele mesmo — incluindo porta 0 (livre) pra evitar conflito.
 const PORT = process.env.PORT || 4317;
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`basalt server on :${PORT}`);
+  // Bind SÓ em loopback: a API é local-first e sem auth — não pode ficar exposta
+  // na LAN (o caminho Electron já usa 127.0.0.1; aqui alinhamos o `npm start`/dev).
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`basalt server on 127.0.0.1:${PORT}`);
   });
 }
 

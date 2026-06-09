@@ -23,6 +23,9 @@ export default defineConfig({
   },
   build: {
     outDir: fileURLToPath(new URL('./dist', import.meta.url)),
-    emptyOutDir: true
+    emptyOutDir: true,
+    // BodyEditor (TipTap) e o emoji picker são chunks LAZY (carregam sob demanda);
+    // sobe o limite pra não avisar sobre eles — não pesam no bundle inicial (~448KB).
+    chunkSizeWarningLimit: 600
   }
 })

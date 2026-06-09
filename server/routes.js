@@ -56,16 +56,14 @@ function writeJsonAtomic(file, obj) {
   fs.renameSync(tmp, file);
 }
 
-// Faz push e devolve um warning (string) se falhar; undefined se OK. Nunca lança.
-async function pushOrWarn() {
-  const r = await git.pushNow();
-  if (r && r.ok === false) return `push falhou: ${r.error}`;
-  return undefined;
-}
-
 // Anexa warning à resposta JSON só quando existir (campo opcional do contrato).
 function withWarning(payload, warning) {
   return warning ? { ...payload, warning } : payload;
+}
+
+// Title key resolvido do board (engine genérico — não hardcoda 'titulo').
+function titleKeyOf() {
+  return (config.board && config.board.card && config.board.card.title) || 'titulo';
 }
 
 // Autor da mudança = usuário do git do vault (created_by/updated_by). Local-first,
@@ -74,25 +72,75 @@ function withWarning(payload, warning) {
 let _actorCache = null;
 if (typeof config.onVaultChange === 'function') config.onVaultChange(() => { _actorCache = null; });
 async function gitActor() {
-  if (_actorCache !== null) return _actorCache;
+  if (_actorCache) return _actorCache; // cacheia SÓ quando há nome (senão re-tenta)
   try {
     const id = await git.getIdentity();
-    _actorCache = (id && id.name) || '';
-  } catch {
-    _actorCache = '';
-  }
-  return _actorCache;
+    if (id && id.name) _actorCache = id.name;
+  } catch { /* re-tenta na próxima */ }
+  return _actorCache || '';
 }
 
-// Fila git SERIALIZADA — roda commit/push em BACKGROUND (depois de responder ao
-// cliente), uma op de cada vez (evita lock concorrente do git). Falha não derruba
-// a request: loga warning. É o que deixa o front instantâneo (o arquivo já foi
-// gravado de forma síncrona = fonte da verdade; git é bookkeeping).
+// Fila git SERIALIZADA — UMA op por vez (evita lock concorrente entre rotas que
+// compartilham o repo do vault). gitChain segue viva após falha.
 let gitChain = Promise.resolve();
-function enqueueGit(fn, label) {
-  gitChain = gitChain.then(fn).catch((e) => {
-    console.warn(`[git] ${label || 'op'} falhou:`, (e && e.message) || e);
-  });
+function gitSerial(fn) {
+  const run = gitChain.then(() => fn());
+  gitChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+// Warning do último push em background (best-effort) — surfaciado na PRÓXIMA
+// resposta (1 op de atraso), restaurando o feedback "push falhou → toast" sem
+// bloquear a request. take* lê e limpa (não repete o aviso).
+let _lastPushWarning;
+function takePushWarning() {
+  const w = _lastPushWarning;
+  _lastPushWarning = undefined;
+  return w;
+}
+
+// COMMIT serializado e AGUARDADO (rápido, local): devolve warning de commit (ex.:
+// identidade git ausente) ou, na falta dele, o warning do último push em background.
+// NUNCA lança. O arquivo já foi gravado de forma síncrona.
+async function commitAwaited(commitFn) {
+  let commitWarning;
+  try {
+    await gitSerial(commitFn);
+  } catch (e) {
+    commitWarning = `não versionado: ${(e && e.message) || e}`;
+  }
+  const pushWarning = takePushWarning(); // sempre lê+limpa (não fica pendurado)
+  return commitWarning || pushWarning;
+}
+
+// PUSH best-effort em BACKGROUND e COALESCIDO: não bloqueia a resposta (front
+// instantâneo) nem dispara pushes concorrentes. Um push pendente cobre todos os
+// commits acumulados; uma falha vira _lastPushWarning (surfaciado na próxima resposta).
+let _pushPending = false;
+let _pushRunning = false;
+function schedulePush() {
+  _pushPending = true;
+  if (_pushRunning) return;
+  _pushRunning = true;
+  // FORA da gitChain (não bloqueia o commit da próxima request no nível da app).
+  // A segurança real vem de: (a) o push NÃO toca .git/index.lock, e (b) a factory
+  // do simple-git usa maxConcurrentProcesses:1 → não há 2 processos git ao mesmo
+  // tempo (push×commit×pull serializam de verdade no git). Coalescido (1 loop por
+  // vez); `finally` interno (não num .then) fecha a janela de race do coalescing.
+  (async () => {
+    try {
+      while (_pushPending) {
+        _pushPending = false;
+        const r = await git.pushNow();
+        _lastPushWarning = (r && r.ok === false) ? `push falhou: ${r.error}` : undefined;
+        if (_lastPushWarning) console.warn('[git]', _lastPushWarning);
+      }
+    } catch (e) {
+      console.warn('[git] loop de push falhou:', (e && e.message) || e);
+    } finally {
+      _pushRunning = false;
+    }
+  })();
 }
 
 // ── Tarefas ──────────────────────────────────────────────────────────────────
@@ -229,9 +277,11 @@ router.post('/tasks', async (req, res) => {
     const { id } = tasksRepo.create(cleanData, taskBody, await gitActor());
     // Lê o que ficou gravado para a mensagem refletir o id/titulo finais.
     const after = safeGetData(id) || { ...cleanData, id };
-    const msg = describeChanges(null, after, 'create', id);
-    res.status(201).json({ id }); // responde já; git em background
-    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `create ${id}`);
+    const msg = describeChanges(null, after, 'create', id, titleKeyOf());
+    const file = taskFile(id);
+    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    schedulePush();
+    res.status(201).json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
 });
 
@@ -249,9 +299,11 @@ router.put('/tasks/:id', async (req, res) => {
     tasksRepo.update(id, cleanData, taskBody, await gitActor());
     const after = safeGetData(id) || { ...cleanData, id };
 
-    const msg = describeChanges(before, after, 'update', id);
-    res.json({ id }); // responde já; git em background
-    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `update ${id}`);
+    const msg = describeChanges(before, after, 'update', id, titleKeyOf());
+    const file = taskFile(id);
+    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    schedulePush();
+    res.json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
 });
 
@@ -265,9 +317,11 @@ router.patch('/tasks/:id/move', async (req, res) => {
     tasksRepo.update(id, { ...current.data, status: novoStatus }, current.body, await gitActor());
     const after = safeGetData(id) || { ...current.data, status: novoStatus };
 
-    const msg = describeChanges(before, after, 'move', id);
-    res.json({ id, status: novoStatus }); // responde já; git em background
-    enqueueGit(async () => { await git.commitTask(taskFile(id), msg); await git.pushNow(); }, `move ${id}`);
+    const msg = describeChanges(before, after, 'move', id, titleKeyOf());
+    const file = taskFile(id);
+    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    schedulePush();
+    res.json(withWarning({ id, status: novoStatus }, warning));
   } catch (err) { fail(res, err); }
 });
 
@@ -278,9 +332,10 @@ router.delete('/tasks/:id', async (req, res) => {
     // Frontmatter ANTES de remover (para citar o título na mensagem).
     const before = safeGetData(id);
     tasksRepo.remove(id);
-    const msg = describeChanges(before, null, 'delete', id);
-    res.json({ id }); // responde já; git em background
-    enqueueGit(async () => { await git.removeAndCommit(file, msg); await git.pushNow(); }, `delete ${id}`);
+    const msg = describeChanges(before, null, 'delete', id, titleKeyOf());
+    const warning = await commitAwaited(() => git.removeAndCommit(file, msg));
+    schedulePush();
+    res.json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
 });
 
@@ -297,8 +352,9 @@ function safeGetData(id) {
 // Pull sob demanda (fast-forward only). Nunca lança — devolve o resultado do git.
 router.post('/sync/pull', async (req, res) => {
   try {
-    const r = await git.pull();
-    res.status(r.ok ? 200 : 200).json(r);
+    const r = await gitSerial(() => git.pull()); // serializa com os commits/push
+    // resultado (ok/erro) vai no CORPO; status 200 — falha de pull não é erro HTTP.
+    res.json(r);
   } catch (err) { fail(res, err); }
 });
 
@@ -396,8 +452,8 @@ router.put('/board/status', async (req, res) => {
     }
 
     config.reload();
-    await git.commitPaths([boardFile(), ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`);
-    const warning = await pushOrWarn();
+    const warning = await commitAwaited(() => git.commitPaths([boardFile(), ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`));
+    schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -440,8 +496,8 @@ router.put('/board/filters', async (req, res) => {
     writeJsonAtomic(boardFile(), board);
 
     config.reload();
-    await git.commitPaths([boardFile()], `board: filtros atualizados (${clean.length})`);
-    const warning = await pushOrWarn();
+    const warning = await commitAwaited(() => git.commitPaths([boardFile()], `board: filtros atualizados (${clean.length})`));
+    schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -475,8 +531,8 @@ router.put('/board/card', async (req, res) => {
     writeJsonAtomic(boardFile(), board);
 
     config.reload();
-    await git.commitPaths([boardFile()], 'board: campos do cartão atualizados');
-    const warning = await pushOrWarn();
+    const warning = await commitAwaited(() => git.commitPaths([boardFile()], 'board: campos do cartão atualizados'));
+    schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -572,8 +628,8 @@ router.put('/schema/properties', async (req, res) => {
 
     config.reload();
     const optNote = optRn.length ? `, ${optRn.length} opção(ões) migrada(s)` : '';
-    await git.commitPaths([schemaFile(), ...changed], `schema: propriedades atualizadas${optNote}`);
-    const warning = await pushOrWarn();
+    const warning = await commitAwaited(() => git.commitPaths([schemaFile(), ...changed], `schema: propriedades atualizadas${optNote}`));
+    schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -598,20 +654,23 @@ function validateProperties(props) {
 // Guardadas em <vault>/assets/ (versionadas no git do vault, viajam no push/pull).
 // Servidas por /api/assets/<name> — resolve em dev (proxy), prod (estático) e
 // Electron (same-origin). O markdown referencia /api/assets/<name>.
+// SVG fora da allowlist DE PROPÓSITO: pode conter <script> e, servido same-origin,
+// vira vetor de XSS armazenado (e viaja no git/pull). Só raster.
 const ASSET_EXT = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif',
-  'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/bmp': 'bmp', 'image/avif': 'avif',
+  'image/webp': 'webp', 'image/bmp': 'bmp', 'image/avif': 'avif',
 };
 const ASSET_MIME = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', avif: 'image/avif',
+  webp: 'image/webp', bmp: 'image/bmp', avif: 'image/avif',
 };
 function assetsDir() {
   return path.join(config.VAULT, 'assets');
 }
 // nome path-safe: só [A-Za-z0-9._-], sem travessia de diretório.
 function safeAssetName(name) {
-  return typeof name === 'string' && /^[A-Za-z0-9._-]+$/.test(name) && !name.includes('..');
+  return typeof name === 'string' && /^[A-Za-z0-9._-]+$/.test(name)
+    && !name.includes('..') && name !== '.' && name !== '..';
 }
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 
@@ -636,15 +695,10 @@ router.post('/assets', async (req, res) => {
     fs.writeFileSync(tmp, buf);       // escrita atômica (.tmp + rename), como nas tarefas
     fs.renameSync(tmp, file);
 
-    // Versiona o asset (best-effort): se git falhar, o arquivo já existe e a
-    // imagem aparece localmente — só não viaja no push (vira warning).
-    let warning;
-    try {
-      await git.commitPaths([file], `assets: ${name}`);
-      warning = await pushOrWarn();
-    } catch (e) {
-      warning = `imagem salva, mas não versionada: ${e.message}`;
-    }
+    // Versiona o asset (best-effort, serializado): se git falhar, o arquivo já
+    // existe e a imagem aparece localmente — só não viaja no push (best-effort).
+    const warning = await commitAwaited(() => git.commitPaths([file], `assets: ${name}`));
+    schedulePush();
     res.json(withWarning({ url: `/api/assets/${name}`, name }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -654,10 +708,14 @@ router.get('/assets/:name', (req, res) => {
   try {
     const name = req.params.name || '';
     if (!safeAssetName(name)) return res.status(400).json({ error: 'nome inválido' });
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    // só serve extensões da allowlist raster — um .svg que tenha viajado no git
+    // (de antes do drop) NÃO é servido como imagem executável.
+    if (!ASSET_MIME[ext]) return res.status(404).json({ error: 'asset não encontrado' });
     const file = path.join(assetsDir(), name);
     if (!fs.existsSync(file)) return res.status(404).json({ error: 'asset não encontrado' });
-    const ext = (name.split('.').pop() || '').toLowerCase();
-    if (ASSET_MIME[ext]) res.type(ASSET_MIME[ext]);
+    res.type(ASSET_MIME[ext]);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.sendFile(file);
   } catch (err) { fail(res, err); }
 });

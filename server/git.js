@@ -28,7 +28,14 @@ let _gitBaseDir = null;
 function git() {
   const baseDir = config.VAULT;
   if (!_git || _gitBaseDir !== baseDir) {
-    _git = simpleGit({ baseDir }).env('GIT_TERMINAL_PROMPT', '0');
+    // maxConcurrentProcesses:1 — o simple-git NÃO roda 2 processos git ao mesmo
+    // tempo nesta instância (o default é 5; comandos concorrentes colidem em
+    // .git/index.lock). Assim a serialização é REAL no nível do git (não só da
+    // gitChain da app), cobrindo push×commit×pull com segurança.
+    // timeout.block: aborta qualquer comando que fique ~8s sem output (push/pull/
+    // ls-remote em remote lento/inacessível) — nunca pendura a fila indefinidamente.
+    _git = simpleGit({ baseDir, maxConcurrentProcesses: 1, timeout: { block: 8000 } })
+      .env('GIT_TERMINAL_PROMPT', '0');
     _gitBaseDir = baseDir;
   }
   return _git;
@@ -88,7 +95,23 @@ async function pull() {
     if (!remotes || !remotes.length) {
       return { ok: false, error: 'nenhum remote configurado (origin ausente)' };
     }
-    const out = await git().raw(['pull', '--ff-only']);
+    // --autostash: o watcher recalcula campos fórmula e grava o .md SEM commitar
+    // (deixa o working tree sujo); sem autostash o --ff-only recusaria o pull.
+    const out = await git().raw(['pull', '--ff-only', '--autostash']);
+
+    // ⚠️ `pull --autostash` faz o FF e SAI 0 MESMO se o `stash pop` der CONFLITO —
+    // deixando marcadores de conflito DENTRO do .md (corromperia o gray-matter →
+    // a tarefa sumiria do board) e um stash órfão. Detecta arquivos unmerged e
+    // RECUPERA o working tree (já está no estado remoto pós-FF); as mudanças locais
+    // (em geral só stamps derivados recalculáveis) ficam preservadas no stash.
+    const unmerged = (await git().raw(['ls-files', '-u'])).trim();
+    if (unmerged) {
+      await git().raw(['reset', '--hard', 'HEAD']); // HEAD = remoto pós-FF; limpa os marcadores
+      return {
+        ok: false,
+        error: 'pull trouxe conflito com mudanças locais não commitadas. O working tree foi restaurado para o remoto; suas mudanças locais ficaram no stash (git stash list).',
+      };
+    }
     return { ok: true, message: oneLine(out) || 'pull concluído' };
   } catch (err) {
     return { ok: false, error: oneLine(err.message) };
@@ -101,7 +124,7 @@ async function commitTask(filePath, message) {
   await ensureIdentity();
   try {
     await git().raw(['add', filePath]);
-    await git().raw(['commit', '-m', message]);
+    await git().raw(['commit', '-m', message, '--', filePath]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para', filePath);
@@ -116,7 +139,7 @@ async function removeAndCommit(filePath, message) {
   await ensureIdentity();
   try {
     await git().raw(['add', filePath]);
-    await git().raw(['commit', '-m', message]);
+    await git().raw(['commit', '-m', message, '--', filePath]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para remoção de', filePath);
@@ -134,7 +157,7 @@ async function commitPaths(paths, message) {
   await ensureIdentity();
   try {
     await git().raw(['add', ...list]);
-    await git().raw(['commit', '-m', message]);
+    await git().raw(['commit', '-m', message, '--', ...list]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para', message);
