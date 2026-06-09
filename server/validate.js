@@ -88,8 +88,22 @@ function validateTask(data, schema) {
           `o campo "${label}" deve ser um de: ${options.join(', ')} (recebido "${value}")`
         );
       }
+    } else if (type === 'multiselect') {
+      // valor = opções escolhidas, separadas por ';' no .md (ex.: "a;b;c").
+      const options = Array.isArray(spec.options) ? spec.options : [];
+      const parts = String(value).split(';').map((s) => s.trim()).filter(Boolean);
+      const bad = parts.filter((p) => !options.includes(p));
+      if (bad.length) {
+        errors.push(
+          `o campo "${label}" tem opção(ões) inválida(s): ${bad.join(', ')}`
+        );
+      }
     } else if (type === 'string') {
       // Coerção simples: já garantimos "não vazio" acima. Nada mais a checar.
+    } else if (type === 'user') {
+      // valor = id do usuário no roster (config/users.json). Guardado como string;
+      // a pertinência ao roster NÃO é validada aqui (roster muda; ser leniente
+      // evita travar uma tarefa quando alguém é removido do roster).
     }
     // Tipos desconhecidos são tolerados (não geram erro) — schema é a fonte.
   }
@@ -191,9 +205,9 @@ function validatePropertySpec(key, spec) {
     return `propriedade "${key}" sem definição`;
   }
   const type = spec.type;
-  if (type === 'enum') {
+  if (type === 'enum' || type === 'multiselect') {
     if (!Array.isArray(spec.options) || !spec.options.length) {
-      return `enum "${key}" precisa de options`;
+      return `${type} "${key}" precisa de options`;
     }
   } else if (type === 'formula') {
     if (typeof spec.expression !== 'string' || spec.expression.trim() === '') {

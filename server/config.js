@@ -51,6 +51,25 @@ function writeSettings(obj) {
   fs.renameSync(tmp, SETTINGS_FILE);
 }
 
+// ── Notificações (LOCAL por máquina, NÃO versionadas) ────────────────────────
+// Notificações são pessoais (quem foi citado como responsável numa mudança que
+// chegou no pull). Ficam em ~/.basalt/notifications.json, indexadas por vault.
+const NOTIF_FILE = path.join(SETTINGS_DIR, 'notifications.json');
+function readNotifStore() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(NOTIF_FILE, 'utf8'));
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+  } catch {
+    return {};
+  }
+}
+function writeNotifStore(obj) {
+  fs.mkdirSync(SETTINGS_DIR, { recursive: true });
+  const tmp = NOTIF_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, NOTIF_FILE);
+}
+
 // ── Resolução do VAULT ───────────────────────────────────────────────────────
 // Prioridade: setting persistido > env BASALT_VAULT > DEFAULT_VAULT (gravável).
 function resolveVault() {
@@ -225,6 +244,7 @@ const configObj = {
   schema: null,
   board: null,
   gute: null, // legado: pode ficar null se gute.json não existir
+  users: [], // roster do time (config/users.json)
 };
 
 // Assinantes notificados quando o VAULT efetivo muda (ex.: watcher re-globa).
@@ -264,6 +284,16 @@ function load() {
     gute = readJson(CONFIG_DIR, 'gute.json');
   } catch {
     gute = null;
+  }
+
+  // users.json — roster do time (id estável → nome visível + identidades git).
+  // OPCIONAL: vault sem o arquivo => roster vazio (auto-cadastro o cria).
+  let users = [];
+  try {
+    const arr = readJson(CONFIG_DIR, 'users.json');
+    users = Array.isArray(arr) ? arr.filter((u) => u && typeof u === 'object' && u.id) : [];
+  } catch {
+    users = [];
   }
 
   validateSchema(schema);
@@ -321,6 +351,7 @@ function load() {
   configObj.schema = schema;
   configObj.board = board;
   configObj.gute = gute;
+  configObj.users = users;
 
   // Notifica assinantes se a pasta do vault MUDOU (não em reload no mesmo vault).
   if (prevVault && prevVault !== vault) {
@@ -427,6 +458,54 @@ configObj.clearVault = function clearVault() {
   writeSettings(settings);
   load();
   return statusOf(configObj.VAULT);
+};
+
+// ── Roster (config/users.json no vault) ──────────────────────────────────────
+configObj.usersFile = function usersFile() {
+  return path.join(configObj.CONFIG_DIR, 'users.json');
+};
+// writeUsers(arr): grava o roster (atômico) e recarrega config. NÃO commita
+// (a rota commita o arquivo, mantendo o histórico no git como o resto).
+configObj.writeUsers = function writeUsers(arr) {
+  const list = Array.isArray(arr) ? arr.filter((u) => u && typeof u === 'object' && u.id) : [];
+  const file = configObj.usersFile();
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n', 'utf8');
+  fs.renameSync(tmp, file);
+  load();
+  return configObj.users;
+};
+
+// ── Notificações locais (por vault) ──────────────────────────────────────────
+configObj.getNotifications = function getNotifications(vault) {
+  const all = readNotifStore();
+  const key = vault || configObj.VAULT;
+  return Array.isArray(all[key]) ? all[key] : [];
+};
+// addNotifications(items): prepend (mais novas primeiro), dedup por id, cap 200.
+configObj.addNotifications = function addNotifications(items) {
+  const incoming = (Array.isArray(items) ? items : []).filter(Boolean);
+  if (!incoming.length) return configObj.getNotifications();
+  const all = readNotifStore();
+  const key = configObj.VAULT;
+  const existing = Array.isArray(all[key]) ? all[key] : [];
+  const seen = new Set(existing.map((n) => n.id));
+  const fresh = incoming.filter((n) => n.id && !seen.has(n.id));
+  all[key] = [...fresh, ...existing].slice(0, 200);
+  writeNotifStore(all);
+  return all[key];
+};
+// clearNotifications(id?): apaga uma (id) ou todas (sem id) do vault corrente.
+configObj.clearNotifications = function clearNotifications(id) {
+  const all = readNotifStore();
+  const key = configObj.VAULT;
+  if (id) {
+    all[key] = (Array.isArray(all[key]) ? all[key] : []).filter((n) => n.id !== id);
+  } else {
+    all[key] = [];
+  }
+  writeNotifStore(all);
+  return all[key];
 };
 
 module.exports = configObj;

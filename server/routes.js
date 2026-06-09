@@ -303,6 +303,7 @@ router.put('/tasks/:id', async (req, res) => {
     const file = taskFile(id);
     const warning = await commitAwaited(() => git.commitTask(file, msg));
     schedulePush();
+    await gcOrphanAssets(before, after); // limpa capa/ícone trocados/removidos
     res.json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -335,6 +336,7 @@ router.delete('/tasks/:id', async (req, res) => {
     const msg = describeChanges(before, null, 'delete', id, titleKeyOf());
     const warning = await commitAwaited(() => git.removeAndCommit(file, msg));
     schedulePush();
+    await gcOrphanAssets(before, null); // tarefa apagada → limpa capa/ícone órfãos
     res.json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
 });
@@ -348,13 +350,114 @@ function safeGetData(id) {
   }
 }
 
+// ── Usuários (roster) + identidade "eu" ──────────────────────────────────────
+// "Eu" = identidade git do repo (name/email) + userId estável (git config
+// basalt.userid), casado contra o roster (config/users.json). Local-first.
+async function resolveMe() {
+  const id = await git.getIdentity(); // { name, email }
+  let userId = await git.getUserId(); // basalt.userid ou null
+  const roster = config.users || [];
+  let entry = userId ? roster.find((u) => u.id === userId) : null;
+  if (!entry && id.email) {
+    const lo = String(id.email).toLowerCase();
+    entry = roster.find((u) => (u.gitEmails || []).some((e) => String(e).toLowerCase() === lo));
+  }
+  if (!entry && id.name) entry = roster.find((u) => (u.gitNames || []).includes(id.name));
+  if (entry && !userId) userId = entry.id;
+  return { userId: userId || null, gitName: id.name, gitEmail: id.email, entry: entry || null };
+}
+
+// Chaves de propriedades type 'user' no schema (ex.: responsavel).
+function userFieldKeys() {
+  const props = (config.schema && config.schema.properties) || {};
+  return Object.keys(props).filter((k) => props[k] && props[k].type === 'user');
+}
+
+// A tarefa tem ALGUM campo 'user' apontando pra mim? (id, ou — legado — nome/git name)
+function taskTargetsMe(data, me) {
+  if (!data || !me) return false;
+  for (const k of userFieldKeys()) {
+    const v = data[k];
+    if (v == null || v === '') continue;
+    if (me.userId && v === me.userId) return true;
+    if (me.entry) {
+      if (v === me.entry.nome) return true;
+      if ((me.entry.gitNames || []).includes(v)) return true;
+    }
+  }
+  return false;
+}
+
+function relTasksDir() {
+  return path.relative(config.VAULT, config.TASKS_DIR).split(path.sep).join('/');
+}
+function taskIdFromRel(rel) {
+  const base = (rel || '').split('/').pop() || '';
+  return base.endsWith('.md') ? base.slice(0, -3) : '';
+}
+
+// Monta notificações a partir dos commits que chegaram no pull (before..after):
+// para cada tarefa cujo responsável sou eu e cujo autor da mudança NÃO sou eu.
+// "O que mudou" = a mensagem (auto-descritiva) do commit. Só a mudança mais
+// recente por tarefa entra (evita ruído).
+async function buildNotifications(before, after) {
+  const me = await resolveMe();
+  const commits = await git.commitsInRange(before, after);
+  if (!commits.length) return [];
+  const prefix = relTasksDir() + '/';
+  const titleKey = titleKeyOf();
+  const seen = new Set();
+  const out = [];
+  for (const c of commits) {
+    const mine =
+      (me.gitEmail && c.authorEmail && c.authorEmail.toLowerCase() === String(me.gitEmail).toLowerCase()) ||
+      (me.gitName && c.authorName === me.gitName);
+    if (mine) continue;
+    for (const f of c.files) {
+      if (!f.startsWith(prefix) || !f.endsWith('.md')) continue;
+      const id = taskIdFromRel(f);
+      if (!id || seen.has(id)) continue;
+      const data = safeGetData(id);
+      if (!data) continue; // tarefa apagada
+      if (!taskTargetsMe(data, me)) continue;
+      seen.add(id);
+      out.push({
+        id: `${c.hash}:${id}`,
+        taskId: id,
+        title: data[titleKey] || id,
+        author: c.authorName || c.authorEmail || 'alguém',
+        summary: c.message || 'mudança',
+        hash: c.shortHash || (c.hash || '').slice(0, 7),
+        at: c.date || null,
+      });
+    }
+  }
+  return out;
+}
+
 // ── Sync / Health ────────────────────────────────────────────────────────────
 // Pull sob demanda (fast-forward only). Nunca lança — devolve o resultado do git.
 router.post('/sync/pull', async (req, res) => {
   try {
-    const r = await gitSerial(() => git.pull()); // serializa com os commits/push
+    // Captura HEAD antes/depois DENTRO da fila git (atômico com o pull) para
+    // descobrir o range de commits que chegaram e montar notificações.
+    const r = await gitSerial(async () => {
+      const before = await git.currentHead();
+      const result = await git.pull();
+      const after = await git.currentHead();
+      return { result, before, after };
+    });
+    let newNotifications = [];
+    if (r.result && r.result.ok && r.before && r.after && r.before !== r.after) {
+      try {
+        newNotifications = await buildNotifications(r.before, r.after);
+        if (newNotifications.length) config.addNotifications(newNotifications);
+      } catch (e) {
+        console.warn('[notif] build falhou:', e.message);
+      }
+    }
     // resultado (ok/erro) vai no CORPO; status 200 — falha de pull não é erro HTTP.
-    res.json(r);
+    res.json({ ...r.result, newNotifications, notifications: config.getNotifications() });
   } catch (err) { fail(res, err); }
 });
 
@@ -363,6 +466,88 @@ router.get('/health/git', async (req, res) => {
   try {
     const h = await git.healthGit();
     res.json(h);
+  } catch (err) { fail(res, err); }
+});
+
+// ── Usuários (roster) + notificações ─────────────────────────────────────────
+// GET /api/users → roster do time (config/users.json).
+router.get('/users', (req, res) => {
+  try { res.json(config.users || []); } catch (err) { fail(res, err); }
+});
+
+// GET /api/me → quem sou eu (git identity + userId + entrada no roster, se houver).
+router.get('/me', async (req, res) => {
+  try { res.json(await resolveMe()); } catch (err) { fail(res, err); }
+});
+
+// POST /api/users/register { nome } → identifica/cadastra o usuário local:
+// adota a entrada existente (casada por userId/email/nome) ou cria uma nova,
+// grava basalt.userid no git config e commita o roster. Idempotente.
+router.post('/users/register', async (req, res) => {
+  try {
+    const nome = (((req.body || {}).nome) || '').trim();
+    const id = await git.getIdentity();
+    const roster = (config.users || []).map((u) => ({ ...u }));
+    let userId = await git.getUserId();
+    let entry = userId ? roster.find((u) => u.id === userId) : null;
+    if (!entry && id.email) {
+      const lo = String(id.email).toLowerCase();
+      entry = roster.find((u) => (u.gitEmails || []).some((e) => String(e).toLowerCase() === lo));
+    }
+    if (!entry && id.name) entry = roster.find((u) => (u.gitNames || []).includes(id.name));
+
+    if (entry) {
+      userId = entry.id;
+      if (nome) entry.nome = nome;
+      entry.gitEmails = entry.gitEmails || [];
+      entry.gitNames = entry.gitNames || [];
+      if (id.email && !entry.gitEmails.includes(id.email)) entry.gitEmails.push(id.email);
+      if (id.name && !entry.gitNames.includes(id.name)) entry.gitNames.push(id.name);
+    } else {
+      userId = userId || `u-${crypto.randomBytes(6).toString('hex')}`;
+      entry = {
+        id: userId,
+        nome: nome || id.name || 'Sem nome',
+        gitEmails: id.email ? [id.email] : [],
+        gitNames: id.name ? [id.name] : [],
+      };
+      roster.push(entry);
+    }
+
+    try { await git.setUserId(userId); } catch (e) { console.warn('[users] setUserId falhou:', e.message); }
+    config.writeUsers(roster);
+    const warning = await commitAwaited(() => git.commitPaths([config.usersFile()], `users: ${entry.nome}`));
+    schedulePush();
+    res.json(withWarning({ userId, entry, users: config.users }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+// PUT /api/users/:id { nome } → edita o nome visível de uma entrada do roster.
+router.put('/users/:id', async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const nome = (((req.body || {}).nome) || '').trim();
+    const roster = (config.users || []).map((u) => ({ ...u }));
+    const entry = roster.find((u) => u.id === targetId);
+    if (!entry) return res.status(404).json({ error: 'usuário não encontrado no roster' });
+    if (nome) entry.nome = nome;
+    config.writeUsers(roster);
+    const warning = await commitAwaited(() => git.commitPaths([config.usersFile()], `users: ${entry.nome}`));
+    schedulePush();
+    res.json(withWarning({ entry, users: config.users }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+// GET /api/notifications → notificações locais do vault corrente.
+router.get('/notifications', (req, res) => {
+  try { res.json(config.getNotifications()); } catch (err) { fail(res, err); }
+});
+
+// POST /api/notifications/clear { id? } → limpa uma (id) ou todas (sem id).
+router.post('/notifications/clear', (req, res) => {
+  try {
+    const id = ((req.body || {}).id) || null;
+    res.json(config.clearNotifications(id));
   } catch (err) { fail(res, err); }
 });
 
@@ -549,6 +734,7 @@ router.put('/schema/properties', async (req, res) => {
 
     const schema = JSON.parse(fs.readFileSync(schemaFile(), 'utf8'));
     const oldKeys = Object.keys(schema.properties || {});
+    const oldProps = schema.properties || {}; // snapshot p/ detectar opções removidas (antes do reassign)
     // schema.derived é DERIVADO por config (props formula + 'computed_at').
     // No arquivo em disco pode não existir; recomputa aqui pra não tratar
     // chaves de fórmula como "removidas" na migração.
@@ -598,6 +784,23 @@ router.put('/schema/properties', async (req, res) => {
       optByProp.get(prop).set(o.from, o.to);
     }
 
+    // Opções REMOVIDAS de cada enum/multiselect (sumiram e NÃO foram renomeadas) →
+    // limpar o valor nas tarefas que as usavam. Compara options antigas (oldProps)
+    // x novas, ignorando os 'from' de renames (que já viram migração de valor).
+    const optRemovalsByProp = new Map();
+    for (const newKey of newKeys) {
+      const spec = properties[newKey];
+      if (!spec || (spec.type !== 'enum' && spec.type !== 'multiselect')) continue;
+      let oldKey = newKey;
+      for (const [from, to] of renameMap) { if (to === newKey) oldKey = from; }
+      const oldSpec = oldProps[oldKey];
+      if (!oldSpec || !Array.isArray(oldSpec.options)) continue;
+      const newOpts = new Set(Array.isArray(spec.options) ? spec.options : []);
+      const renamedFrom = optByProp.has(newKey) ? new Set(optByProp.get(newKey).keys()) : new Set();
+      const removedOpts = oldSpec.options.filter((o) => !newOpts.has(o) && !renamedFrom.has(o));
+      if (removedOpts.length) optRemovalsByProp.set(newKey, new Set(removedOpts));
+    }
+
     const changed = migrateTasks((data) => {
       let dirty = false;
       // renomeia chave
@@ -616,10 +819,30 @@ router.put('/schema/properties', async (req, res) => {
           dirty = true;
         }
       }
-      // migra valores de opção enum renomeados
+      // migra valores de opção renomeados (enum: valor direto; multiselect: dentro do ';')
       for (const [prop, valueMap] of optByProp) {
-        if (prop in data && valueMap.has(data[prop])) {
+        if (!(prop in data)) continue;
+        const spec = properties[prop];
+        if (spec && spec.type === 'multiselect') {
+          const parts = String(data[prop]).split(';').map((s) => s.trim()).filter(Boolean);
+          let ch = false;
+          const next = parts.map((p) => (valueMap.has(p) ? (ch = true, valueMap.get(p)) : p));
+          if (ch) { data[prop] = next.join(';'); dirty = true; }
+        } else if (valueMap.has(data[prop])) {
           data[prop] = valueMap.get(data[prop]);
+          dirty = true;
+        }
+      }
+      // limpa opções REMOVIDAS (enum → vazio; multiselect → tira da lista)
+      for (const [prop, removedSet] of optRemovalsByProp) {
+        if (!(prop in data)) continue;
+        const spec = properties[prop];
+        if (spec && spec.type === 'multiselect') {
+          const parts = String(data[prop]).split(';').map((s) => s.trim()).filter(Boolean);
+          const kept = parts.filter((p) => !removedSet.has(p));
+          if (kept.length !== parts.length) { data[prop] = kept.join(';'); dirty = true; }
+        } else if (removedSet.has(data[prop])) {
+          data[prop] = '';
           dirty = true;
         }
       }
@@ -673,6 +896,63 @@ function safeAssetName(name) {
     && !name.includes('..') && name !== '.' && name !== '..';
 }
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
+
+// Extrai o nome do asset de uma URL "/api/assets/<name>" (ou null).
+function assetNameFromUrl(u) {
+  if (typeof u !== 'string') return null;
+  const m = u.match(/\/api\/assets\/([A-Za-z0-9._-]+)/);
+  return m ? m[1] : null;
+}
+// TODOS os assets ainda referenciados (cover/icon/corpo de QUALQUER tarefa).
+// Garante que o GC nunca apague um asset compartilhado/ainda em uso.
+function collectReferencedAssets() {
+  const used = new Set();
+  let list = [];
+  try { list = tasksRepo.list(); } catch { list = []; }
+  for (const t of list) {
+    let full;
+    try { full = tasksRepo.get(t.id); } catch { continue; }
+    const d = full.data || {};
+    for (const k of ['cover', 'icon']) {
+      const n = assetNameFromUrl(d[k]);
+      if (n) used.add(n);
+    }
+    const re = /\/api\/assets\/([A-Za-z0-9._-]+)/g;
+    let m;
+    while ((m = re.exec(full.body || ''))) used.add(m[1]);
+  }
+  return used;
+}
+// gcOrphanAssets(before, after): ao trocar/remover cover/icon (ou apagar a
+// tarefa, after=null), apaga o arquivo antigo SE nenhuma outra tarefa o usa.
+// Commita a remoção (best-effort). Nunca lança.
+async function gcOrphanAssets(before, after) {
+  try {
+    if (!before) return;
+    const oldNames = new Set();
+    for (const k of ['cover', 'icon']) {
+      const oldN = assetNameFromUrl(before[k]);
+      const newN = assetNameFromUrl(after ? after[k] : null);
+      if (oldN && oldN !== newN) oldNames.add(oldN);
+    }
+    if (!oldNames.size) return;
+    const stillUsed = collectReferencedAssets();
+    let removed = 0;
+    for (const name of oldNames) {
+      if (stillUsed.has(name)) continue;
+      const file = path.join(assetsDir(), name);
+      if (!fs.existsSync(file)) continue;
+      try {
+        fs.unlinkSync(file);
+        await commitAwaited(() => git.removeAndCommit(file, `assets: remove ${name} (órfão)`));
+        removed++;
+      } catch (e) { console.warn('[assets] gc:', e.message); }
+    }
+    if (removed) schedulePush();
+  } catch (e) {
+    console.warn('[assets] gcOrphanAssets:', e.message);
+  }
+}
 
 // POST /assets — body { data: base64|dataURI, mime } → grava + commita (best-effort).
 router.post('/assets', async (req, res) => {

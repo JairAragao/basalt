@@ -60,6 +60,68 @@ async function getIdentity() {
   return { name, email };
 }
 
+// ── userId estável da pessoa (guardado no PRÓPRIO git config) ─────────────────
+// `basalt.userid` viaja junto da identidade git que assina os commits. Lê
+// local>global. Retorna null se ausente (a rota então gera/vincula um).
+async function getUserId() {
+  try {
+    const v = (await git().raw(['config', '--get', 'basalt.userid'])).trim();
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+// setUserId(id): grava no git config GLOBAL — consistente em todos os vaults
+// desta máquina/usuário. Best-effort: lança só se o git config falhar de fato.
+async function setUserId(id) {
+  if (!id) return null;
+  await git().raw(['config', '--global', 'basalt.userid', String(id)]);
+  return String(id);
+}
+
+// HEAD atual (SHA) ou null se o repo ainda não tem commit.
+async function currentHead() {
+  try {
+    return (await git().raw(['rev-parse', 'HEAD'])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// commitsInRange(old,new): commits em old..new (mais novo→antigo) com os arquivos
+// tocados. Usado pós-pull para montar notificações. Nunca lança → [] em erro.
+// Retorna [{ hash, shortHash, date, authorName, authorEmail, message, files:[rel] }].
+async function commitsInRange(oldHead, newHead) {
+  if (!oldHead || !newHead || oldHead === newHead) return [];
+  const MARK = '\x1eCMT\x1f';
+  const FMT = `${MARK}%H%x1f%h%x1f%aI%x1f%an%x1f%ae%x1f%s`;
+  let out;
+  try {
+    out = await git().raw(['log', `--format=${FMT}`, '--name-only', `${oldHead}..${newHead}`]);
+  } catch {
+    return [];
+  }
+  const parts = String(out || '').split(MARK).filter((s) => s && s.trim());
+  const commits = [];
+  for (const p of parts) {
+    const nl = p.indexOf('\n');
+    const headLine = nl === -1 ? p : p.slice(0, nl);
+    const rest = nl === -1 ? '' : p.slice(nl + 1);
+    const [hash, shortHash, date, authorName, authorEmail, message] = headLine.split('\x1f');
+    const files = rest.split('\n').map((l) => l.trim()).filter(Boolean);
+    commits.push({
+      hash: (hash || '').trim(),
+      shortHash: (shortHash || '').trim(),
+      date: (date || '').trim(),
+      authorName: (authorName || '').trim(),
+      authorEmail: (authorEmail || '').trim(),
+      message: (message || '').trim(),
+      files,
+    });
+  }
+  return commits;
+}
+
 // Garante que o repo tem identidade configurada antes de commitar. Lança um erro
 // claro (PT-BR) se faltar — a rota traduz isso num warning ao cliente.
 async function ensureIdentity() {
@@ -404,6 +466,10 @@ module.exports = {
   pull,
   healthGit,
   getIdentity,
+  getUserId,
+  setUserId,
+  currentHead,
+  commitsInRange,
   logHistory,
   showAt,
   diffFile,
