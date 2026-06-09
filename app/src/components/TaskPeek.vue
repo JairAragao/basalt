@@ -101,20 +101,18 @@
                 <div
                   v-for="field in visibleRowFields"
                   :key="field.name"
-                  class="prop-row group/prop"
-                  :class="{ 'opacity-60': field.hidden }"
+                  class="prop-row group/prop relative"
+                  :class="{ 'opacity-60': isHidden(field.name) }"
                 >
-                  <div class="prop-label flex items-center gap-1">
-                    <span class="truncate">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></span>
-                    <button
-                      type="button"
-                      class="icon-btn h-5 w-5 flex-shrink-0 opacity-0 transition-opacity group-hover/prop:opacity-100"
-                      title="Opções da propriedade"
-                      @click.stop="openPropMenu(field, $event)"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    class="icon-btn absolute -left-5 top-1 h-5 w-5 opacity-0 transition-opacity group-hover/prop:opacity-100"
+                    title="Opções da propriedade"
+                    @click.stop="openPropMenu(field, $event)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
+                  </button>
+                  <div class="prop-label">{{ field.label || field.name }}<span v-if="field.required" class="text-red-400">*</span></div>
                   <div class="flex-1">
                     <!-- status: select agrupado por etapa macro + edição inline (cor/label/mover/excluir) -->
                     <StatusSelect
@@ -159,7 +157,15 @@
                 </div>
 
                 <!-- derivados (read-only): fórmulas calculadas AO VIVO + auditoria -->
-                <div v-for="d in visibleDerived" :key="d.name" class="prop-row">
+                <div v-for="d in visibleDerived" :key="d.name" class="prop-row group/prop relative" :class="{ 'opacity-60': isHidden(d.name) }">
+                  <button
+                    type="button"
+                    class="icon-btn absolute -left-5 top-1 h-5 w-5 opacity-0 transition-opacity group-hover/prop:opacity-100"
+                    title="Opções da propriedade"
+                    @click.stop="openPropMenu({ name: d.name }, $event)"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
+                  </button>
                   <div class="prop-label">{{ d.label }}</div>
                   <div class="flex-1 pt-1.5 text-[13px] text-faint">
                     <span v-if="d.value !== null && d.value !== undefined && d.value !== ''">{{ d.value }}</span>
@@ -228,29 +234,31 @@
           <template v-if="propMenu.open">
             <div class="fixed inset-0 z-[90]" @click="closePropMenu"></div>
             <div
-              class="prop-pop fixed z-[100] w-60 rounded-xl border border-ink-500 bg-ink-850 p-2 shadow-2xl"
+              class="prop-pop fixed z-[100] w-60 rounded-xl border border-ink-500 bg-ink-850 p-1.5 shadow-2xl"
               :style="{ left: propMenu.x + 'px', top: propMenu.y + 'px' }"
             >
-              <div class="mb-1 text-[11px] text-faint">Renomear</div>
+              <!-- renomear (salva ao clicar fora — sem botão) -->
               <input
                 v-model="propMenu.label"
                 class="field !py-1 text-[13px]"
                 placeholder="Nome do campo"
-                @keydown.enter.prevent="renameProp"
+                @keydown.enter.prevent="closePropMenu"
                 @click.stop
               />
-              <div class="mb-1 mt-2 text-[11px] text-faint">Tipo</div>
-              <Dropdown :value="propMenu.type" :options="propTypeOptions" @input="changePropType" />
-              <button
-                type="button"
-                class="mt-2 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted transition-colors hover:bg-ink-700"
-                @click="renameProp"
-              >Salvar nome</button>
-              <button
-                type="button"
-                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted transition-colors hover:bg-ink-700"
-                @click="toggleHiddenProp"
-              >{{ propMenu.hidden ? 'Mostrar em todas as tarefas' : 'Ocultar em todas as tarefas' }}</button>
+              <template v-if="propMenu.canType">
+                <div class="mb-1 mt-2 px-1 text-[11px] text-faint">Tipo</div>
+                <Dropdown :value="propMenu.type" :options="propTypeOptions" @input="changePropType" />
+              </template>
+              <div class="my-1.5 h-px bg-ink-500"></div>
+              <button type="button" class="menu-item" @click="toggleHiddenProp">
+                <svg v-if="propMenu.hidden" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5z" /><circle cx="10" cy="10" r="2.2" /></svg>
+                <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M4 4l12 12" stroke-linecap="round" /><path d="M8 5.2A7.6 7.6 0 0 1 10 5c5 0 8 5 8 5a13 13 0 0 1-2.2 2.5M5.6 6.8A12.7 12.7 0 0 0 2 10s3 5 8 5a7.6 7.6 0 0 0 2.4-.4" stroke-linecap="round" /></svg>
+                <span>{{ propMenu.hidden ? 'Mostrar propriedade' : 'Ocultar propriedade' }}</span>
+              </button>
+              <button v-if="propMenu.canDelete" type="button" class="menu-item menu-item--danger" @click="deletePropFromMenu">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M4 6h12M8 6V4.5h4V6M6.5 6l.6 9h5.8l.6-9" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                <span>Excluir propriedade</span>
+              </button>
             </div>
           </template>
         </Teleport>
@@ -319,6 +327,8 @@ export default {
       savedTimer: null,
       // revelar propriedades ocultas — APENAS visual e temporário (não salvo)
       showHidden: false,
+      // ocultação OTIMISTA (some da tela na hora, antes do save persistir)
+      localHidden: {},
       // menu kebab da propriedade (renomear/tipo/ocultar)
       propMenu: { open: false, key: '', label: '', type: '', hidden: false, x: 0, y: 0 },
       propTypeOptions: [
@@ -411,18 +421,17 @@ export default {
     // 'hidden' é flag da propriedade no schema (vale p/ TODAS as tarefas).
     // showHidden é só visual e temporário (não salvo).
     hiddenCount() {
-      return this.rowFields.filter((f) => f.hidden).length;
+      const rows = this.rowFields.filter((f) => this.isHidden(f.name)).length;
+      const der = this.derivedDisplay.filter((d) => this.isHidden(d.name)).length;
+      return rows + der;
     },
     visibleRowFields() {
       if (this.showHidden) return this.rowFields;
-      return this.rowFields.filter((f) => !f.hidden);
+      return this.rowFields.filter((f) => !this.isHidden(f.name));
     },
     visibleDerived() {
       if (this.showHidden) return this.derivedDisplay;
-      return this.derivedDisplay.filter((d) => {
-        const p = this.properties[d.name];
-        return !(p && p.hidden);
-      });
+      return this.derivedDisplay.filter((d) => !this.isHidden(d.name));
     },
     wrapperClass() {
       if (this.mode === 'center') return 'grid place-items-center p-4 sm:p-8';
@@ -434,14 +443,17 @@ export default {
     // altura cheia (ficavam só com a altura do conteúdo). Cada modo define a
     // própria posição.
     unitClass() {
-      if (this.mode === 'side') return 'absolute inset-y-0 right-0 border-l border-ink-500';
-      if (this.mode === 'center') return 'relative max-h-[92vh] rounded-xl border border-ink-500';
+      if (this.mode === 'side') return 'absolute inset-y-0 right-0 max-w-[96vw] border-l border-ink-500';
+      // centro: altura FIXA (panel + histórico dividem a mesma altura) + cap de largura
+      if (this.mode === 'center') return 'relative h-[88vh] max-h-[92vh] max-w-[96vw] rounded-xl border border-ink-500';
       return 'absolute inset-0'; // full
     },
+    // panel encolhe quando o histórico está aberto p/ o par caber na tela (notebook)
     panelClass() {
-      if (this.mode === 'side') return 'w-[640px] max-w-[92vw]';
-      if (this.mode === 'center') return 'w-[1040px] max-w-[92vw] h-[88vh]';
-      return 'flex-1'; // full
+      const h = this.historyOpen;
+      if (this.mode === 'side') return h ? 'w-[560px] max-w-[56vw] min-w-0' : 'w-[640px] max-w-[92vw] min-w-0';
+      if (this.mode === 'center') return h ? 'w-[680px] max-w-[56vw] min-w-0' : 'w-[1040px] max-w-[92vw] min-w-0';
+      return 'flex-1 min-w-0'; // full
     },
     contentClass() {
       // center/full centralizam a coluna de conteúdo (estilo página do Notion)
@@ -503,6 +515,7 @@ export default {
       this.dirty = false;
       this.createdId = null;
       this.showHidden = false;
+      this.localHidden = {};
       this.savedNote = false;
       this.cancelTimers();
       if (this.isEdit) {
@@ -665,39 +678,66 @@ export default {
       let left = r.left;
       if (left + W > window.innerWidth - 8) left = window.innerWidth - W - 8;
       if (left < 8) left = 8;
+      const name = field.name;
+      const spec = this.properties[name] || {};
+      const label = spec.label || name;
       this.propMenu = {
-        open: true, key: field.name, label: field.label || field.name,
-        type: field.type, hidden: !!field.hidden, x: left, y: r.bottom + 6,
+        open: true, key: name, label,
+        type: spec.type || 'string', hidden: !!spec.hidden,
+        // sistema/auditoria/fórmula: NÃO troca tipo (quebraria) — só renomeia/oculta
+        canType: !spec.system && !spec.auto && spec.type !== 'formula',
+        canDelete: !spec.system, // status/auditoria não podem ser removidos
+        origLabel: label, origType: spec.type || 'string', origHidden: !!spec.hidden,
+        x: left, y: r.bottom + 6,
       };
     },
-    closePropMenu() { if (this.propMenu.open) this.propMenu = { ...this.propMenu, open: false }; },
-    // grava uma mudança numa propriedade do SCHEMA (vale p/ TODAS as tarefas)
-    async applyPropChange(changes) {
+    // fecha o menu e PERSISTE as pendências (renomeio/tipo/oculto) — salva ao clicar fora
+    async closePropMenu() {
+      if (!this.propMenu.open) return;
+      const m = this.propMenu;
+      this.propMenu = { ...m, open: false };
+      const changes = {};
+      const label = (m.label || '').trim();
+      if (label && label !== m.origLabel) changes.label = label;
+      if (m.type !== m.origType) changes.type = m.type;
+      if (m.hidden !== m.origHidden) changes.hidden = m.hidden;
+      if (!Object.keys(changes).length) return;
+      const props = JSON.parse(JSON.stringify(this.properties));
+      if (!props[m.key]) return;
+      Object.assign(props[m.key], changes);
+      await this.saveSchemaProps(props);
+    },
+    // oculta de verdade está no schema (hidden), mas localHidden dá feedback IMEDIATO
+    isHidden(name) {
+      if (Object.prototype.hasOwnProperty.call(this.localHidden, name)) return this.localHidden[name];
+      const p = this.properties[name];
+      return !!(p && p.hidden);
+    },
+    // só altera o estado PENDENTE do tipo (o save acontece ao fechar o menu)
+    changePropType(v) { if (v) this.propMenu.type = v; },
+    toggleHiddenProp() {
       const key = this.propMenu.key;
+      const next = !this.propMenu.hidden;
+      this.propMenu.hidden = next;
+      this.localHidden = { ...this.localHidden, [key]: next }; // some/aparece já na tela
+      this.closePropMenu(); // persiste (label/tipo/oculto) e fecha
+    },
+    // excluir a propriedade → backend remove a chave de TODAS as tarefas
+    deletePropFromMenu() {
+      const key = this.propMenu.key;
+      this.propMenu = { ...this.propMenu, open: false };
       if (!key) return;
       const props = JSON.parse(JSON.stringify(this.properties));
-      if (!props[key]) { this.closePropMenu(); return; }
-      Object.assign(props[key], changes);
+      delete props[key];
+      this.saveSchemaProps(props);
+    },
+    async saveSchemaProps(props) {
       try {
         await saveProperties({ properties: props, renames: [] });
         this.$emit('config-changed'); // App recarrega config + tarefas
-        this.closePropMenu();
       } catch (e) {
-        this.errorMsg = e.message || 'Falha ao alterar a propriedade.';
+        this.errorMsg = e.message || 'Falha ao salvar a propriedade.';
       }
-    },
-    renameProp() {
-      const label = (this.propMenu.label || '').trim();
-      if (!label) return;
-      this.applyPropChange({ label });
-    },
-    changePropType(v) {
-      if (!v || v === this.propMenu.type) return;
-      this.propMenu.type = v;
-      this.applyPropChange({ type: v });
-    },
-    toggleHiddenProp() {
-      this.applyPropChange({ hidden: !this.propMenu.hidden });
     },
     // ── opções de select/multiselect (CRUD inline, migra todas as tarefas) ──
     optionsForSelect(field) {
@@ -887,5 +927,13 @@ export default {
 .icon-pop :deep(.v3-body) {
   height: 264px;
   overflow-y: auto;
+}
+
+/* itens do menu da propriedade (kebab) */
+.menu-item {
+  @apply flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-muted transition-colors hover:bg-ink-700;
+}
+.menu-item--danger:hover {
+  @apply bg-red-500/10 text-red-300;
 }
 </style>
