@@ -3,8 +3,8 @@
     <aside
       v-if="open"
       :class="inline
-        ? 'relative flex w-[520px] max-w-[44vw] flex-shrink-0 flex-col border-l border-ink-500 bg-ink-850'
-        : 'fixed inset-y-0 z-40 flex w-[520px] max-w-[94vw] flex-col border-l border-ink-500 bg-ink-850 shadow-2xl'"
+        ? 'relative flex min-h-0 w-[420px] max-w-[36vw] flex-shrink-0 flex-col overflow-hidden border-l border-ink-500 bg-ink-850'
+        : 'fixed inset-y-0 z-40 flex w-[460px] max-w-[94vw] flex-col overflow-hidden border-l border-ink-500 bg-ink-850 shadow-2xl'"
       :style="inline ? null : { right: offsetRight + 'px' }"
     >
       <!-- header -->
@@ -30,7 +30,7 @@
         <ul v-else-if="!selected" class="divide-y divide-ink-500/60">
           <li v-if="!entries.length" class="px-4 py-6 text-center text-[12px] text-faint">Sem histórico para esta tarefa.</li>
           <li
-            v-for="(c, i) in entries"
+            v-for="(c, i) in pagedEntries"
             :key="c.hash"
             class="cursor-pointer px-3.5 py-2.5 transition-colors hover:bg-ink-700"
             @click="openDiff(c)"
@@ -45,6 +45,11 @@
               <span>·</span>
               <span class="flex-shrink-0">{{ formatDate(c.date) }}</span>
             </div>
+          </li>
+          <li v-if="entries.length > visibleCount" class="p-2">
+            <button class="w-full rounded-md border border-ink-500 px-3 py-1.5 text-[12px] text-muted transition-colors hover:bg-ink-700" @click="visibleCount += pageSize">
+              Carregar mais ({{ entries.length - visibleCount }} restantes)
+            </button>
           </li>
         </ul>
 
@@ -139,9 +144,14 @@ export default {
       diffLoading: false,
       diffError: '',
       diffMode: 'split',
+      pageSize: 40,
+      visibleCount: 40, // paginação: não renderiza centenas de <li> de uma vez
     };
   },
   computed: {
+    pagedEntries() {
+      return this.entries.slice(0, this.visibleCount);
+    },
     diffLines() {
       const raw = (this.detail && this.detail.diff) || '';
       return raw.split('\n').map((text) => {
@@ -177,6 +187,7 @@ export default {
       this.selected = null;
       this.detail = null;
       this.error = '';
+      this.visibleCount = this.pageSize; // reseta a paginação a cada abertura/troca
       if (!this.taskId) { this.entries = []; return; }
       this.loading = true;
       try {
