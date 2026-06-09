@@ -86,12 +86,14 @@
 
     <!-- menu do bloco: transformar (dentro do que o .md suporta) / duplicar / excluir -->
     <div v-show="bm.open" ref="blockMenu" class="be-blockmenu" :style="{ left: bm.x + 'px', top: bm.y + 'px' }">
-      <div class="be-blockmenu__label">Transformar em</div>
-      <button v-for="item in turnIntoItems" :key="item.id" class="be-slash__item" @mousedown.prevent @click="turnInto(item)">
-        <span class="be-slash__icon" v-html="item.icon"></span>
-        <span class="be-slash__title">{{ item.title }}</span>
-      </button>
-      <div class="be-blockmenu__sep"></div>
+      <template v-if="blockItems.length">
+        <div class="be-blockmenu__label">Transformar em</div>
+        <button v-for="item in blockItems" :key="item.id" class="be-slash__item" @mousedown.prevent @click="turnInto(item)">
+          <span class="be-slash__icon" v-html="item.icon"></span>
+          <span class="be-slash__title">{{ item.title }}</span>
+        </button>
+        <div class="be-blockmenu__sep"></div>
+      </template>
       <button class="be-slash__item" @mousedown.prevent @click="duplicateBlock"><span class="be-slash__title">Duplicar</span></button>
       <button class="be-slash__item be-blockmenu__danger" @mousedown.prevent @click="deleteBlock"><span class="be-slash__title">Excluir</span></button>
     </div>
@@ -178,6 +180,7 @@ export default {
       // handle de bloco (6 pontinhos) + menu do bloco sob o cursor
       bh: { visible: false, top: 0, start: 0, end: 0 },
       bm: { open: false, x: 0, y: 0 },
+      blockItems: [], // opções "transformar em" aplicáveis ao bloco atual
     };
   },
   computed: {
@@ -530,7 +533,27 @@ export default {
       const host = this.$el.getBoundingClientRect();
       this.bh = { visible: true, top: coords.top - host.top, start, end };
     },
+    // id do slash correspondente ao tipo do bloco atual (null = atom: imagem/divisor)
+    currentBlockTypeId() {
+      if (!this.editor) return null;
+      let node;
+      try { node = this.editor.state.doc.nodeAt(this.bh.start); } catch (_) { node = null; }
+      if (!node) return null;
+      const n = node.type.name;
+      if (n === 'paragraph') return 'text';
+      if (n === 'heading') return 'h' + ((node.attrs && node.attrs.level) || 1);
+      if (n === 'bulletList') return 'bullet';
+      if (n === 'orderedList') return 'ordered';
+      if (n === 'taskList') return 'todo';
+      if (n === 'blockquote') return 'quote';
+      if (n === 'codeBlock') return 'code';
+      return null; // imagem / divisor → sem "transformar em"
+    },
     openBlockMenu() {
+      const curId = this.currentBlockTypeId();
+      // mesmas opções do "/", porém só as APLICÁVEIS: exclui o tipo atual; em
+      // bloco não-textual (imagem/divisor) não oferece transformação.
+      this.blockItems = curId ? this.turnIntoItems.filter((i) => i.id !== curId) : [];
       this.bm = { open: true, x: 6, y: this.bh.top };
       this.$nextTick(() => { document.addEventListener('mousedown', this.onBlockDocMouseDown, true); });
     },
