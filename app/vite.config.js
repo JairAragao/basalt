@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import vue from '@vitejs/plugin-vue'
+
+// versão = fonte única no package.json (exposta no header p/ localizar o build)
+const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
 
 // Front do app Basalt (Vue 3 + Tailwind).
 // root = pasta app/. Em dev, /api é proxied pro backend Express (porta 4317).
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [vue()],
   resolve: {
     alias: {

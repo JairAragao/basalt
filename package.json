@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "main": "electron/main.js",

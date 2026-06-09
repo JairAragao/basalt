@@ -12,6 +12,7 @@
 
     <!-- Toolbar (filtros/view/ações) — só com vault ativo e fora da configuração -->
     <header v-if="config && !loadError && !configuring" class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 bg-ink-850 px-4">
+      <span class="font-mono text-[11px] text-faint" title="Versão do Basalt">v{{ version }}</span>
       <div class="flex-1"></div>
 
       <template v-if="config && !loadError">
@@ -279,6 +280,7 @@ export default {
   },
   data() {
     return {
+      version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '',
       config: null,
       tasks: [],
       filters: {},
