@@ -70,6 +70,10 @@
       "target": "nsis",
       "icon": "basalt.ico"
     },
+    "nsis": {
+      "oneClick": false,
+      "include": "build/installer.nsh"
+    },
     "mac": {
       "target": "dmg",
       "icon": "basalt.png"
