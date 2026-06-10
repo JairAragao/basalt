@@ -1,6 +1,6 @@
 <template>
   <div
-    class="group relative cursor-pointer overflow-hidden rounded-lg border p-2.5 shadow-sm transition-colors"
+    class="group relative flex-shrink-0 cursor-pointer overflow-hidden rounded-lg border p-2.5 shadow-sm transition-colors"
     :class="tint ? 'hover:brightness-125' : 'border-ink-500 bg-ink-700 hover:border-ink-line hover:bg-ink-600'"
     :style="tint ? { backgroundColor: tint + '30', borderColor: tint + '60' } : {}"
     @click="$emit('open', task)"
