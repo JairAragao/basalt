@@ -34,19 +34,24 @@
       </div>
     </div>
 
-    <!-- propriedades: UMA por linha (estilo Notion) — não cortam mais por overflow -->
+    <!-- propriedades: UMA por linha, SÓ o valor (rótulo fica no title/hover).
+         select/multiselect viram chips coloridos; demais tipos, texto puro. -->
     <div v-if="hasMeta" class="mt-2 space-y-1">
-      <div
-        v-for="chip in extraChips"
-        :key="chip.key"
-        class="flex items-baseline gap-1.5 text-[12px]"
-      >
-        <span class="flex-shrink-0 text-faint">{{ chip.label }}</span>
-        <span class="min-w-0 break-words text-muted">{{ chip.value }}</span>
+      <div v-for="chip in extraChips" :key="chip.key" class="text-[12px]">
+        <div v-if="chip.options" class="flex flex-wrap gap-1">
+          <span
+            v-for="opt in chip.options"
+            :key="opt"
+            class="pill"
+            :style="{ backgroundColor: colorOf(opt) + '26', color: colorOf(opt) }"
+            :title="chip.label"
+          >{{ opt }}</span>
+        </div>
+        <div v-else class="min-w-0 break-words text-muted" :title="chip.label">{{ chip.value }}</div>
       </div>
 
       <div v-if="badgeValue !== null && badgeValue !== undefined && badgeValue !== ''">
-        <span class="pill" :class="badgeClass" :title="badgeLabel">⚡ {{ badgeValue }}</span>
+        <span class="pill" :class="badgeClass" :title="badgeLabel">{{ badgeValue }}</span>
       </div>
     </div>
 
@@ -61,6 +66,7 @@
 
 <script>
 import { displayValue, isImageRef } from '../format';
+import { colorFor } from '../palette';
 
 export default {
   name: 'TaskCard',
@@ -72,6 +78,7 @@ export default {
   },
   methods: {
     isImg(v) { return isImageRef(v); },
+    colorOf(opt) { return colorFor(opt); },
     // formata valor p/ exibição: multiselect (a;b;c → "a, b, c"), user (id → nome).
     formatVal(prop, v) {
       if (prop && prop.type === 'multiselect') {
@@ -124,7 +131,15 @@ export default {
         if (v === null || v === undefined || v === '') return;
         const prop = this.properties[key] || {};
         if (prop.hidden) return; // propriedade oculta não aparece no card
-        out.push({ key, label: prop.label || key, value: this.formatVal(prop, v) });
+        const label = prop.label || key;
+        if (prop.type === 'enum' || prop.type === 'multiselect') {
+          const options = prop.type === 'multiselect'
+            ? String(v).split(';').map((s) => s.trim()).filter(Boolean)
+            : [String(v).trim()].filter(Boolean);
+          if (options.length) out.push({ key, label, options });
+          return;
+        }
+        out.push({ key, label, value: this.formatVal(prop, v) });
       });
       return out;
     },
