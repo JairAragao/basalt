@@ -1,25 +1,32 @@
 // commit-msg.js — gera a mensagem de commit AUTOMÁTICA que descreve a mudança
 // em uma tarefa, comparando o frontmatter ANTES vs DEPOIS. Função PURA, sem I/O.
 //
-// describeChanges(oldData, newData, kind, id) -> string
+// describeChanges(oldData, newData, kind, id, titleKey, opts) -> string
 //
-//   kind:
-//     'create'  → "task <id>: criada — <titulo>"
-//     'move'    → "task <id>: status <de>→<para>"
-//     'delete'  → "task <id>: removida — <titulo>"
-//     'update'  → "task <id>: <campo old→new>; <campo +adicionado>; <campo -removido>"
+//   'create' → Criou "<título curto>"
+//   'delete' → Removeu "<título curto>"
+//   'move' / 'update' → SÓ o que mudou, por extenso:
+//     status alterado de "A fazer" para "Pausado"; tipo definido como "Bug";
+//     responsável removido (era "Leo"); conteúdo atualizado
 //
-// Para 'update' compara campo a campo (old vs new). Cita prioridade_gute quando
-// mudar (é útil no histórico), mesmo sendo derivado. Campos sem mudança são
-// omitidos. Se nada mudou, devolve "task <id>: sem alterações".
+// A mensagem NÃO repete o título da tarefa (título grande afoga o que mudou);
+// a tarefa é identificada pelo arquivo do commit (git log -- <arquivo>) — é
+// assim que o histórico do card busca as entradas dela.
+//
+// opts.bodyChanged: o corpo markdown mudou (o diff aqui só vê o frontmatter).
 
-// Representação textual de um valor para a mensagem. null/undefined/'' viram '∅'.
-function fmt(value) {
-  if (value === undefined || value === null) return '∅';
-  if (typeof value === 'string') {
-    const t = value.trim();
-    return t === '' ? '∅' : t;
-  }
+const MAX_VALUE = 60; // valor citado na mensagem
+const MAX_TITLE = 40; // título citado em create/delete
+
+function clip(text, max) {
+  const t = String(text).trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
+// Representação canônica SEM truncar — só pra comparar (cobre "3" vs 3 do
+// frontmatter; truncar aqui faria valores longos parecerem iguais).
+function canon(value) {
+  if (value === undefined || value === null) return '';
   if (Array.isArray(value)) return value.join(',');
   if (typeof value === 'object') {
     try {
@@ -28,28 +35,33 @@ function fmt(value) {
       return String(value);
     }
   }
-  return String(value);
+  return String(value).trim();
 }
 
-// "vazio" para fins de adicionado/removido: ausente, null ou string só-espaços.
+// Representação pra EXIBIR na mensagem (truncada).
+function fmt(value) {
+  if (Array.isArray(value)) return clip(value.join(', '), MAX_VALUE);
+  if (value !== null && typeof value === 'object') return clip(canon(value), MAX_VALUE);
+  return clip(String(value), MAX_VALUE);
+}
+
+// "vazio" para fins de definido/removido: ausente, null ou string só-espaços.
 function isAbsent(value) {
   if (value === undefined || value === null) return true;
   if (typeof value === 'string') return value.trim() === '';
   return false;
 }
 
-// Igualdade tolerante: compara pela representação canônica (cobre "3" vs 3 do
-// frontmatter e ordena nada — valores de tarefa são escalares/strings).
 function sameValue(a, b) {
   if (a === b) return true;
   if (isAbsent(a) && isAbsent(b)) return true;
-  return fmt(a) === fmt(b);
+  return canon(a) === canon(b);
 }
 
-// Lista os campos que diferem entre oldData e newData -> array de strings.
-// - mudou:     "campo old→new"
-// - adicionou: "campo +valor"
-// - removeu:   "campo -valor"
+// Lista as mudanças entre oldData e newData -> array de frases.
+// - mudou:     `campo alterado de "old" para "new"`
+// - adicionou: `campo definido como "new"`
+// - removeu:   `campo removido (era "old")`
 function diffFields(oldData, newData) {
   const o = oldData && typeof oldData === 'object' ? oldData : {};
   const n = newData && typeof newData === 'object' ? newData : {};
@@ -67,11 +79,11 @@ function diffFields(oldData, newData) {
     const oAbsent = isAbsent(ov);
     const nAbsent = isAbsent(nv);
     if (oAbsent && !nAbsent) {
-      parts.push(`${k} +${fmt(nv)}`);
+      parts.push(`${k} definido como "${fmt(nv)}"`);
     } else if (!oAbsent && nAbsent) {
-      parts.push(`${k} -${fmt(ov)}`);
+      parts.push(`${k} removido (era "${fmt(ov)}")`);
     } else {
-      parts.push(`${k} ${fmt(ov)}→${fmt(nv)}`);
+      parts.push(`${k} alterado de "${fmt(ov)}" para "${fmt(nv)}"`);
     }
   }
   return parts;
@@ -81,32 +93,25 @@ function titleOf(data, titleKey) {
   const d = data && typeof data === 'object' ? data : {};
   // engine genérico: a chave do título vem do board (card.title), não é fixa.
   const t = d[titleKey || 'titulo'];
-  return isAbsent(t) ? '(sem título)' : String(t).trim();
+  return isAbsent(t) ? '(sem título)' : clip(t, MAX_TITLE);
 }
 
-function describeChanges(oldData, newData, kind, id, titleKey) {
-  // Usa o TÍTULO da tarefa (não o nome do arquivo) — a mensagem descreve o que
-  // mudou; o arquivo em si é rastreado pelo git (git log -- <arquivo>).
-  const title = titleOf(newData || oldData, titleKey);
-
+function describeChanges(oldData, newData, kind, id, titleKey, opts = {}) {
   switch (kind) {
     case 'create':
-      return `Criou: ${title}`;
+      return `Criou "${titleOf(newData || oldData, titleKey)}"`;
 
     case 'delete':
-      return `Removeu: ${title}`;
+      return `Removeu "${titleOf(oldData || newData, titleKey)}"`;
 
-    case 'move': {
-      const de = fmt(oldData && oldData.status);
-      const para = fmt(newData && newData.status);
-      return `${title}: status ${de} → ${para}`;
-    }
-
+    // move é só um update de status — mesma frase descritiva.
+    case 'move':
     case 'update':
     default: {
       const parts = diffFields(oldData, newData);
-      if (!parts.length) return `${title}: sem alterações`;
-      return `${title}: ${parts.join('; ')}`;
+      if (opts.bodyChanged) parts.push('conteúdo atualizado');
+      if (!parts.length) return 'Sem alterações';
+      return parts.join('; ');
     }
   }
 }

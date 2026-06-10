@@ -294,12 +294,15 @@ router.put('/tasks/:id', async (req, res) => {
     const cleanData = { ...data };
     delete cleanData.body;
 
-    // Frontmatter ANTES (para descrever a mudança). Pode não existir → null.
-    const before = safeGetData(id);
+    // Tarefa ANTES (frontmatter pro diff; corpo pra detectar edição de conteúdo).
+    const beforeTask = safeGetTask(id);
+    const before = beforeTask ? beforeTask.data : null;
     tasksRepo.update(id, cleanData, taskBody, await gitActor());
     const after = safeGetData(id) || { ...cleanData, id };
 
-    const msg = describeChanges(before, after, 'update', id, titleKeyOf());
+    const bodyChanged = !!beforeTask && taskBody !== undefined
+      && String(taskBody).trim() !== String(beforeTask.body || '').trim();
+    const msg = describeChanges(before, after, 'update', id, titleKeyOf(), { bodyChanged });
     const file = taskFile(id);
     const warning = await commitAwaited(() => git.commitTask(file, msg));
     schedulePush();
@@ -341,13 +344,19 @@ router.delete('/tasks/:id', async (req, res) => {
   } catch (err) { fail(res, err); }
 });
 
-// Lê o frontmatter de uma tarefa sem lançar (retorna null se não existir).
-function safeGetData(id) {
+// Lê a tarefa inteira (frontmatter + corpo) sem lançar (null se não existir).
+function safeGetTask(id) {
   try {
-    return tasksRepo.get(id).data;
+    return tasksRepo.get(id);
   } catch {
     return null;
   }
+}
+
+// Lê o frontmatter de uma tarefa sem lançar (retorna null se não existir).
+function safeGetData(id) {
+  const t = safeGetTask(id);
+  return t ? t.data : null;
 }
 
 // ── Usuários (roster) + identidade "eu" ──────────────────────────────────────
