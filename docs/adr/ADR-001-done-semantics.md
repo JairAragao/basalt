@@ -1,53 +1,52 @@
-# ADR-001 — Completion semantics: `doneGroupId` + `completed_at`/`completed_by`
+# ADR-001 — Semântica de conclusão: `doneGroupId` + `completed_at`/`completed_by`
 
-- **Status**: accepted (2026-06-10)
-- **Scope**: engine (board config + task frontmatter contract)
+- **Status**: aceita (2026-06-10)
+- **Escopo**: engine (config do board + contrato do frontmatter da tarefa)
 
-## Context
+## Contexto
 
-The engine had no notion of a "completed" task: no `completed_at` field, and the board
-did not know which status group means "done". This blocked any reporting on throughput,
-lead time or completion-by-user, and left "done" as a purely visual convention.
+O engine não tinha noção de tarefa "concluída": nenhum campo `completed_at`, e o board
+não sabia qual grupo de status significa "feito". Isso bloqueava qualquer relatório de
+throughput, lead time ou conclusão por usuário — "concluído" era só convenção visual.
 
-## Decision
+## Decisão
 
-1. **`board.json` gains an optional top-level `doneGroupId`** (string) referencing a
-   `statusGroups[].id`. Absent/`null` = the vault has no completion semantics.
-   On config load, an orphan reference **self-heals to `null`** (same pattern as orphan
-   card/filter references). `PUT /api/board/status` validates strictly (400 on unknown id).
-2. **`completed_at` (datetime) and `completed_by` (string)** join the audit-field family
-   (`system` + `auto`, read-only in the UI), injected/normalized by `config.js` even for
-   vaults seeded before this feature.
-3. **`tasks-repo` is the only writer** and stamps **only on transition**:
-   - status enters the done group → stamp `completed_at = now ISO`, `completed_by = git actor`;
-   - status leaves the done group → both fields are removed;
-   - everything else preserves the fields as-is — **legacy tasks already in done are
-     never retro-stamped** (that would fabricate completion dates and produce phantom commits).
-4. **The watcher is untouched.** The stamp must travel in the same commit as the move,
-   and the watcher never commits.
-5. `commit-msg.js` ignores both fields when describing changes (the message already says
-   the status changed).
+1. **`board.json` ganha um `doneGroupId` opcional no topo** (string) referenciando um
+   `statusGroups[].id`. Ausente/`null` = o vault não tem semântica de conclusão.
+   No load da config, referência órfã faz **self-heal pra `null`** (mesmo padrão das refs
+   órfãs de card/filtros). O `PUT /api/board/status` valida estrito (400 pra id desconhecido).
+2. **`completed_at` (datetime) e `completed_by` (string)** entram na família de campos de
+   auditoria (`system` + `auto`, read-only na UI), injetados/normalizados pelo `config.js`
+   inclusive em vaults semeados antes desta feature.
+3. **O `tasks-repo` é o único escritor** e carimba **só na transição**:
+   - status entra no grupo done → carimba `completed_at = now ISO`, `completed_by = ator git`;
+   - status sai do grupo done → os dois campos são removidos;
+   - todo o resto preserva os campos como estão — **tarefa legada já em done nunca é
+     retro-carimbada** (fabricaria data de conclusão falsa e geraria commits fantasma).
+4. **O watcher não é tocado.** O carimbo precisa viajar no mesmo commit do move, e o
+   watcher nunca commita.
+5. O `commit-msg.js` ignora os dois campos na descrição (a mensagem já diz que o status mudou).
 
-## Alternatives considered
+## Alternativas descartadas
 
-- **`done: true` flag per group** (allows multiple done groups) — rejected: YAGNI; changes
-  the `statusGroups` shape and complicates the Status editor. Revisit if demand appears.
-- **Deriving completion from git history** (commit that moved the task) — rejected:
-  accurate but expensive (reading per-task history) and complex; a stamped field keeps
-  files-as-DB self-contained.
-- **Stamping in the watcher** — rejected: the watcher never commits (invariant), so the
-  stamp would be left uncommitted or force the watcher to commit.
+- **Flag `done: true` por grupo** (permitiria N grupos done) — rejeitada: YAGNI; muda o
+  shape de `statusGroups` e complica o editor de Status. Revisitar se surgir demanda.
+- **Derivar conclusão do histórico git** (commit que moveu a tarefa) — rejeitada: precisa
+  porém cara (ler histórico por tarefa) e complexa; campo carimbado mantém o files-as-DB
+  auto-contido.
+- **Carimbar no watcher** — rejeitada: o watcher nunca commita (invariante), então o
+  carimbo ficaria sem versionar ou forçaria o watcher a commitar.
 
-## Consequences
+## Consequências
 
-- Old vaults work unchanged; marking a done group enables stamping from then on.
-- Legacy tasks in done without a stamp appear as "completed, no date" in reports;
-  an optional manual backfill is backlog material.
-- New vaults are seeded with `doneGroupId` pointing at the template's done group.
+- Vaults antigos funcionam sem mudança; marcar um grupo done liga o carimbo dali em diante.
+- Tarefa legada em done sem carimbo aparece como "concluída, sem data" nos relatórios;
+  backfill manual opcional fica no backlog.
+- Vault novo é semeado com `doneGroupId` apontando pro grupo de conclusão do template.
 
-## Resumo (pt-BR)
+## Summary (EN)
 
-O board ganha `doneGroupId` (opcional, self-heal pra `null` se órfão). `completed_at`/
-`completed_by` viram campos de auditoria (`system+auto`) carimbados pelo `tasks-repo`
-**só na transição** pra dentro/fora do grupo done — legado nunca é retro-carimbado, o
-watcher continua mudo, e a mensagem de commit ignora os carimbos.
+`board.json` gains an optional top-level `doneGroupId` (self-heals to `null` when
+orphaned). `completed_at`/`completed_by` become audit fields (`system+auto`) stamped by
+`tasks-repo` **only on transition** into/out of the done group — legacy tasks are never
+retro-stamped, the watcher stays mute, and commit messages ignore the stamps.

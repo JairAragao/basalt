@@ -142,9 +142,10 @@ Doc completa do funcionamento: `docs/ARCHITECTURE.md` (EN) / `docs/ARCHITECTURE.
 > Feito recentemente: migração Vue 3, app Electron, vault separado (`basalt-vault`), split de repos (engine/vault/lp), default mínimo, edição direta de etapas no board.
 
 ## Gotchas / convenções
-- **Docs públicos são BILÍNGUES**: todo doc da raiz/docs/ tem par EN + pt-BR (README,
-  CONTRIBUTING, ARCHITECTURE) — **sempre atualizar os dois juntos** (checkbox no PR template).
-  ADRs em EN com "Resumo (pt-BR)" no fim. CHANGELOG em EN (keep-a-changelog).
+- **Docs públicos são BILÍNGUES, pt-BR é o PRINCIPAL**: o arquivo canônico é em
+  português (`README.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`) e o inglês é a
+  alternativa com sufixo `.en.md` — **sempre atualizar os dois juntos** (checkbox no PR
+  template). ADRs em pt-BR com "Summary (EN)" no fim. CHANGELOG em pt-BR (keep-a-changelog).
 - **Node ≥18** (Vite). `nvm use 20`/`24`.
 - **expr-eval:** sempre `parser.consts={}` no motor de fórmula.
 - **tiptap-markdown fixado em `0.8.10`** (0.9+ exige TipTap v3; o projeto é TipTap v2). Não suba sem migrar.

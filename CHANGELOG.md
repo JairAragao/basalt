@@ -1,41 +1,46 @@
 # Changelog
 
-All notable changes to Basalt are documented here. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver.
+Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
+[Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
 ## [0.5.0] - 2026-06-10
 
-### Added
+### Adicionado
 
-- **Navigation sidebar** — collapsed-by-default left rail with **Tasks**, **Dashboard**
-  and **Settings**; the active view is remembered **per vault** and restored when
-  switching tabs.
-- **Reports dashboard** — created / completed / open counts, average lead time, a
-  created×completed time series (uPlot, lazy-loaded), and breakdowns by roster user and
-  by any `enum` property. Aggregated entirely client-side ([ADR-002](docs/adr/ADR-002-client-side-reports.md)).
-- **Completion semantics** — mark one status group as the "done" group in the Status
-  editor; the engine stamps `completed_at`/`completed_by` automatically on transition
-  (and clears them when a task leaves the group). Legacy tasks are never retro-stamped
-  ([ADR-001](docs/adr/ADR-001-done-semantics.md)).
-- **Open-source scaffolding** — MIT license, bilingual README/CONTRIBUTING (EN/pt-BR),
-  code of conduct, security policy, issue/PR templates, `docs/ARCHITECTURE.md` and ADRs.
+- **Sidebar de navegação** — rail lateral recolhido por padrão com **Tarefas**,
+  **Dashboard** e **Configurações**; a view ativa é lembrada **por vault** e restaurada
+  ao trocar de aba.
+- **Dashboard de relatórios** — contagens de criadas / finalizadas / abertas, lead time
+  médio, série temporal criadas×finalizadas (uPlot, carregado sob demanda) e quebras por
+  usuário do roster e por qualquer propriedade `enum`. Agregação 100% no cliente
+  ([ADR-002](docs/adr/ADR-002-client-side-reports.md)).
+- **Semântica de conclusão** — marque um grupo de status como grupo de "conclusão" no
+  editor de Status; o engine carimba `completed_at`/`completed_by` automaticamente na
+  transição (e limpa quando a tarefa sai do grupo). Tarefas legadas nunca são
+  retro-carimbadas ([ADR-001](docs/adr/ADR-001-done-semantics.md)).
+- **Estrutura open source** — licença MIT, README/CONTRIBUTING bilíngues (pt-BR
+  principal + EN), código de conduta, política de segurança, templates de issue/PR,
+  `docs/ARCHITECTURE.md` e ADRs.
 
-### Changed
+### Mudado
 
-- Settings moved from the header gear to the sidebar.
-- New vaults are seeded with completion semantics enabled (`doneGroupId` in the default board).
+- Configurações saíram da engrenagem do header e foram pra sidebar.
+- Vault novo já nasce com a semântica de conclusão ativa (`doneGroupId` no board padrão).
 
-### Notes
+### Notas
 
-- Installer is unsigned — Windows SmartScreen warns on first run ("More info" → "Run anyway").
-- Server test suite grew from 40 to 64 tests (tasks-repo, config and reports now covered).
+- Instalador não assinado — o SmartScreen do Windows avisa na primeira execução
+  ("Mais informações" → "Executar assim mesmo").
+- Suite de testes do server cresceu de 40 pra 64 testes (tasks-repo, config e reports
+  agora cobertos).
 
 ## [0.4.0] - 2026-06-09
 
-Retroactive summary (pre-changelog era), from git history:
+Resumo retroativo (era pré-changelog), a partir do histórico git:
 
-- Multi-vault **tabs**, user **roster** (`config/users.json`) with stable git identity,
-  **pull notifications**, orphan-asset GC and enum option migration.
-- Auto-save, inline editable selects, colored chips on cards, Notion-style status/blocks.
-- Descriptive automatic commit messages (only what changed, task title aware).
-- Dark assisted installer; paginated card history; version badge in the header.
+- **Abas** multi-vault, **roster** de usuários (`config/users.json`) com identidade git
+  estável, **notificações por pull**, GC de assets órfãos e migração de opções de enum.
+- Auto-save, selects editáveis inline, chips coloridos nos cards, status/blocos estilo
+  Notion.
+- Mensagens de commit automáticas descritivas (só o que mudou, ciente do título).
+- Instalador assistido dark; histórico do card paginado; badge de versão no header.

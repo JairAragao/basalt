@@ -1,115 +1,115 @@
-# Basalt — Architecture
+# Basalt — Arquitetura
 
-**English** · [Português (Brasil)](ARCHITECTURE.pt-BR.md)
+**Português (Brasil)** · [English](ARCHITECTURE.en.md)
 
-How Basalt actually works, for people who want to contribute. Last full audit: 2026-06-10 (v0.5.0).
+Como o Basalt funciona de verdade, pra quem quer contribuir. Última auditoria completa:
+2026-06-10 (v0.5.0).
 
-## The big picture
+## Visão geral
 
-Three repositories, one boundary:
+Três repositórios, uma fronteira:
 
-| Repo | Role |
+| Repo | Papel |
 |---|---|
-| **basalt** (this one) | The generic **engine**: server, SPA, Electron shell. Ships empty. |
-| **basalt-vault** | A **vault**: `config/` + `tasks/` + its own git repo. Your data. |
-| **basalt-lp** | Static landing page with download links. |
+| **basalt** (este) | O **engine** genérico: server, SPA, shell Electron. Vai vazio. |
+| **basalt-vault** | Um **vault**: `config/` + `tasks/` + git próprio. Seus dados. |
+| **basalt-lp** | Landing page estática com downloads. |
 
 ```
-┌─ Electron main ── starts the server on a free 127.0.0.1 port, IPC for folder picker
+┌─ Electron main ── sobe o server numa porta livre 127.0.0.1, IPC pro picker de pasta
 │
-│  ┌─ Vue 3 SPA (app/src) ── board / table / peek / dashboard / settings
+│  ┌─ SPA Vue 3 (app/src) ── board / tabela / peek / dashboard / settings
 │  │        │ fetch /api
 │  ▼        ▼
-│  Express server (server/) ── thin layer of fs + git over the vault
+│  Server Express (server/) ── camada fina de fs + git sobre o vault
 │        │
 │        ▼
-│  VAULT (separate folder & git repo)
-│    config/schema.json   ← properties (string, enum, int, formula, datetime, user)
-│    config/board.json    ← groups, stages, colors, card, sort, filters, doneGroupId
-│    config/users.json    ← roster (optional)
-│    tasks/*.md           ← one task = one markdown file (frontmatter + body)
-│    assets/*             ← uploaded images (raster only)
+│  VAULT (pasta separada, git próprio)
+│    config/schema.json   ← propriedades (string, enum, int, formula, datetime, user)
+│    config/board.json    ← grupos, etapas, cores, card, sort, filtros, doneGroupId
+│    config/users.json    ← roster (opcional)
+│    tasks/*.md           ← 1 tarefa = 1 arquivo markdown (frontmatter + corpo)
+│    assets/*             ← imagens enviadas (só raster)
 └──────
 ```
 
-**The engine is generic.** No client/workflow-specific property names exist in the code;
-behavior is driven by the vault's `schema.json`/`board.json`, read at runtime. Anything
-workflow-specific belongs in vault config (or a future preset) — this is enforced in review.
+**O engine é genérico.** Nenhum nome de propriedade/regra de cliente existe no código; o
+comportamento vem do `schema.json`/`board.json` do vault, lidos em runtime. O que é
+específico de um fluxo vive na config do vault (ou num futuro preset) — isso é cobrado em review.
 
-## Canonical flow of a save
+## Fluxo canônico de um save
 
 ```
 UI (auto-save) → PUT /api/tasks/:id
-  → tasks-repo: validate (schema) → strip managed/derived fields from input
-    → preserve foreign frontmatter keys + formula results → stamp updated_at/by
-    → ATOMIC write (.tmp + rename, path-safe)
-  → commit-msg.describeChanges(before, after) builds a human message (pt-BR)
-  → gitChain (single promise queue) commits — awaited, local, fast
-  → push runs in background, coalesced; failures surface as `warning` on the NEXT response
-  → watcher (chokidar) sees the change → recomputes formula fields → rewrites ONLY if a
-    value changed (anti-loop) → stamps computed_at → NEVER commits
+  → tasks-repo: valida (schema) → remove campos gerenciados/derivados do input
+    → preserva chaves estrangeiras + resultados de fórmula → carimba updated_at/by
+    → escrita ATÔMICA (.tmp + rename, path-safe)
+  → commit-msg.describeChanges(antes, depois) gera a mensagem humana
+  → gitChain (fila única) commita — aguardado, local, rápido
+  → push roda em background, coalescido; falha vira `warning` na PRÓXIMA resposta
+  → watcher (chokidar) vê a mudança → recalcula fórmulas → só regrava se mudou
+    (anti-loop) → carimba computed_at → NUNCA commita
 ```
 
-## Invariants (what keeps this safe)
+## Invariantes (o que mantém isso seguro)
 
-1. **Atomic + path-safe writes** — every vault file write goes through `.tmp` + rename;
-   ids are regex-validated and resolved paths must stay inside `tasks/`/`assets/`.
-2. **Serialized git** — one promise chain (`gitChain`) + `simple-git` with
-   `maxConcurrentProcesses: 1`: no `index.lock` races. Commits are awaited; pushes are
-   background and best-effort (offline never breaks a save — you get a `warning`).
-3. **The watcher is mute and idempotent** — recomputes formulas, rewrites only on change,
-   never commits (derived values ride along with the next user commit).
-4. **Self-heal over errors** — orphan config references (a removed property still used by
-   card/filters/sort/`doneGroupId`) are pruned on load; `validate.js` tolerates unknown
-   keys (e.g. `icon`/`cover` pass through untouched).
-5. **Hardened Electron** — `contextIsolation: true`, `nodeIntegration: false`, restrictive
-   CSP, minimal IPC (folder picker, window controls, ready signal), server bound to
-   `127.0.0.1` on a free port.
-6. **Generic engine** — see above; the 2026-06 audit found zero hardcoded client names
-   (the `gute.js` shim is legacy test-compat, not seeded into new vaults).
+1. **Escrita atômica + path-safe** — todo write passa por `.tmp` + rename; ids validados
+   por regex e o path resolvido precisa ficar dentro de `tasks/`/`assets/`.
+2. **Git serializado** — fila única (`gitChain`) + `simple-git` com
+   `maxConcurrentProcesses: 1`: zero corrida de `index.lock`. Commit aguardado; push em
+   background best-effort (offline nunca quebra um save — vira `warning`).
+3. **Watcher mudo e idempotente** — recalcula fórmulas, só regrava se mudou, nunca
+   commita (o derivado pega carona no próximo commit do usuário).
+4. **Self-heal em vez de erro** — ref órfã de config (prop removida ainda usada em
+   card/filtros/sort/`doneGroupId`) é podada no load; `validate.js` tolera chaves
+   desconhecidas (`icon`/`cover` passam transparentes).
+5. **Electron hardened** — `contextIsolation: true`, `nodeIntegration: false`, CSP
+   restritiva, IPC mínimo, server em `127.0.0.1` em porta livre.
+6. **Engine genérico** — auditoria de 2026-06 achou zero hardcode de cliente (o shim
+   `gute.js` é legado de teste, não é semeado em vault novo).
 
-## Server modules (`server/`, ~3.2k LOC)
+## Módulos do server (`server/`, ~3,2k linhas)
 
-| File | ~LOC | Responsibility |
+| Arquivo | ~Linhas | Responsabilidade |
 |---|---|---|
-| `index.js` | 45 | boot: express + `/api` + static `app/dist` (prod) + watcher start; auto-listen only via `node` (Electron controls listen) |
-| `config.js` | 520 | vault resolution (settings › env › default), seed, reload, validation, derivations (columns, status options, formula keys, `doneStageIds`), audit-field normalization, roster & notifications storage |
-| `routes.js` | 1030 | the REST API (31 endpoints), git serialization, automatic commit messages, asset GC, identity resolution, pull notifications |
-| `tasks-repo.js` | 200 | task CRUD over `.md` files: validation, atomic writes, audit stamps, completion stamps (ADR-001), foreign-key preservation |
-| `git.js` | 476 | commit/push/pull, identity (+ stable `basalt.userid`), history/diff, health check; non-interactive, 8s timeout |
-| `commit-msg.js` | 120 | pure: before/after frontmatter diff → human commit message (audit/stamp fields ignored) |
-| `validate.js` | 223 | pure: schema validation (tolerant of unknown keys/types), id generation |
-| `formula.js` | 130 | generic formula engine (`expr-eval-fork`, `parser.consts = {}`, missing/div-zero → `null`) |
-| `watcher.js` | 148 | chokidar over `tasks/*.md`: recompute, anti-loop, `computed_at`, re-watches on vault switch |
-| `gute.js` | 25 | legacy shim → `formula.js` (kept for old tests; not seeded) |
+| `index.js` | 45 | boot: express + `/api` + estático (prod) + watcher; auto-listen só via `node` (o Electron controla o listen) |
+| `config.js` | 520 | resolução de vault (settings › env › default), seed, reload, validação, derivações (colunas, opções de status, keys de fórmula, `doneStageIds`), normalização de auditoria, roster e notificações |
+| `routes.js` | 1030 | a API REST (31 endpoints), serialização git, mensagens automáticas, GC de assets, identidade, notificações por pull |
+| `tasks-repo.js` | 200 | CRUD de tarefas em `.md`: validação, escrita atômica, carimbos de auditoria e de conclusão (ADR-001), preservação de chaves estrangeiras |
+| `git.js` | 476 | commit/push/pull, identidade (+ `basalt.userid` estável), history/diff, health check; não-interativo, timeout 8s |
+| `commit-msg.js` | 120 | puro: diff antes/depois do frontmatter → mensagem humana (auditoria/carimbos ignorados) |
+| `validate.js` | 223 | puro: validação por schema (tolerante a chaves/tipos desconhecidos), geração de id |
+| `formula.js` | 130 | motor de fórmula genérico (`expr-eval-fork`, `parser.consts = {}`, faltante/div-zero → `null`) |
+| `watcher.js` | 148 | chokidar em `tasks/*.md`: recompute, anti-loop, `computed_at`, re-observa na troca de vault |
+| `gute.js` | 25 | shim legado → `formula.js` (compat de testes antigos; não semeado) |
 
-## Feature notes
+## Notas de features
 
-- **Multi-vault tabs** — tabs are UI; the backend is a **single-vault singleton**.
-  Switching tabs = `POST /api/vaults/switch` → config reload → watcher re-watches.
-  The vault list lives in `~/.basalt/settings.json`.
-- **Roster** — `config/users.json` (versioned): stable user id ↔ display name ↔ git
-  identities. Auto-registration writes `basalt.userid` to the **global** git config so the
-  identity travels across vaults. No login — identity always derives from git.
-- **Pull notifications** — after `POST /sync/pull`, commits by other authors touching
-  tasks where you are the responsible become local notifications
-  (`~/.basalt/notifications.json`, capped at 200, not versioned).
-- **Asset GC** — replacing/removing a task's `icon`/`cover` deletes the orphaned asset
-  (if nothing else references it), best-effort, committed.
-- **Completion semantics (0.5.0)** — `board.json#doneGroupId` marks the "done" group;
-  `tasks-repo` stamps `completed_at`/`completed_by` **only on transition** into the group
-  and clears them on the way out. Legacy tasks are never retro-stamped. See
+- **Abas multi-vault** — abas são UI; o backend é **singleton de um vault**. Trocar de
+  aba = `POST /api/vaults/switch` → reload da config → watcher re-observa. A lista vive
+  em `~/.basalt/settings.json`.
+- **Roster** — `config/users.json` (versionado): id estável ↔ nome ↔ identidades git.
+  O auto-cadastro grava `basalt.userid` no git config **global** (a identidade viaja
+  entre vaults). Sem login — identidade vem do git.
+- **Notificações por pull** — pós `POST /sync/pull`, commits de outros autores em
+  tarefas onde você é o responsável viram notificações locais
+  (`~/.basalt/notifications.json`, cap 200, não versionadas).
+- **GC de assets** — trocar/remover `icon`/`cover` apaga o asset órfão (se ninguém mais
+  referencia), best-effort, commitado.
+- **Semântica de conclusão (0.5.0)** — `board.json#doneGroupId` marca o grupo "done";
+  o `tasks-repo` carimba `completed_at`/`completed_by` **só na transição** pra dentro do
+  grupo e limpa na saída. Legado nunca é retro-carimbado. Ver
   [ADR-001](adr/ADR-001-done-semantics.md).
-- **Reports dashboard (0.5.0)** — aggregates client-side in `app/src/reports.js` (pure,
-  unit-tested) over `GET /tasks`; uPlot renders the time series inside a lazy chunk.
-  Revisit server-side aggregation only past ~5k tasks. See
+- **Dashboard de relatórios (0.5.0)** — agrega no cliente em `app/src/reports.js` (puro,
+  testado) sobre `GET /tasks`; uPlot renderiza a série temporal num chunk lazy. Endpoint
+  server-side só se um vault passar de ~5k tarefas. Ver
   [ADR-002](adr/ADR-002-client-side-reports.md).
 
-## Known edges (accepted, single-user scale)
+## Edges conhecidos (aceitos, escala single-user)
 
-- A git process killed by the 8s timeout can leave a stale `.git/index.lock` in the vault
-  (recovery: remove it / next save).
-- Switching vaults with a commit in flight may leave that save uncommitted (it IS on disk;
-  recovery: any next save or `git status`).
-- PowerShell 5.1 mangles UTF-8 JSON bodies (accented stage ids) — use UTF-8 bytes when
-  scripting against the API on Windows; browsers/Electron are unaffected.
+- Processo git morto pelo timeout de 8s pode deixar `.git/index.lock` stale no vault
+  (recuperação: remover / próximo save).
+- Trocar de vault com commit em voo pode deixar aquele save sem versionar (ele ESTÁ no
+  disco; recuperação: próximo save ou `git status`).
+- PowerShell 5.1 mangla body JSON UTF-8 (stage ids acentuados) — use bytes UTF-8 ao
+  scriptar contra a API no Windows; browser/Electron não são afetados.

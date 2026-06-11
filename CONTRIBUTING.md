@@ -1,127 +1,129 @@
-# Contributing to Basalt
+# Contribuindo com o Basalt
 
-**English** · [Português (Brasil)](CONTRIBUTING.pt-BR.md)
+**Português (Brasil)** · [English](CONTRIBUTING.en.md)
 
-Thanks for considering a contribution. This document gets you from zero to a green PR.
+Obrigado por considerar contribuir. Este documento te leva do zero a um PR verde.
 
-## Setup from scratch
+## Setup do zero
 
 ```bash
 git clone https://github.com/JairAragao/basalt.git
 cd basalt
-nvm use 20        # Node ≥ 18 required (Vite breaks on 16); .nvmrc says 20
+nvm use 20        # Node ≥ 18 obrigatório (Vite quebra no 16); .nvmrc diz 20
 npm install
 npm run dev       # backend :4317 + Vite :5173 (proxy /api → :4317)
 ```
 
-> **Port warning:** the dev backend binds to **:4317**. Do not kill processes on that
-> port to "free it up" — it is probably someone's running dev server. If you need to
-> smoke-test the server in isolation, start it on a separate port:
-> `PORT=4399 node server/index.js` (any free port works).
+> **Aviso de porta:** o backend de dev sobe na **:4317**. Não mate processos nessa porta
+> pra "liberá-la" — provavelmente é o dev server de alguém rodando. Se precisar fazer
+> smoke-test do server isolado, suba em outra porta:
+> `PORT=4399 node server/index.js` (qualquer porta livre serve).
 
-On first run the app shows the Setup Wizard — point it at a scratch folder (your test
-vault), **not** at the engine repo itself.
+Na primeira execução o app mostra o SetupWizard — aponte pra uma pasta descartável
+(seu vault de teste), **não** pro repo do engine.
 
-## Tests
+## Testes
 
 ```bash
-npm test          # Vitest, runs server/*.test.js + app/src/*.test.js
+npm test          # Vitest, roda server/*.test.js + app/src/*.test.js
 ```
 
-The suite must be green before any PR. New behavior in `server/` or in pure front
-modules (like `app/src/reports.js`) should come with tests — test coverage is one of
-the easiest and most welcome ways to contribute (see the open issues labeled
-`good first issue`).
+A suíte precisa estar verde antes de qualquer PR. Comportamento novo em `server/` ou em
+módulos puros do front (como `app/src/reports.js`) deve vir com testes — aumentar a
+cobertura é uma das formas mais fáceis e bem-vindas de contribuir (veja as issues com
+label `good first issue`).
 
 ## Build
 
 ```bash
-npm run build     # Vite production build → app/dist
+npm run build     # build de produção do Vite → app/dist
 ```
 
-A green build is part of the PR checklist. Keep an eye on chunk sizes: heavy views are
-loaded lazily (`defineAsyncComponent`) — the TipTap body editor, the emoji picker and
-the reports dashboard are all lazy chunks. Don't pull heavy dependencies into the
-initial bundle.
+Build verde faz parte do checklist de PR. Fique de olho no tamanho dos chunks: views
+pesadas carregam lazy (`defineAsyncComponent`) — o editor de corpo TipTap, o emoji
+picker e o dashboard de relatórios são chunks lazy. Não puxe dependência pesada pro
+bundle inicial.
 
-## Packaging (Electron)
+## Empacotamento (Electron)
 
 ```bash
-npm run electron:build   # installer in release/
+npm run electron:build   # instalável em release/
 ```
 
-Windows gotchas, learned the hard way:
+Gotchas de Windows, aprendidos na dor:
 
-- **Close the app first.** A running Basalt instance locks files that electron-builder
-  needs to overwrite — the build fails or produces a broken artifact.
-- **winCodeSign cache + darwin symlinks**: electron-builder's `winCodeSign` archive
-  contains macOS symlinks that fail to extract on Windows. Pre-extract the cache
-  *without* the `darwin/` folder (or remove it from the extracted cache) before building.
-- **Exit codes masked by pipes**: if you wrap the build in a shell pipeline, the
-  pipeline's exit code can mask electron-builder's failure. Check the build output and
-  the artifacts in `release/` — don't trust the pipe's exit code alone.
+- **Feche o app antes.** Uma instância do Basalt rodando trava arquivos que o
+  electron-builder precisa sobrescrever — o build falha ou gera artefato quebrado.
+- **Cache do winCodeSign + symlinks darwin**: o pacote `winCodeSign` do electron-builder
+  contém symlinks de macOS que falham ao extrair no Windows. Pré-extraia o cache *sem*
+  a pasta `darwin/` (ou remova-a do cache extraído) antes de buildar.
+- **Exit code mascarado por pipe**: se você embrulhar o build num pipeline de shell, o
+  exit code do pipeline pode mascarar a falha do electron-builder. Confira o output do
+  build e os artefatos em `release/` — não confie só no exit code do pipe.
 
-Installers are currently **unsigned** (SmartScreen/Gatekeeper will warn). Code signing
-is on the roadmap; don't try to fix it in a drive-by PR.
+Os instaladores hoje são **não assinados** (SmartScreen/Gatekeeper avisam). Code signing
+está no roadmap; não tente resolver num PR de passagem.
 
-## Code gotchas that will bite you
+## Gotchas de código que pegam
 
-- **`tiptap-markdown` is pinned to `0.8.10`.** Versions 0.9+ require TipTap v3 and this
-  project is on TipTap v2 (`@tiptap/* ^2.27.2`). Do not bump it without migrating the
-  whole editor stack.
-- **`expr-eval` needs `parser.consts = {}`.** Without it, `E` resolves to Euler's number
-  and `PI` to π — which collide with legitimate field names in formulas.
-- **Atomic writes are mandatory.** Every file the engine writes goes through
-  `.tmp` + `rename` (see `tasks-repo.js`). Never `writeFileSync` directly to a task file.
-- **The watcher never commits and is loop-proof.** It only recomputes formula fields and
-  only rewrites a file when a derived value actually changed (then stamps `computed_at`).
-  Do not add git operations or new write paths to `watcher.js`.
-- **`validate.js` is tolerant by design.** Unknown property types and unknown frontmatter
-  keys must not break validation — users hand-edit `.md` files, and foreign keys are
-  preserved, not destroyed.
-- **`localStorage` keys use the `basalt.` prefix** (`basalt.peekMode`,
-  `basalt.sidebarOpen`, `basalt.viewByVault`, `basalt.dashRange`, …). Renaming a key
-  silently resets the stored preference — acceptable, but do it knowingly.
-- **Use `Dropdown.vue`, never a native `<select>`.** Same for the rest of the design
-  system: dark palette is `ink-*` / `txt` / `muted` / `faint` with accent `#d9a01e`
-  (amber), defined in `tailwind.config.js`; pick colors from `palette.js`, don't invent
-  new hex values.
+- **`tiptap-markdown` está pinado em `0.8.10`.** Versões 0.9+ exigem TipTap v3 e o
+  projeto usa TipTap v2 (`@tiptap/* ^2.27.2`). Não suba sem migrar toda a stack do editor.
+- **`expr-eval` precisa de `parser.consts = {}`.** Sem isso, `E` vira o número de Euler
+  e `PI` vira π — colidindo com nomes legítimos de campo em fórmulas.
+- **Escrita atômica é obrigatória.** Todo arquivo que o engine escreve passa por
+  `.tmp` + `rename` (ver `tasks-repo.js`). Nunca dê `writeFileSync` direto num arquivo
+  de tarefa.
+- **O watcher nunca commita e tem anti-loop.** Ele só recalcula campos de fórmula e só
+  regrava o arquivo quando um valor derivado realmente mudou (e então carimba
+  `computed_at`). Não adicione operações git nem novos caminhos de escrita no
+  `watcher.js`.
+- **`validate.js` é tolerante por design.** Tipos de propriedade desconhecidos e chaves
+  desconhecidas no frontmatter não podem quebrar a validação — usuários editam `.md` à
+  mão, e chaves estrangeiras são preservadas, não destruídas.
+- **Chaves de `localStorage` usam o prefixo `basalt.`** (`basalt.peekMode`,
+  `basalt.sidebarOpen`, `basalt.viewByVault`, `basalt.dashRange`, …). Renomear uma chave
+  reseta silenciosamente a preferência salva — aceitável, mas faça sabendo.
+- **Use `Dropdown.vue`, nunca `<select>` nativo.** Idem pro resto do design system:
+  paleta dark é `ink-*` / `txt` / `muted` / `faint` com accent `#d9a01e` (âmbar),
+  definida no `tailwind.config.js`; pegue cores do `palette.js`, não invente hex novo.
 
-## The golden rule: engine ↔ vault boundary
+## A regra de ouro: fronteira engine ↔ vault
 
-**Nothing customer- or workflow-specific goes into the engine.** No hardcoded field
-names, no special-cased board rules, no "if this vault then that". If a behavior is
-specific to one use case, it must be expressible as **vault config** (`schema.json` /
-`board.json`) or, in the future, as a preset/plugin. PRs that hardcode someone's
-workflow into `server/` or `app/src/` will be asked to generalize.
+**Nada específico de cliente ou de workflow entra no engine.** Nenhum nome de campo
+hardcoded, nenhuma regra especial de board, nenhum "se for tal vault, faça tal coisa".
+Se um comportamento é específico de um caso de uso, ele precisa ser expressável como
+**config do vault** (`schema.json` / `board.json`) ou, no futuro, como preset/plugin.
+PRs que hardcodam o workflow de alguém em `server/` ou `app/src/` vão receber pedido de
+generalização.
 
-A good smell test: would this change make sense for a vault you have never seen?
+Um bom teste de cheiro: essa mudança faria sentido pra um vault que você nunca viu?
 
-## Contribution flow
+## Fluxo de contribuição
 
-1. **Fork** the repo and create a branch from `main`.
-2. Make your change, keep commits small. Commit message style:
-   `feat(scope): short description` / `fix(scope): …` — the history is mostly in
-   Brazilian Portuguese, but **English commits from contributors are welcome**.
-3. Open a **PR against `main`** and fill in the template.
+1. **Fork** do repo e branch a partir da `main`.
+2. Faça a mudança, commits pequenos. Estilo de mensagem:
+   `feat(escopo): descrição curta` / `fix(escopo): …` — o histórico é majoritariamente
+   em pt-BR, mas **commits em inglês de contribuidores são bem-vindos**.
+3. Abra um **PR contra a `main`** e preencha o template.
 
-### PR checklist
+### Checklist de PR
 
-- [ ] `npm test` green
-- [ ] `npm run build` green
-- [ ] The engine stays generic (no customer/vault-specific hardcode)
-- [ ] Docs updated **in both languages** when behavior changes (`README.md` +
-      `README.pt-BR.md`, `docs/ARCHITECTURE.md` + `docs/ARCHITECTURE.pt-BR.md`, …)
-- [ ] Flagged whether the change requires rebuilding the installer (touches `server/`,
-      `app/`, `electron/` or `defaults/`)
+- [ ] `npm test` verde
+- [ ] `npm run build` verde
+- [ ] O engine continua genérico (sem hardcode de cliente/vault)
+- [ ] Docs atualizadas **nos dois idiomas** quando o comportamento muda — pt-BR é o
+      principal, EN a alternativa (`README.md` + `README.en.md`,
+      `docs/ARCHITECTURE.md` + `docs/ARCHITECTURE.en.md`, …)
+- [ ] Sinalizou se a mudança exige rebuild do instalável (toca `server/`, `app/`,
+      `electron/` ou `defaults/`)
 
-## About `"private": true`
+## Sobre o `"private": true`
 
-The `"private": true` in `package.json` is **intentional**: it only prevents accidental
-`npm publish`. Basalt is an app, not an npm library — the package is not published to
-the registry. Don't remove the flag.
+O `"private": true` no `package.json` é **intencional**: ele só impede um `npm publish`
+acidental. O Basalt é um app, não uma lib npm — o pacote não é publicado no registry.
+Não remova a flag.
 
-## Code of conduct & security
+## Código de conduta e segurança
 
-By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
-For vulnerabilities, please follow [SECURITY.md](SECURITY.md) — do not open public issues.
+Ao participar você concorda com o [Código de Conduta](CODE_OF_CONDUCT.md).
+Pra vulnerabilidades, siga o [SECURITY.md](SECURITY.md) — não abra issue pública.
