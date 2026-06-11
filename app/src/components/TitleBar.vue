@@ -1,10 +1,11 @@
 <template>
   <!-- barra de título custom (frameless). `drag` = arrasta a janela; `no-drag` = interativo -->
   <div class="titlebar drag flex h-10 flex-shrink-0 items-stretch bg-ink-950 text-txt select-none">
-    <!-- logo (região arrastável) -->
+    <!-- logo (região arrastável) — sem quadrado, com o glow pulsante do splash -->
     <div class="drag flex flex-shrink-0 items-center gap-2 pl-3 pr-2.5">
-      <span class="grid h-8 w-8 place-items-center overflow-hidden rounded-lg border border-ink-500 bg-ink-600 shadow-[0_0_12px_rgba(217,160,30,0.15)]">
-        <img src="/basalt.png" alt="Basalt" class="h-7 w-7 max-w-none scale-[1.6] object-contain" />
+      <span class="relative grid h-10 w-10 place-items-center self-center">
+        <span class="logo-glow pointer-events-none absolute inset-0 rounded-full"></span>
+        <img src="/basalt.png" alt="Basalt" class="relative z-[1] h-9 w-9 object-contain" />
       </span>
     </div>
 
@@ -104,6 +105,15 @@ export default {
 <style scoped>
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
+/* mini-splash: glow âmbar pulsante atrás do logo (CSS puro, não fura o drag) */
+.logo-glow {
+  background: radial-gradient(circle, rgba(217, 160, 30, .38) 0%, rgba(217, 160, 30, .14) 45%, transparent 72%);
+  animation: logo-pulse 3s ease-in-out infinite;
+}
+@keyframes logo-pulse {
+  0%, 100% { opacity: .55; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
 .win-btn {
   -webkit-app-region: no-drag;
   display: grid;

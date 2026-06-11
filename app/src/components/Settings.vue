@@ -38,6 +38,10 @@
           :config="config"
           @saved="(c) => $emit('saved', c)"
         />
+        <SyncSettings
+          v-else-if="tab === 'sync'"
+          :last-pull-at="lastPullAt"
+        />
         <PropertyEditor
           v-else
           :config="config"
@@ -53,12 +57,14 @@ import StatusEditor from './StatusEditor.vue';
 import PropertyEditor from './PropertyEditor.vue';
 import FiltersEditor from './FiltersEditor.vue';
 import CardEditor from './CardEditor.vue';
+import SyncSettings from './SyncSettings.vue';
 
 export default {
   name: 'Settings',
-  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor },
+  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor, SyncSettings },
   props: {
     config: { type: Object, required: true },
+    lastPullAt: { type: Number, default: null }, // timestamp do último pull OK (App)
   },
   data() {
     return {
@@ -68,6 +74,7 @@ export default {
         { id: 'properties', label: 'Propriedades' },
         { id: 'filters', label: 'Filtros' },
         { id: 'card', label: 'Cartão' },
+        { id: 'sync', label: 'Sync' },
       ],
     };
   },

@@ -1,21 +1,25 @@
 <template>
   <div class="relative" ref="root">
-    <button
-      type="button"
-      class="field flex items-center justify-between gap-2 text-left"
-      :class="{ 'border-accent': open }"
-      @click="toggle"
-    >
-      <span class="flex min-w-0 items-center gap-2">
+    <!-- gatilho: valor + X de limpar (quando clearable e há valor) + chevron -->
+    <div class="field flex cursor-pointer items-center gap-1.5 !py-0 !pl-0 !pr-2" :class="{ 'border-accent': open }">
+      <button type="button" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 text-left" @click="toggle">
         <span v-if="selected && selected.color" class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: selected.color }"></span>
         <span class="truncate" :class="{ 'text-faint': !selected }">{{ selected ? selected.label : placeholder }}</span>
-      </span>
-      <svg viewBox="0 0 20 20" class="h-4 w-4 flex-shrink-0 text-faint" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 8l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
-    </button>
+      </button>
+      <button
+        v-if="showClear"
+        type="button"
+        class="grid h-4 w-4 flex-shrink-0 place-items-center text-faint transition-colors hover:text-txt"
+        aria-label="Limpar"
+        @click.stop="clear"
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
+      </button>
+      <svg viewBox="0 0 20 20" class="h-4 w-4 flex-shrink-0 text-faint" fill="none" stroke="currentColor" stroke-width="1.5" @click="toggle"><path d="M6 8l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+    </div>
 
     <transition name="dd">
       <div v-if="open" class="absolute z-50 mt-1 max-h-64 w-full min-w-[11rem] overflow-auto rounded-lg border border-ink-line bg-ink-700 p-1 shadow-xl">
-        <button v-if="clearable" type="button" class="dd-opt text-faint" @click="pick(null)">— limpar —</button>
         <button
           v-for="opt in normalized"
           :key="String(opt.value)"
@@ -57,6 +61,9 @@ export default {
     selected() {
       return this.normalized.find((o) => o.value === this.value) || null;
     },
+    showClear() {
+      return this.clearable && this.value !== null && this.value !== undefined && this.value !== '';
+    },
   },
   methods: {
     toggle() {
@@ -73,6 +80,10 @@ export default {
     pick(v) {
       this.$emit('input', v);
       this.close();
+    },
+    // X do trigger: mesma API do antigo "— limpar —" (emite null), sem abrir a lista
+    clear() {
+      this.$emit('input', null);
     },
     isSelected(o) {
       return o.value === this.value;

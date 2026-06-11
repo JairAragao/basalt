@@ -100,27 +100,32 @@
               <span class="ml-auto rounded bg-ink-700 px-1.5 py-0.5 text-[11px] text-faint">{{ (grouped[col.id] || []).length }}</span>
             </div>
 
-            <!-- cards -->
-            <draggable
-              :list="grouped[col.id]"
-              :group="{ name: 'tasks' }"
-              :animation="160"
-              item-key="id"
-              ghost-class="board-ghost"
-              drag-class="board-drag"
-              class="thin-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-1"
-              @change="(evt) => onChange(evt, col.id)"
-            >
-              <template #item="{ element: task }">
-                <TaskCard
-                  :task="task"
-                  :config="config"
-                  :tint="colorColumns ? col.color : null"
-                  @open="$emit('open', $event)"
-                  @delete="$emit('delete', $event)"
-                />
-              </template>
-            </draggable>
+            <!-- cards (janela incremental: renderiza as primeiras N; a sentinela
+                 no fim da coluna carrega +N ao entrar na viewport. A contagem do
+                 header continua vindo do conjunto completo em grouped) -->
+            <div class="thin-scroll flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg">
+              <draggable
+                :list="visibleOf(col.id)"
+                :group="{ name: 'tasks' }"
+                :animation="160"
+                item-key="id"
+                ghost-class="board-ghost"
+                drag-class="board-drag"
+                class="flex min-h-[24px] flex-1 flex-col gap-2 p-1"
+                @change="(evt) => onChange(evt, col.id)"
+              >
+                <template #item="{ element: task }">
+                  <TaskCard
+                    :task="task"
+                    :config="config"
+                    :tint="colorColumns ? col.color : null"
+                    @open="$emit('open', $event)"
+                    @delete="$emit('delete', $event)"
+                  />
+                </template>
+              </draggable>
+              <div v-if="hasMoreCol(col.id)" :data-col="col.id" class="h-px flex-shrink-0"></div>
+            </div>
 
             <button
               class="mt-1 flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
@@ -173,6 +178,8 @@ import TaskCard from './TaskCard.vue';
 import { moveTask, saveStatus } from '../api';
 import { PALETTE, DEFAULT_COLOR } from '../palette';
 
+const WINDOW_STEP = 50; // cards renderizados por página da janela de cada coluna
+
 export default {
   name: 'Board',
   components: { draggable, TaskCard },
@@ -181,10 +188,14 @@ export default {
     config: { type: Object, required: true },
     colorColumns: { type: Boolean, default: false },
     sort: { type: Object, default: null },
+    filterKey: { type: String, default: '' }, // muda quando os filtros da topbar mudam → reset das janelas
   },
   data() {
     return {
       grouped: {},
+      // janela incremental de render por coluna (default WINDOW_STEP por coluna)
+      windowByCol: {},
+      io: null,
       // edição direta de etapas no board
       palette: PALETTE,
       openSwatch: null, // col.id com popover de cor aberto
@@ -228,11 +239,40 @@ export default {
     },
   },
   watch: {
+    // refresh de dados NÃO reseta as janelas (não colapsa o scroll do usuário)
     tasks: { immediate: true, handler() { this.regroup(); } },
-    config() { this.regroup(); },
-    sort: { deep: true, handler() { this.regroup(); } },
+    config() { this.resetWindows(); this.regroup(); },
+    sort: { deep: true, handler() { this.resetWindows(); this.regroup(); } },
+    filterKey() { this.resetWindows(); },
+  },
+  mounted() {
+    this.io = new IntersectionObserver(this.onSentinel, { rootMargin: '200px' });
+    this.$nextTick(this.observeSentinels);
+  },
+  updated() {
+    this.observeSentinels();
   },
   methods: {
+    // ── janela incremental por coluna ──
+    windowOf(colId) { return this.windowByCol[colId] || WINDOW_STEP; },
+    visibleOf(colId) { return (this.grouped[colId] || []).slice(0, this.windowOf(colId)); },
+    hasMoreCol(colId) { return (this.grouped[colId] || []).length > this.windowOf(colId); },
+    resetWindows() { this.windowByCol = {}; },
+    // UM observer pra todas as colunas; a sentinela carrega o data-col
+    observeSentinels() {
+      if (!this.io) return;
+      this.io.disconnect();
+      this.$el.querySelectorAll('[data-col]').forEach((el) => this.io.observe(el));
+    },
+    onSentinel(entries) {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const colId = e.target.getAttribute('data-col');
+        const total = (this.grouped[colId] || []).length;
+        const cur = this.windowOf(colId);
+        if (cur < total) this.windowByCol = { ...this.windowByCol, [colId]: cur + WINDOW_STEP };
+      }
+    },
     headerStyle(col) {
       if (!this.colorColumns) return {};
       return { background: col.color + '24' };
@@ -274,8 +314,15 @@ export default {
       if (!evt.added) return;
       const task = evt.added.element;
       const previousStatus = task[this.groupByKey];
+      // o draggable mutou só a SLICE renderizada — atualiza o estado canônico
+      // (grouped) na mão pra contagem/sentinela refletirem o conjunto completo.
+      const known = new Set(this.columnIds);
+      const fromCol = known.has(previousStatus) ? previousStatus : this.fallbackColumn.id;
+      if (this.grouped[fromCol]) this.grouped[fromCol] = this.grouped[fromCol].filter((t) => t.id !== task.id);
       task[this.groupByKey] = targetColId;
-      this.grouped[targetColId] = this.sortColumn(this.grouped[targetColId]);
+      const target = (this.grouped[targetColId] || []).filter((t) => t.id !== task.id);
+      target.push(task);
+      this.grouped[targetColId] = this.sortColumn(target);
       try {
         const updated = await moveTask(task.id, targetColId);
         let warning = '';
@@ -460,6 +507,7 @@ export default {
     },
   },
   beforeUnmount() {
+    if (this.io) { this.io.disconnect(); this.io = null; }
     document.removeEventListener('mousedown', this.onSwatchDocClick, true);
     document.removeEventListener('mousedown', this.onAddMenuDocClick, true);
   },

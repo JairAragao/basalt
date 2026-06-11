@@ -123,17 +123,20 @@
                       @input="(v) => (model[field.name] = v == null ? '' : v)"
                       @save-status="onSaveStatus"
                     />
-                    <!-- enum/multiselect/user: select editável (renomear/excluir/criar opção) -->
+                    <!-- enum/multiselect/user: select editável (renomear/cor/excluir/criar opção) -->
                     <PropSelect
                       v-else-if="field.type === 'enum' || field.type === 'multiselect' || field.type === 'user'"
                       :value="model[field.name]"
                       :type="field.type"
                       :options="optionsForSelect(field)"
+                      :option-meta="field.optionMeta || {}"
+                      :prop-key="field.name"
                       :placeholder="field.label || field.name"
                       :clearable="!field.required"
                       @input="(v) => (model[field.name] = v == null ? '' : v)"
                       @create-option="(v) => createOption(field, v)"
                       @rename-option="(e) => renameOption(field, e.from, e.to)"
+                      @recolor-option="(e) => recolorOption(field, e.value, e.color)"
                       @delete-option="(v) => deleteOption(field, v)"
                     />
                     <input
@@ -649,9 +652,12 @@ export default {
     },
     async pullAfterSave() {
       try {
-        const r = await syncPull();
-        this.$emit('synced', r); // App reaproveita p/ atualizar board + notificações
-      } catch (e) { /* pull é best-effort; silencioso */ }
+        // segue a estratégia preferida; 'ask' puxa em safe (o App pergunta se divergir)
+        let strategy = 'safe';
+        try { if (localStorage.getItem('basalt.pullStrategy') === 'rebase') strategy = 'rebase'; } catch (e) { /* default */ }
+        const r = await syncPull(strategy);
+        this.$emit('synced', r); // App reaproveita p/ atualizar board + notificações + falha
+      } catch (e) { /* rede/servidor fora — best-effort */ }
     },
     cancelTimers() {
       clearTimeout(this.saveTimer);
@@ -744,13 +750,26 @@ export default {
       if (field.type === 'user') return this.userOptions; // [{value,label}] do roster
       return field.options || []; // strings
     },
+    // Array mista (string | {value,color}) pro PUT — o write é full-replace, então
+    // SEMPRE reanexa as cores do optionMeta (senão se perderiam). `overrides`
+    // força cor por valor (inclusive undefined = remover/automática).
+    mixedOptions(field, values, overrides = {}) {
+      const meta = field.optionMeta || {};
+      return values.map((v) => {
+        const color = Object.prototype.hasOwnProperty.call(overrides, v)
+          ? overrides[v]
+          : (meta[v] && meta[v].color);
+        return color ? { value: v, color } : v;
+      });
+    },
     // grava as options de um campo no schema (+ optionRenames p/ migrar tarefas)
     async saveFieldOptions(fieldName, newOptions, optionRenames) {
       const props = JSON.parse(JSON.stringify(this.properties));
       if (!props[fieldName]) return;
       props[fieldName].options = newOptions;
       try {
-        await saveProperties({ properties: props, renames: [], optionRenames: optionRenames || [] });
+        const r = await saveProperties({ properties: props, renames: [], optionRenames: optionRenames || [] });
+        if (r && r.warning) this.errorMsg = r.warning; // ex.: push falhou (best-effort)
         this.$emit('config-changed');
       } catch (e) { this.errorMsg = e.message || 'Falha ao salvar opções.'; }
     },
@@ -759,7 +778,7 @@ export default {
       if (!v) return;
       const opts = [...(field.options || [])];
       if (!opts.includes(v)) opts.push(v);
-      await this.saveFieldOptions(field.name, opts);
+      await this.saveFieldOptions(field.name, this.mixedOptions(field, opts));
       // já seleciona a opção recém-criada (o schema novo já a contém)
       if (field.type === 'multiselect') {
         const set = this.msValues(field.name);
@@ -773,7 +792,10 @@ export default {
       to = (to || '').trim();
       if (!to || to === from) return;
       const opts = (field.options || []).map((o) => (o === from ? to : o));
-      await this.saveFieldOptions(field.name, opts, [{ property: field.name, from, to }]);
+      const meta = field.optionMeta || {};
+      // a cor segue a opção renomeada (explícita no payload vence a herdada)
+      const overrides = { [to]: meta[from] && meta[from].color };
+      await this.saveFieldOptions(field.name, this.mixedOptions(field, opts, overrides), [{ property: field.name, from, to }]);
       // migra o valor do model atual (a migração do servidor cobre as outras tarefas)
       if (field.type === 'multiselect') {
         this.model[field.name] = this.msValues(field.name).map((x) => (x === from ? to : x)).join(';');
@@ -781,9 +803,15 @@ export default {
         this.model[field.name] = to;
       }
     },
+    // troca/remove a cor de UMA opção (color null = automática) sem tocar as demais
+    async recolorOption(field, value, color) {
+      const opts = [...(field.options || [])];
+      if (!opts.includes(value)) return;
+      await this.saveFieldOptions(field.name, this.mixedOptions(field, opts, { [value]: color || undefined }));
+    },
     async deleteOption(field, value) {
       const opts = (field.options || []).filter((o) => o !== value);
-      await this.saveFieldOptions(field.name, opts);
+      await this.saveFieldOptions(field.name, this.mixedOptions(field, opts));
       if (field.type === 'multiselect') {
         this.model[field.name] = this.msValues(field.name).filter((x) => x !== value).join(';');
       } else if (this.model[field.name] === value) {

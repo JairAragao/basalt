@@ -6,7 +6,7 @@
       <span class="relative h-4 min-w-0 flex-1 overflow-hidden rounded bg-ink-700" aria-hidden="true">
         <span
           class="absolute inset-y-0 left-0 rounded transition-[width] duration-200"
-          :style="{ width: widthOf(r) + '%', background: color }"
+          :style="{ width: widthOf(r) + '%', background: r.color || color }"
         ></span>
       </span>
       <span class="w-9 flex-shrink-0 text-right font-mono text-[12px] text-txt">{{ r.count }}</span>
@@ -19,7 +19,7 @@
 export default {
   name: 'BarList',
   props: {
-    rows: { type: Array, default: () => [] }, // [{ label, count }]
+    rows: { type: Array, default: () => [] }, // [{ label, count, color? }] — color da linha vence a default
     color: { type: String, default: '#9b9b9b' },
     ariaLabel: { type: String, default: 'Distribuição por categoria' },
   },

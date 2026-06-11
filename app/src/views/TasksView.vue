@@ -5,6 +5,7 @@
     :config="config"
     :color-columns="colorColumns"
     :sort="sort"
+    :filter-key="filterKey"
     @open="$emit('open', $event)"
     @delete="$emit('delete', $event)"
     @moved="$emit('moved', $event)"
@@ -16,6 +17,7 @@
     :tasks="tasks"
     :config="config"
     :sort="sort"
+    :filter-key="filterKey"
     @open="$emit('open', $event)"
     @sort="$emit('sort', $event)"
   />
@@ -36,6 +38,7 @@ export default {
     view: { type: String, default: 'kanban' }, // 'kanban' | 'table'
     colorColumns: { type: Boolean, default: false },
     sort: { type: Object, default: null },
+    filterKey: { type: String, default: '' }, // assinatura dos filtros (reseta janelas de render)
   },
   emits: ['open', 'delete', 'moved', 'config-saved', 'error', 'sort'],
 };

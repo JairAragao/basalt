@@ -37,6 +37,9 @@
   .field:focus { @apply border-accent; }
   .field::placeholder { @apply text-faint; }
 
+  /* exceção documentada: <input type="date"> nativo do Chromium/Electron em dark */
+  .date-dark { color-scheme: dark; }
+
   /* etiqueta colorida (módulo/tipo/prioridade) */
   .pill {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium;

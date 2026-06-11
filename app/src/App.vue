@@ -29,17 +29,67 @@
       <template v-if="config && !loadError">
         <!-- controles específicos da view de tarefas -->
         <template v-if="activeView === 'tasks'">
-        <!-- Filtros (board.filters) com Dropdown -->
-        <Dropdown
-          v-for="f in filterFields"
-          :key="f.name"
-          :value="filters[f.name]"
-          :options="f.options"
-          :placeholder="f.label + ': todos'"
-          clearable
-          class="w-44"
-          @input="(v) => setFilter(f.name, v)"
-        />
+        <!-- Filtros (board.filters) tipados pelo tipo da prop -->
+        <template v-for="f in filterFields" :key="f.name">
+          <!-- texto livre (contains, debounce 200ms, X limpa) -->
+          <div v-if="f.type === 'string'" class="relative w-44">
+            <input
+              class="field h-8 !py-1 !pr-7 text-[13px]"
+              :placeholder="f.label"
+              :value="filterDrafts[f.name] || ''"
+              @input="(e) => setStringFilter(f.name, e.target.value)"
+            />
+            <button
+              v-if="filterDrafts[f.name]"
+              type="button"
+              class="absolute right-1.5 top-1/2 grid h-4 w-4 -translate-y-1/2 place-items-center text-faint transition-colors hover:text-txt"
+              aria-label="Limpar"
+              @click="clearStringFilter(f.name)"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
+            </button>
+          </div>
+
+          <!-- número (igualdade exata; vazio = sem filtro) -->
+          <input
+            v-else-if="f.type === 'int'"
+            type="number"
+            class="field h-8 !w-28 !py-1 text-[13px]"
+            :placeholder="f.label"
+            :value="filters[f.name] ? filters[f.name].n : ''"
+            @input="(e) => setIntFilter(f.name, e.target.value)"
+          />
+
+          <!-- data (range inclusivo por dia local) -->
+          <div v-else-if="f.type === 'datetime'" class="flex items-center gap-1">
+            <input
+              type="date"
+              class="field date-dark h-8 !w-[8.25rem] !py-1 text-[12px]"
+              :title="f.label + ' — de'"
+              :value="filters[f.name] ? filters[f.name].from : ''"
+              @change="(e) => setDateFilter(f.name, 'from', e.target.value)"
+            />
+            <span class="text-[11px] text-faint">–</span>
+            <input
+              type="date"
+              class="field date-dark h-8 !w-[8.25rem] !py-1 text-[12px]"
+              :title="f.label + ' — até'"
+              :value="filters[f.name] ? filters[f.name].to : ''"
+              @change="(e) => setDateFilter(f.name, 'to', e.target.value)"
+            />
+          </div>
+
+          <!-- enum/multiselect/user/demais: select (X de limpar no trigger) -->
+          <Dropdown
+            v-else
+            :value="filters[f.name] ? filters[f.name].v : null"
+            :options="f.options"
+            :placeholder="f.label + ': todos'"
+            clearable
+            class="w-44"
+            @input="(v) => setFilter(f.name, v)"
+          />
+        </template>
 
         <!-- separador -->
         <span class="mx-0.5 h-5 w-px bg-ink-500"></span>
@@ -93,8 +143,14 @@
         </button>
         </template>
 
-        <!-- Sincronizar (git pull) -->
-        <button class="icon-btn h-8 w-8" title="Sincronizar (git pull)" :disabled="syncing" @click="doSync">
+        <!-- Sincronizar (git pull) — âmbar quando o último pull falhou -->
+        <button
+          class="icon-btn h-8 w-8"
+          :class="pullError ? '!text-amber-300' : ''"
+          :title="pullError ? pullErrorLabel : 'Sincronizar (git pull)'"
+          :disabled="syncing"
+          @click="doSync"
+        >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" :class="{ 'animate-spin': syncing }">
             <path d="M4 7a6 6 0 0 1 10.5-2.5M16 13a6 6 0 0 1-10.5 2.5" stroke-linecap="round" stroke-linejoin="round" />
             <path d="M14.5 4.5V2.5h2M5.5 15.5v2h-2" stroke-linecap="round" stroke-linejoin="round" />
@@ -193,6 +249,7 @@
         :view="view"
         :color-columns="colorColumns"
         :sort="sort"
+        :filter-key="filterKey"
         @open="openEdit"
         @delete="confirmDelete"
         @moved="onMoved"
@@ -233,9 +290,26 @@
     <Settings
       v-if="settingsOpen && config"
       :config="config"
+      :last-pull-at="lastPullAt"
       @saved="onConfigSaved"
       @close="settingsOpen = false"
     />
+
+    <!-- Estratégia "Perguntar" + divergência no pull → modal -->
+    <div v-if="askDiverged" class="fixed inset-0 z-40 grid place-items-center bg-black/50">
+      <div class="w-[440px] rounded-lg border border-ink-500 bg-ink-800 p-5 shadow-xl">
+        <div class="text-sm font-medium">Vault divergente do remoto</div>
+        <div class="mt-2 text-[13px] leading-relaxed text-muted">
+          O remoto tem mudanças que conflitam com as locais.
+          <strong class="text-txt">Rebase agora</strong> aplica o remoto e reaplica suas mudanças
+          por cima (avisa se não der). Ou deixe como está e resolva depois.
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" :disabled="syncing" @click="askDiverged = false">Deixar como está</button>
+          <button class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50" :disabled="syncing" @click="rebaseNow">Rebase agora</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Confirmação de exclusão -->
     <div v-if="deleteTarget" class="fixed inset-0 z-40 grid place-items-center bg-black/50" @click.self="deleteTarget = null">
@@ -276,6 +350,7 @@ import Dropdown from './components/Dropdown.vue';
 import TitleBar from './components/TitleBar.vue';
 import Sidebar from './components/Sidebar.vue';
 import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications } from './api';
+import { matchesTask } from './filtering';
 
 // Lazy: dashboard (uPlot) fora do bundle inicial — só carrega ao abrir a view
 // (mesmo padrão do BodyEditor no TaskPeek).
@@ -283,21 +358,36 @@ const DashboardView = defineAsyncComponent(() => import('./views/DashboardView.v
 
 const COLOR_KEY = 'basalt.colorColumns';
 const viewKey = 'basalt.viewByVault'; // { "<vaultPath exato da API /vaults>": 'tasks'|'dashboard' }
-const AUTO_PULL_MS = 60000; // auto-pull periódico p/ trazer mudanças + notificações
+const pullIntervalKey = 'basalt.pullIntervalMs'; // '0'|'30000'|'60000'|'300000'|'900000'
+const pullStrategyKey = 'basalt.pullStrategy'; // 'rebase' (default) | 'safe' | 'ask'
+
+// rótulos pt-BR dos reasons de falha do POST /sync/pull
+const PULL_REASON_LABELS = {
+  diverged: 'Sync: o vault local e o remoto divergiram.',
+  'no-remote': 'Sync: sem remote configurado — auto-pull pausado.',
+  auth: 'Sync: falha de autenticação com o remote.',
+  timeout: 'Sync: o remote demorou a responder.',
+  other: 'Sync: falha ao sincronizar.',
+};
 
 export default {
   name: 'App',
   components: { TasksView, DashboardView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar, Sidebar },
-  // disponibiliza o roster (reativo) para componentes filhos (ex.: TaskCard resolve user id → nome)
+  // disponibiliza roster + tarefas (reativos) para componentes filhos
+  // (TaskCard resolve user id → nome; OptionMenu conta uso de opção)
   provide() {
-    return { basaltUsers: computed(() => this.users) };
+    return {
+      basaltUsers: computed(() => this.users),
+      basaltTasks: computed(() => this.tasks),
+    };
   },
   data() {
     return {
       version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '',
       config: null,
       tasks: [],
-      filters: {},
+      filters: {}, // { [prop]: F|null } — F tipado por prop.type (ver filtering.js)
+      filterDrafts: {}, // texto cru dos filtros string (o commit em filters tem debounce)
       loading: false,
       loadError: '',
       view: 'kanban',
@@ -322,6 +412,9 @@ export default {
       notifications: [],   // notificações locais do vault ativo
       notifOpen: false,    // painel de notificações aberto?
       pullTimer: null,     // intervalo do auto-pull
+      lastPullAt: null,    // timestamp do último pull OK (mostrado na aba Sync)
+      pullError: null,     // reason do último pull falho (âmbar no botão) ou null
+      askDiverged: false,  // modal da estratégia 'ask' em divergência
     };
   },
   computed: {
@@ -334,19 +427,25 @@ export default {
     filterNames() {
       return (this.config && this.config.board && this.config.board.filters) || [];
     },
+    // Filtros da topbar: o widget segue o tipo da prop. Só os tipos de select
+    // precisam de options (user resolve id → nome do roster).
     filterFields() {
       return this.filterNames.map((name) => {
         const prop = this.properties[name] || {};
-        let options = prop.options;
-        if (!options || !options.length) {
-          const seen = new Set();
-          this.tasks.forEach((t) => {
-            const v = t[name];
-            if (v !== null && v !== undefined && v !== '') seen.add(v);
+        const type = prop.type || 'string';
+        let options = [];
+        if (type === 'enum' || type === 'multiselect') {
+          options = (prop.options || []).slice();
+          if (!options.length) options = this.distinctValues(name);
+        } else if (type === 'user') {
+          options = this.distinctValues(name).map((id) => {
+            const u = this.users.find((x) => x.id === id);
+            return { value: id, label: u ? (u.nome || u.id) : id };
           });
-          options = [...seen].sort();
+        } else if (type !== 'string' && type !== 'int' && type !== 'datetime') {
+          options = this.distinctValues(name); // formula etc.: valores únicos
         }
-        return { name, label: prop.label || name, options };
+        return { name, label: prop.label || name, type, options };
       });
     },
     // Ordenável por qualquer propriedade do schema (genérico — sem chaves fixas;
@@ -357,13 +456,17 @@ export default {
         label: this.properties[key].label || key,
       }));
     },
+    // Fonte das contagens/grupos: o que TasksView recebe já vem filtrado daqui.
     filteredTasks() {
-      const active = Object.keys(this.filters).filter((k) => {
-        const v = this.filters[k];
-        return v !== null && v !== undefined && v !== '';
-      });
-      if (!active.length) return this.tasks;
-      return this.tasks.filter((t) => active.every((k) => t[k] === this.filters[k]));
+      const schema = (this.config && this.config.schema) || {};
+      return this.tasks.filter((t) => matchesTask(t, this.filters, schema));
+    },
+    // assinatura dos filtros ativos — muda → Board/TableView resetam as janelas
+    filterKey() {
+      return JSON.stringify(this.filters);
+    },
+    pullErrorLabel() {
+      return this.pullError ? (PULL_REASON_LABELS[this.pullError] || PULL_REASON_LABELS.other) : '';
     },
   },
   watch: {
@@ -371,6 +474,9 @@ export default {
     activeVault() { this.restoreView(); },
   },
   async created() {
+    this._filterTimers = {}; // debounce dos filtros string (não-reativo)
+    // Settings salvou prefs de sync → re-agenda o auto-pull ao vivo
+    window.addEventListener('sync-prefs-changed', this.onSyncPrefsChanged);
     await this.bootstrap();
     // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
     try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
@@ -401,8 +507,39 @@ export default {
       const map = this.readViewMap();
       this.activeView = map[this.activeVault] === 'dashboard' ? 'dashboard' : 'tasks';
     },
+    distinctValues(name) {
+      const seen = new Set();
+      this.tasks.forEach((t) => {
+        const v = t[name];
+        if (v !== null && v !== undefined && v !== '') seen.add(v);
+      });
+      return [...seen].sort();
+    },
+    // ── filtros tipados (estado em this.filters; shape por tipo em filtering.js) ──
     setFilter(name, value) {
-      this.filters[name] = value == null ? null : value;
+      this.filters = { ...this.filters, [name]: (value == null || value === '') ? null : { v: value } };
+    },
+    setStringFilter(name, raw) {
+      this.filterDrafts = { ...this.filterDrafts, [name]: raw };
+      clearTimeout(this._filterTimers[name]);
+      this._filterTimers[name] = setTimeout(() => {
+        const q = String(raw || '');
+        this.filters = { ...this.filters, [name]: q.trim() ? { q } : null };
+      }, 200);
+    },
+    clearStringFilter(name) {
+      clearTimeout(this._filterTimers[name]);
+      this.filterDrafts = { ...this.filterDrafts, [name]: '' };
+      this.filters = { ...this.filters, [name]: null };
+    },
+    setIntFilter(name, raw) {
+      const empty = raw === '' || raw === null || raw === undefined;
+      this.filters = { ...this.filters, [name]: empty ? null : { n: Number(raw) } };
+    },
+    setDateFilter(name, side, value) {
+      const cur = { from: '', to: '', ...(this.filters[name] || {}) };
+      cur[side] = value || '';
+      this.filters = { ...this.filters, [name]: (cur.from || cur.to) ? { from: cur.from, to: cur.to } : null };
     },
     setSortBy(by) {
       if (!by) return;
@@ -449,6 +586,7 @@ export default {
         const f = {};
         this.filterNames.forEach((name) => { f[name] = null; });
         this.filters = f;
+        this.filterDrafts = {};
         const s = this.config.board && this.config.board.sort;
         if (s && s.by) this.sort = { by: s.by, dir: s.dir || 'desc' };
         // roster + notificações (best-effort — não bloqueiam o board)
@@ -504,6 +642,8 @@ export default {
     async checkGitHealth() {
       try {
         this.gitHealth = await getHealthGit();
+        // remote apareceu (ou vault trocou) → retoma o auto-pull pausado por no-remote
+        if (this.config && this.gitHealth && this.gitHealth.hasRemote && !this.pullTimer) this.startAutoPull();
       } catch (e) {
         this.gitHealth = null;
       }
@@ -536,23 +676,80 @@ export default {
         this.loading = false;
       }
     },
+    // ── preferências de sync (localStorage basalt.*) ──
+    pullPrefs() {
+      let interval = 60000;
+      let strategy = 'rebase';
+      try {
+        const i = localStorage.getItem(pullIntervalKey);
+        if (['0', '30000', '60000', '300000', '900000'].includes(i)) interval = Number(i);
+      } catch (e) { /* default */ }
+      try {
+        const s = localStorage.getItem(pullStrategyKey);
+        if (['rebase', 'safe', 'ask'].includes(s)) strategy = s;
+      } catch (e) { /* default */ }
+      return { interval, strategy };
+    },
+    // a API só aceita safe|rebase; 'ask' puxa em safe e pergunta na divergência
+    pullStrategyForApi() {
+      const { strategy } = this.pullPrefs();
+      return strategy === 'ask' ? 'safe' : strategy;
+    },
+    onSyncPrefsChanged() {
+      this.startAutoPull(); // re-agenda ao vivo com o intervalo novo
+    },
     async doSync() {
       if (this.syncing) return;
       this.syncing = true;
       try {
-        const res = await syncPull();
-        if (res && res.ok) {
+        const res = await syncPull(this.pullStrategyForApi());
+        if (this.handlePullResult(res, true)) {
           this.notify(res.message || 'Sincronizado.');
-          this.applyPull(res);
           await this.reload();
-        } else {
-          this.notify((res && (res.error || res.message)) || 'Falha ao sincronizar.', 'error');
         }
       } catch (e) {
         this.notify(e.message || 'Falha ao sincronizar.', 'error');
       } finally {
         this.syncing = false;
       }
+    },
+    // [Rebase agora] do modal de divergência (estratégia 'ask')
+    async rebaseNow() {
+      this.askDiverged = false;
+      if (this.syncing) return;
+      this.syncing = true;
+      try {
+        const res = await syncPull('rebase');
+        if (this.handlePullResult(res, true)) {
+          this.notify(res.message || 'Sincronizado.');
+          await this.reload();
+        }
+      } catch (e) {
+        this.notify(e.message || 'Falha ao sincronizar.', 'error');
+      } finally {
+        this.syncing = false;
+      }
+    },
+    // Trata QUALQUER resultado de pull (manual, auto, pós-save). ok → aplica e
+    // limpa o estado de erro; falha → âmbar no botão + toast UMA vez por mudança
+    // de reason (force=true reapresenta — usado nos fluxos manuais). Retorna ok.
+    handlePullResult(res, force = false) {
+      if (res && res.ok) {
+        this.lastPullAt = Date.now();
+        this.applyPull(res);
+        if (this.pullError) { this.pullError = null; this.askDiverged = false; }
+        return true;
+      }
+      const reason = (res && res.reason) || 'other';
+      if (reason === 'no-remote') this.stopAutoPull(); // pausa sem loop de erro
+      const changed = reason !== this.pullError;
+      this.pullError = reason;
+      if (changed || force) {
+        this.notify(PULL_REASON_LABELS[reason] || PULL_REASON_LABELS.other, 'error');
+        const { strategy } = this.pullPrefs();
+        if (strategy === 'ask' && reason === 'diverged') this.askDiverged = true;
+      }
+      return false;
     },
     // Aplica o resultado do pull: atualiza notificações + avisa se vieram novas.
     applyPull(res) {
@@ -564,21 +761,24 @@ export default {
     // ── auto-pull periódico (traz mudanças de outros + dispara notificações) ──
     startAutoPull() {
       this.stopAutoPull();
-      this.pullTimer = setInterval(() => { this.silentPull(); }, AUTO_PULL_MS);
+      const { interval } = this.pullPrefs();
+      if (!interval) return; // 0 = desligado
+      this.pullTimer = setInterval(() => { this.silentPull(); }, interval);
     },
     stopAutoPull() {
       if (this.pullTimer) { clearInterval(this.pullTimer); this.pullTimer = null; }
     },
     async silentPull() {
       if (this.syncing || !this.config) return;
+      // vault sem remote: não insiste (a aba Sync mostra o estado do health/git)
+      if (this.gitHealth && this.gitHealth.hasRepo && !this.gitHealth.hasRemote) return;
       try {
-        const res = await syncPull();
-        if (res && res.ok) {
-          this.applyPull(res);
+        const res = await syncPull(this.pullStrategyForApi());
+        if (this.handlePullResult(res)) {
           const tasks = await listTasks();
           this.tasks = Array.isArray(tasks) ? tasks : [];
         }
-      } catch (e) { /* silencioso */ }
+      } catch (e) { /* rede/servidor fora — silencioso */ }
     },
     // ── eventos do TaskPeek (auto-save / auto-create) ──
     async onAutosaved(saved) {
@@ -590,7 +790,7 @@ export default {
       await this.reload();
     },
     async onSynced(res) {
-      this.applyPull(res);
+      this.handlePullResult(res); // pull pós-save também nunca é silencioso
       await this.reload();
     },
     // kebab da propriedade alterou o schema (label/tipo/oculto): recarrega config + tarefas
@@ -641,11 +841,12 @@ export default {
       if (payload && payload.warning) this.notify(payload.warning, 'error');
       this.reload();
     },
-    async onConfigSaved() {
+    async onConfigSaved(payload) {
       // Re-bootstrap: recarrega config + tasks (a edição pode ter migrado tarefas).
       await this.bootstrap();
       this.settingsOpen = false;
       this.notify('Configuração salva.');
+      if (payload && payload.warning) this.notify(payload.warning, 'error');
     },
     confirmDelete(task) {
       this.deleteTarget = task;
@@ -674,6 +875,8 @@ export default {
   },
   beforeUnmount() {
     this.stopAutoPull();
+    window.removeEventListener('sync-prefs-changed', this.onSyncPrefsChanged);
+    Object.values(this._filterTimers || {}).forEach((t) => clearTimeout(t));
   },
 };
 </script>

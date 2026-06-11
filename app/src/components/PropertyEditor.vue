@@ -50,8 +50,13 @@
               <div
                 v-for="opt in prop.options"
                 :key="opt._uid"
-                class="flex items-center gap-2"
+                class="group/opt flex items-center gap-2"
               >
+                <span
+                  class="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                  :style="{ background: optColor(opt) }"
+                  :title="opt.color ? 'Cor da opção' : 'Cor automática'"
+                ></span>
                 <input
                   v-model="opt.value"
                   class="field flex-1 !py-1 text-[12px]"
@@ -62,13 +67,14 @@
                   class="pill flex-shrink-0 border border-amber-500/40 bg-amber-500/10 text-[10px] text-amber-300"
                   :title="'Renomeará tarefas de “' + opt._original + '” para “' + opt.value.trim() + '”'"
                 >renomear</span>
+                <!-- kebab (hover): renomear / cor / excluir no OptionMenu -->
                 <button
                   type="button"
-                  class="icon-btn h-7 w-7 flex-shrink-0"
-                  title="Excluir opção"
-                  @click="removeOption(prop, opt._uid)"
+                  class="icon-btn h-7 w-7 flex-shrink-0 opacity-0 group-hover/opt:opacity-100"
+                  title="Editar opção"
+                  @click.stop="openOptMenu(prop, opt, $event)"
                 >
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="10" cy="5" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="10" cy="15" r="1.4" /></svg>
                 </button>
               </div>
 
@@ -163,12 +169,29 @@
         @click="save"
       >{{ saving ? 'Salvando…' : 'Salvar propriedades' }}</button>
     </div>
+
+    <!-- menu da opção (Teleport → body) — mexe no estado local; persiste no Salvar -->
+    <OptionMenu
+      v-if="menu.open && menuOpt"
+      :option="(menuOpt.value || '').trim()"
+      :color="menuOpt.color || null"
+      :prop-key="menuProp ? (menuProp._originalKey || '') : ''"
+      :prop-type="menuProp ? menuProp.type : 'enum'"
+      :count-value="menuOpt._original || (menuOpt.value || '').trim()"
+      :anchor="menu.anchor"
+      @rename="onMenuRename"
+      @recolor="onMenuRecolor"
+      @delete="onMenuDelete"
+      @close="menu.open = false"
+    />
   </div>
 </template>
 
 <script>
 import { saveProperties } from '../api';
 import Dropdown from './Dropdown.vue';
+import OptionMenu from './OptionMenu.vue';
+import { colorFor } from '../palette';
 
 let UID = 0;
 const nextUid = () => `p${++UID}`;
@@ -189,7 +212,7 @@ function slugify(label) {
 
 export default {
   name: 'PropertyEditor',
-  components: { Dropdown },
+  components: { Dropdown, OptionMenu },
   props: {
     config: { type: Object, required: true },
   },
@@ -198,6 +221,8 @@ export default {
       props_: [],
       saving: false,
       error: '',
+      // menu de opção (kebab): referencia prop/opt pelos uids estáveis
+      menu: { open: false, propUid: null, optUid: null, anchor: { left: 0, top: 0, bottom: 0 } },
       typeOptions: [
         { value: 'string', label: 'Texto' },
         { value: 'enum', label: 'Seleção' },
@@ -208,6 +233,13 @@ export default {
       ],
       operators: ['+', '-', '*', '/', '(', ')'],
     };
+  },
+  computed: {
+    menuProp() { return this.props_.find((p) => p._uid === this.menu.propUid) || null; },
+    menuOpt() {
+      const p = this.menuProp;
+      return (p && (p.options || []).find((o) => o._uid === this.menu.optUid)) || null;
+    },
   },
   created() {
     this.load();
@@ -224,9 +256,15 @@ export default {
           key,
           label: spec.label || key,
           type: spec.type || 'string',
-          // cada opção vira objeto estável: _original (valor no schema) + value (editável)
+          // cada opção vira objeto estável: _original (valor no schema) + value
+          // (editável) + color (explícita do optionMeta; null = automática/hash)
           options: Array.isArray(spec.options)
-            ? spec.options.map((o) => ({ _uid: nextOptUid(), _original: o, value: o }))
+            ? spec.options.map((o) => ({
+                _uid: nextOptUid(),
+                _original: o,
+                value: o,
+                color: (spec.optionMeta && spec.optionMeta[o] && spec.optionMeta[o].color) || null,
+              }))
             : [],
           min: spec.min,
           max: spec.max,
@@ -292,15 +330,36 @@ export default {
     addOption(prop) {
       const v = (prop._newOption || '').trim();
       if (!v) return;
-      // nova opção: sem _original (não dispara rename/migração)
+      // nova opção: sem _original (não dispara rename/migração) e sem cor (automática)
       if (!prop.options.some((o) => (o.value || '').trim() === v)) {
-        prop.options.push({ _uid: nextOptUid(), _original: null, value: v });
+        prop.options.push({ _uid: nextOptUid(), _original: null, value: v, color: null });
       }
       prop._newOption = '';
     },
     removeOption(prop, uid) {
       const idx = prop.options.findIndex((o) => o._uid === uid);
       if (idx !== -1) prop.options.splice(idx, 1);
+    },
+    // ── menu de opção (kebab): cor / renomear / excluir ──
+    optColor(opt) {
+      return opt.color || colorFor((opt.value || '').trim());
+    },
+    openOptMenu(prop, opt, e) {
+      const el = e && e.currentTarget;
+      const r = el && el.getBoundingClientRect ? el.getBoundingClientRect() : { left: 80, top: 80, bottom: 100 };
+      this.menu = { open: true, propUid: prop._uid, optUid: opt._uid, anchor: { left: r.left, top: r.top, bottom: r.bottom } };
+    },
+    onMenuRename(to) {
+      if (this.menuOpt) this.menuOpt.value = to;
+      this.menu.open = false;
+    },
+    onMenuRecolor(color) {
+      if (this.menuOpt) this.menuOpt.color = color || null;
+      this.menu.open = false;
+    },
+    onMenuDelete() {
+      if (this.menuProp && this.menuOpt) this.removeOption(this.menuProp, this.menuOpt._uid);
+      this.menu.open = false;
     },
     validate(built) {
       // labels não-vazios
@@ -350,8 +409,12 @@ export default {
 
         const spec = { type: p.type, label: (p.label || '').trim() };
         if (p.type === 'enum' || p.type === 'multiselect') {
-          // achata opções (objeto -> string) e coleta renames de valor
-          spec.options = (p.options || []).map((o) => (o.value || '').trim());
+          // array mista: objeto SÓ pra opção com cor explícita (server sanitiza
+          // pro disco); coleta renames de valor pra migração
+          spec.options = (p.options || []).map((o) => {
+            const v = (o.value || '').trim();
+            return o.color ? { value: v, color: o.color } : v;
+          });
           for (const o of (p.options || [])) {
             const to = (o.value || '').trim();
             if (o._original && to && o._original !== to) {

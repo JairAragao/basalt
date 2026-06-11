@@ -104,7 +104,7 @@ import Dropdown from '../components/Dropdown.vue';
 import UplotChart from '../components/UplotChart.vue';
 import BarList from '../components/BarList.vue';
 import { buildReport, dayKey } from '../reports';
-import { PALETTE } from '../palette';
+import { PALETTE, DEFAULT_COLOR, colorFor } from '../palette';
 
 const rangeKey = 'basalt.dashRange';
 const enumPrefKey = 'basalt.dashEnumKey';
@@ -210,7 +210,15 @@ export default {
       return this.report.byUser.filter((u) => u.completed > 0).map((u) => ({ label: u.name, count: u.completed }));
     },
     enumRows() {
-      return this.report.byEnum ? this.report.byEnum.rows.map((r) => ({ label: r.option, count: r.count })) : [];
+      if (!this.report.byEnum) return [];
+      // cor da barra = cor da opção (optionMeta › hash); buckets sintéticos em neutro
+      const prop = (this.schema.properties || {})[this.report.byEnum.key] || {};
+      const synthetic = (o) => o === '(sem valor)' || o === '(removido)';
+      return this.report.byEnum.rows.map((r) => ({
+        label: r.option,
+        count: r.count,
+        color: synthetic(r.option) ? DEFAULT_COLOR : colorFor(r.option, prop.optionMeta),
+      }));
     },
     leadTimeLabel() {
       const v = this.report.counts.leadTimeAvgDays;

@@ -18,9 +18,12 @@ export const PALETTE = [
 
 export const DEFAULT_COLOR = '#6f7787';
 
-// Cor determinística pra uma opção de select/multiselect: hash do texto →
-// entrada da paleta. Mesma opção = mesma cor em qualquer card/sessão.
-export function colorFor(value) {
+// Cor de uma opção de select/multiselect: cor explícita do schema
+// (`prop.optionMeta[valor].color`) quando existir; senão hash determinístico do
+// texto → entrada da paleta (mesma opção = mesma cor em qualquer card/sessão).
+export function colorFor(value, meta) {
+  const m = meta && meta[value];
+  if (m && m.color) return m.color;
   const s = String(value);
   let h = 0;
   for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;

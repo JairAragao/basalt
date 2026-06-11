@@ -57,7 +57,15 @@
 <script>
 import { saveFilters } from '../api';
 
-const TYPE_LABELS = { string: 'Texto', enum: 'Lista', int: 'Número' };
+const TYPE_LABELS = {
+  string: 'Texto',
+  enum: 'Lista',
+  multiselect: 'Seleção múltipla',
+  user: 'Usuário',
+  int: 'Número',
+  datetime: 'Data',
+  formula: 'Fórmula',
+};
 
 export default {
   name: 'FiltersEditor',

@@ -122,9 +122,14 @@ export function getHealthGit() {
   return request(`${BASE}/health/git`)
 }
 
-// Pull sob demanda (git pull --ff-only) -> { ok, message?, error?, newNotifications, notifications }
-export function syncPull() {
-  return request(`${BASE}/sync/pull`, { method: 'POST' })
+// Pull sob demanda. strategy opcional: 'safe' (ff-only, default do servidor) |
+// 'rebase'. ok -> { ok:true, message?, newNotifications, notifications };
+// falha -> { ok:false, reason: 'diverged'|'no-remote'|'auth'|'timeout'|'other', detail, error }
+export function syncPull(strategy) {
+  return request(`${BASE}/sync/pull`, {
+    method: 'POST',
+    body: JSON.stringify(strategy ? { strategy } : {})
+  })
 }
 
 // --- Usuários (roster) + identidade ---

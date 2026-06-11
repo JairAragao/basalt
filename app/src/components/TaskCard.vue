@@ -43,7 +43,7 @@
             v-for="opt in chip.options"
             :key="opt"
             class="pill"
-            :style="{ backgroundColor: colorOf(opt) + '26', color: colorOf(opt) }"
+            :style="{ backgroundColor: colorOf(opt, chip.meta) + '26', color: colorOf(opt, chip.meta) }"
             :title="chip.label"
           >{{ opt }}</span>
         </div>
@@ -78,7 +78,7 @@ export default {
   },
   methods: {
     isImg(v) { return isImageRef(v); },
-    colorOf(opt) { return colorFor(opt); },
+    colorOf(opt, meta) { return colorFor(opt, meta); },
     // formata valor p/ exibição: multiselect (a;b;c → "a, b, c"), user (id → nome).
     formatVal(prop, v) {
       if (prop && prop.type === 'multiselect') {
@@ -136,7 +136,7 @@ export default {
           const options = prop.type === 'multiselect'
             ? String(v).split(';').map((s) => s.trim()).filter(Boolean)
             : [String(v).trim()].filter(Boolean);
-          if (options.length) out.push({ key, label, options });
+          if (options.length) out.push({ key, label, options, meta: prop.optionMeta || {} });
           return;
         }
         out.push({ key, label, value: this.formatVal(prop, v) });
