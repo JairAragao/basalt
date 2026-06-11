@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an idea for Basalt
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / job-to-be-done
+      description: What are you trying to accomplish that Basalt doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Is this generic (engine) or specific to your vault?
+      description: >
+        Basalt's engine is generic: client/workflow-specific rules belong in vault config
+        (schema/board) or a future preset — not hardcoded in the engine.
+      options:
+        - Generic — useful for any vault
+        - Specific to my workflow (might be config/preset material)
+        - Not sure
+    validations:
+      required: true

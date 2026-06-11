@@ -99,19 +99,37 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 - **Pull** (`/sync/pull`) é `--ff-only --autostash`; se o pop do autostash conflitar, o working tree é restaurado pro remoto (`reset --hard HEAD`) e a resposta vem `ok:false` — as mudanças locais ficam no stash (`git stash list`), **nunca corrompe o `.md`**.
 - ⚠️ Edges conhecidos (BAIXA, single-user): um `git` morto pelo timeout de 8s pode deixar `index.lock` stale; trocar de vault com um commit em voo pode não versionar aquele save (fica salvo no disco). Recuperação: novo save / `git status`.
 
-## API REST (`/api`)
-`GET /config` · `GET /tasks` · `GET /tasks/:id` · `POST /tasks` · `PUT /tasks/:id` · `PATCH /tasks/:id/move` · `DELETE /tasks/:id` · `GET /tasks/:id/history` · `GET /tasks/:id/diff?hash=H` · `GET /vault` · `POST /vault` · `GET /fs/list?path=` · `GET /health/git` · `POST /sync/pull` · `PUT /board/status {statusGroups,renames}` · `PUT /board/filters {filters}` · `PUT /board/card {fields,subtitle,badge}` · `PUT /schema/properties {properties,renames,optionRenames}`.
+## API REST (`/api`) — 31 endpoints
+
+- **Config/vault**: `GET /config` (inclui `doneStageIds` derivado) · `GET|POST /vault` · `GET /vaults` · `POST /vaults/switch` · `DELETE /vaults` · `GET /fs/list?path=`
+- **Tarefas**: `GET /tasks` · `GET|PUT|DELETE /tasks/:id` · `POST /tasks` · `PATCH /tasks/:id/move` · `GET /tasks/:id/history` · `GET /tasks/:id/diff?hash=H`
+- **Board/schema**: `GET /board` · `PUT /board/status {statusGroups,renames,doneGroupId}` (400 se doneGroupId inválido) · `PUT /board/filters {filters}` · `PUT /board/card {fields,subtitle,badge}` · `PUT /schema/properties {properties,renames,optionRenames}`
+- **Usuários/notificações**: `GET /users` · `GET /me` · `POST /users/register` · `PUT /users/:id` · `GET /notifications` · `POST /notifications/clear`
+- **Git/assets**: `GET /health/git` · `POST /sync/pull` · `POST /assets` · `GET /assets/:name`
+
+Doc completa do funcionamento: `docs/ARCHITECTURE.md` (EN) / `docs/ARCHITECTURE.pt-BR.md`.
 
 ## Pronto (funcional, build verde)
 - Kanban (grupos macro × etapas) + Tabela; sort por qualquer prop ↑↓; filtros editáveis; **colorir colunas** (coluna+header+cards em camadas).
 - Peek estilo Notion (3 modos side/center/full, lembra preferência); **editor de corpo TipTap** (`/`=blocos, seleção=toolbar, barra de link custom, round-trip markdown).
 - Config do cartão (etiquetas/subtitle/badge); **histórico + diff** por card (antes/depois vermelho/verde + unificado).
 - Settings: editores de **Status** (grupos/etapas/cor/paleta), **Propriedades** (add/excluir/renomear + opções enum + **tipo Fórmula** com builder), **Filtros**, **Cartão**. Migração de tarefas em renames.
-- **Vault separado** (backend + SetupWizard stepper + FolderPicker; `isDefault` na primeira run). **Auditoria** (4 campos). **Git-native**.
-- **Vue 3** (migrado do 2.7). **Electron** (app desktop, diálogo nativo de pasta). **Edição direta no board** (renomear/recolorir etapa + adicionar etapa por grupo macro). Ícone de config = engrenagem.
+- **Vault separado** (backend + SetupWizard stepper + FolderPicker; `isDefault` na primeira run). **Auditoria** (6 campos: created/updated/completed at+by). **Git-native**.
+- **Vue 3** (migrado do 2.7). **Electron** (app desktop, diálogo nativo de pasta). **Edição direta no board** (renomear/recolorir etapa + adicionar etapa por grupo macro).
 - Ícone basalt (logo + favicon). Dark/Notion. Dropdowns custom (sem `<select>` nativo).
+- **Multi-vault em ABAS** (TitleBar; backend é singleton — trocar aba = `POST /vaults/switch` + reload + watcher re-observa). **Roster** (`config/users.json`, identidade estável `basalt.userid` no git config global, prop `type:'user'`). **Notificações por pull** (locais, cap 200). **GC de assets órfãos**. **Migração de opções enum**.
+- **0.5.0 — Sidebar de navegação** (rail recolhido: Tarefas/Dashboard/Configurações; view lembrada POR vault em `basalt.viewByVault`; Settings agora abre pela sidebar — engrenagem do header saiu; board/tabela extraídos pra `views/TasksView.vue`).
+- **0.5.0 — Semântica de conclusão** (`doneGroupId` no board.json com self-heal; `completed_at`/`completed_by` carimbados pelo tasks-repo SÓ na transição; grupo marcável no editor de Status; ver `docs/adr/ADR-001`).
+- **0.5.0 — Dashboard de relatórios** (`app/src/reports.js` puro + `views/DashboardView.vue` chunk lazy com uPlot; criadas/finalizadas/abertas/lead time, série temporal, quebras por usuário e por prop enum; ver `docs/adr/ADR-002`).
 
 ## Pendente / próximos passos
+0. **Pós-run 2026-06-10 (0.5.0 + open source)**: (a) smoke manual de UI do roteiro do QA
+   (board pós-extração TasksView, sidebar×wizard, viewByVault entre abas, StatusEditor,
+   dashboard) — `qa-report.md` da run do squad; (b) `git push` dos commits da run;
+   (c) GitHub Release `v0.5.0` com `release/Basalt Setup 0.5.0.exe` + blockmap + latest.yml;
+   (d) tornar o repo público (docs prontos: LICENSE MIT, README/CONTRIBUTING EN+PT,
+   CODE_OF_CONDUCT, SECURITY, templates, ARCHITECTURE, ADRs, CHANGELOG); (e) screenshot
+   real no README (TODO marcado); (f) atualizar links da basalt-lp.
 1. **Plugins (código)** — direção escolhida pra extensibilidade. Por ora a config declarativa cobre; o passo é presets/plugins de campos (ex.: GUTE, Dev) que injetam propriedades + ajustes de board com 1 clique (reusa `PUT /schema/properties`). GUTE é o 1º candidato.
 2. **Publicar releases** — rodar `npm run electron:build` e subir os instaladores no GitHub Releases (os botões da `basalt-lp` apontam pra lá). Dívidas de release conhecidas:
    - **Não assinado** — sem certificado → SmartScreen (Win)/Gatekeeper (Mac) avisam. Precisa de cert de code-signing.
@@ -124,6 +142,9 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
 > Feito recentemente: migração Vue 3, app Electron, vault separado (`basalt-vault`), split de repos (engine/vault/lp), default mínimo, edição direta de etapas no board.
 
 ## Gotchas / convenções
+- **Docs públicos são BILÍNGUES**: todo doc da raiz/docs/ tem par EN + pt-BR (README,
+  CONTRIBUTING, ARCHITECTURE) — **sempre atualizar os dois juntos** (checkbox no PR template).
+  ADRs em EN com "Resumo (pt-BR)" no fim. CHANGELOG em EN (keep-a-changelog).
 - **Node ≥18** (Vite). `nvm use 20`/`24`.
 - **expr-eval:** sempre `parser.consts={}` no motor de fórmula.
 - **tiptap-markdown fixado em `0.8.10`** (0.9+ exige TipTap v3; o projeto é TipTap v2). Não suba sem migrar.

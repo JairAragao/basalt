@@ -1,92 +1,171 @@
 # Basalt
 
-Kanban **git-native**, **local-first** e **AI-first**: cada tarefa é um arquivo `.md`
-versionado no git. Dark, editável até o último detalhe. Markdown entra, quadro sai.
+**English** · [Português (Brasil)](README.pt-BR.md)
 
-> **Por que "Basalt":** quando a lava esfria devagar, a rocha racha em colunas retas e
-> empilhadas (junção colunar) — a mesma geometria de um kanban. E é uma pedra escura,
-> como deve ser uma ferramenta usada o dia inteiro.
+[![CI](https://github.com/JairAragao/basalt/actions/workflows/ci.yml/badge.svg)](https://github.com/JairAragao/basalt/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/JairAragao/basalt)](https://github.com/JairAragao/basalt/releases)
 
-> **Princípio:** fonte da verdade = texto plano em git. Sem banco de dados, sem nuvem,
-> sem login. O **engine é genérico**; os dados vivem num **vault** separado.
+A **git-native, local-first kanban**: every task is a plain `.md` file versioned in git.
+No database, no cloud, no login. Markdown in, board out.
 
-## Três repositórios
+<!-- TODO: screenshot -->
 
-| Repo | O que é |
+> **Why "Basalt":** when lava cools slowly, the rock cracks into straight, stacked
+> columns (columnar jointing) — the same geometry as a kanban board. And it is a dark
+> stone, as a tool you stare at all day should be.
+
+**Core principle:** the source of truth is plain text in git. The **engine is generic**;
+your data lives in a separate **vault** (a folder with its own git repo). Editing a task
+in the UI, in your text editor, or via a script all converge to the same `.md` file —
+and every change becomes a descriptive git commit, automatically.
+
+## Features
+
+- **Kanban + table view** — macro groups × stages, drag and drop, per-property sorting,
+  editable filters, colored columns. Stages can be renamed/recolored/added inline on the board.
+- **Notion-style peek** — side / center / full modes, rich-text body editor (TipTap) with
+  slash commands, selection toolbar and full markdown round-trip.
+- **Formula fields** — Notion-style computed properties (`{type: 'formula', expression}`),
+  recalculated by a file watcher. Safe evaluation (`expr-eval-fork`, no `eval`).
+- **Multi-vault tabs** — work on several vaults (projects) in Obsidian-style tabs; each
+  vault keeps its own config, tasks and git history.
+- **User roster** — a versioned `config/users.json` plus a stable per-machine identity;
+  assign tasks with a `user`-typed property. Still no login — identity comes from git.
+- **Pull notifications** — after a pull, commits by other authors touching tasks you are
+  responsible for become local notifications.
+- **Reports dashboard** *(new in 0.5.0)* — created / completed / open counts, average lead
+  time, a created×completed time series, and breakdowns by user and by any enum property.
+  Aggregated entirely client-side.
+- **Completion semantics** *(new in 0.5.0)* — mark one status group as the "done" group;
+  the engine stamps `completed_at` / `completed_by` automatically when a task crosses into
+  it (and clears them when it leaves). Audit fields, never editable by hand.
+- **Per-card history + diff** — every change is a git commit with an automatic, descriptive
+  message in plain language; inspect before/after per card.
+- **Desktop app** — Electron shell reusing the same backend, with native folder picker,
+  frameless dark window and installers for Win/Mac/Linux.
+
+## The three repositories
+
+| Repo | What it is |
 |---|---|
-| **basalt** (este) | O engine/app. Vai **vazio**, só com o necessário pra instalar e configurar. |
-| **basalt-vault** | O **vault de dados**: `config/` + `tasks/` (suas tarefas), versionado à parte. |
-| **basalt-lp** | A landing page (HTML estático) com os downloads. |
+| **basalt** (this one) | The engine/app. Ships **empty** — just what is needed to install and configure. |
+| **basalt-vault** | A **data vault**: `config/` + `tasks/` (your tasks), versioned separately. |
+| **basalt-lp** | The landing page (static HTML) with downloads. |
 
-## Stack
-- **Front:** Vue 3 + Vite + Tailwind (Composition/Options API). Editor TipTap, `vuedraggable`.
-- **Back:** Node + Express — camada fina de fs + git (`simple-git`) + watcher (`chokidar`).
-- **Desktop:** Electron (reusa o backend; diálogo nativo de pasta).
-- **Sem banco.** "Schema" = `config/schema.json`. "Histórico" = git.
+## Quickstart
 
-## Requisitos
-- **Node ≥ 18** (recomendado 20+). Veja `.nvmrc`.
-- **git instalado** (o backend commita/push via `simple-git`).
+Requirements: **Node ≥ 18** (see `.nvmrc`, recommended 20) and **git** on your PATH
+(the backend commits/pushes via `simple-git`).
 
-## Rodar
 ```bash
+git clone https://github.com/JairAragao/basalt.git
+cd basalt
 npm install
 
-# web (dev, com HMR)
+# web (dev, HMR)
 npm run dev          # backend :4317 + Vite :5173 (proxy /api)
+# open http://localhost:5173
 
 # desktop (Electron)
-npm run electron:dev # builda o front e abre o app desktop
-npm run electron:build  # gera instalável em release/ (Win .exe / Mac .dmg / Linux .AppImage)
+npm run electron:dev    # builds the front and opens the desktop app
+npm run electron:build  # installer in release/ (Win .exe / Mac .dmg / Linux .AppImage)
 
-# prod web
-npm run build        # gera app/dist
-npm start            # server serve app/dist + API
+# production web
+npm run build        # outputs app/dist
+npm start            # serves app/dist + API
 
-npm test             # Vitest (motor de fórmula + watcher)
+npm test             # Vitest (server + front unit tests)
 ```
 
-Na primeira execução o app abre o **SetupWizard**: escolha a pasta do **vault**
-(ou aponte para o `basalt-vault`). É lá que `config/` + `tasks/` são criados/lidos.
+On first run the app opens the **Setup Wizard**: pick (or create) your **vault** folder.
+That is where `config/` + `tasks/` are seeded and read from.
 
-## Como funciona
+## Architecture (short version)
 
-### Tarefa = arquivo `.md`
+```mermaid
+flowchart LR
+  subgraph Shell["Electron shell (optional)"]
+    UI[Vue 3 SPA<br/>app/]
+  end
+  UI -->|REST /api| SRV[Express backend<br/>server/]
+  SRV -->|atomic .md writes| VAULT[(Vault<br/>config/ + tasks/<br/>its own git repo)]
+  SRV -->|commit · push · pull| GIT[git]
+  SRV <-.->|chokidar watcher<br/>formula recompute| VAULT
+```
+
+- The **engine** (this repo) is 100% generic — no customer-specific rules. Behavior is
+  driven by the vault's declarative config (`schema.json`, `board.json`).
+- Every write is **atomic** (`.tmp` + rename) and **path-safe**; every CRUD operation
+  produces an awaited git commit with an automatic message, plus a background push.
+- The **watcher** recomputes formula fields, is loop-proof, and **never commits**.
+
+Full details (canonical save flow, invariants, module map, known edge cases):
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## A task is a file
+
 ```markdown
 ---
-titulo: Minha tarefa
+id: T-20260601-my-task
+titulo: My task
 status: Em andamento
-created_at: 2026-06-01T12:00:00Z   # auditoria — gerenciado pelo sistema
+created_at: 2026-06-01T12:00:00.000Z   # audit — system-managed
+created_by: jair
+updated_at: 2026-06-10T18:30:00.000Z
+updated_by: jair
+completed_at: 2026-06-10T18:30:00.000Z # stamped when the task enters the done group
+completed_by: jair
 ---
-Descrição livre em markdown. Pode ter [[wikilinks]].
+Free markdown body. Checklists, links, anything.
 ```
-- `id` = nome do arquivo, gerado de `idPrefix + data + slug(titulo)`.
-- Escrita **atômica** + path-safe. Todo CRUD **commita** (mensagem automática) e faz push best-effort.
 
-### Vault (engine × dados)
-- **Vault** = pasta com `config/` + `tasks/` + git próprio. O engine semeia o template
-  (`defaults/*.json` no repo do engine) num vault novo e faz `git init` se faltar.
-- Resolução do caminho: `~/.basalt/settings.json {vaultPath}` › env `BASALT_VAULT` › pasta do app (fallback).
-  Enquanto estiver no fallback, o wizard sinaliza "primeira run" (`isDefault`) e pede um vault próprio.
+- `id` = file name, generated from `idPrefix + date + slug(title)`.
+- Audit fields (`created_*`, `updated_*`, `completed_*`) are stamped by the engine —
+  the UI never writes them. The author is the **git identity** (local-first, no accounts).
+- `config/schema.json` defines properties and types (`string`, `enum`, `int`, `formula`,
+  `datetime`, `user`); `config/board.json` defines groups, stages, colors, card layout,
+  sorting, filters and the **done group** (`doneGroupId`).
 
-### Config declarativa (no vault)
-Mudar `config/*.json` muda o comportamento **sem código**:
-- `schema.json` → propriedades + tipos (`string`, `enum`, `int`, `formula`, `datetime`). O form de edição é gerado daqui.
-- `board.json` → grupos macro, etapas, cores, card, ordenação, filtros.
+## REST API (`/api`)
 
-O **default do engine é mínimo** (`título` + `status` + auditoria). Conjuntos de campos
-específicos (ex.: priorização **GUTE** = G·U·T/E) entram como extensão/preset — não vêm hardcoded.
+Config and vaults:
+`GET /config` (includes derived `doneStageIds`) · `GET|POST /vault` · `GET /vaults` ·
+`POST /vaults/switch` · `DELETE /vaults` · `GET /fs/list`
 
-### Campos fórmula + watcher
-- Propriedade `{type:'formula', expression}` é recalculada pelo watcher ao salvar (`expr-eval-fork`, sem `eval`).
-- **Anti-loop** (só regrava se mudou) e **nunca commita** — o derivado pega carona no próximo commit.
+Tasks:
+`GET /tasks` · `GET|PUT|DELETE /tasks/:id` · `POST /tasks` · `PATCH /tasks/:id/move` ·
+`GET /tasks/:id/history` · `GET /tasks/:id/diff`
 
-## API REST (`/api`)
-`GET /config` · `GET|POST /vault` · `GET /fs/list` · `GET /tasks` · `GET /tasks/:id` ·
-`POST /tasks` · `PUT /tasks/:id` · `PATCH /tasks/:id/move` · `DELETE /tasks/:id` ·
-`GET /tasks/:id/history` · `GET /tasks/:id/diff` · `GET /health/git` · `POST /sync/pull` ·
-`PUT /board/status` · `PUT /board/filters` · `PUT /board/card` · `PUT /schema/properties`.
+Board and schema:
+`GET /board` · `PUT /board/status` (accepts `doneGroupId`) · `PUT /board/filters` ·
+`PUT /board/card` · `PUT /schema/properties`
+
+Users and notifications:
+`GET /users` · `PUT /users/:id` · `GET /me` · `POST /users/register` ·
+`GET /notifications` · `POST /notifications/clear`
+
+Sync and assets:
+`POST /sync/pull` · `GET /health/git` · `POST /assets` · `GET /assets/:name`
 
 ## Roadmap
-- **Plugins** (código): hoje a extensibilidade é a config declarativa; presets/plugins de campos (GUTE, Dev, …) são o próximo passo.
-- Auth / multiusuário fora de escopo (local-first por design).
+
+Honest list — none of this is started yet:
+
+- **Plugins / presets** — today extensibility is the declarative config; next step is
+  one-click field presets (e.g. a GUTE prioritization preset) built on `PUT /schema/properties`.
+- **Code signing** — installers are unsigned; SmartScreen/Gatekeeper warn on first run.
+- **Auto-update** — `latest.yml` is generated but `electron-updater` is not wired;
+  updating is manual (install over the previous version).
+
+Out of scope by design: auth, multi-user servers, a database — Basalt is local-first.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) (setup, tests, gotchas, the engine↔vault golden
+rule). Please also read the [Code of Conduct](CODE_OF_CONDUCT.md) and
+[SECURITY.md](SECURITY.md) for vulnerability reports.
+
+## License
+
+[MIT](LICENSE) © 2026 Jair Aragão
