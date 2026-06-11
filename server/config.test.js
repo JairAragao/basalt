@@ -127,3 +127,118 @@ describe('config — completed_* normalizados como auditoria', () => {
     expect(config.schema.derived).not.toContain('completed_by');
   });
 });
+
+// ── Options mistas (string | {value,color}) → split values/optionMeta ────────
+const schemaFile = path.join(vaultConfigDir, 'schema.json');
+
+function writeSchema(schema) {
+  fs.writeFileSync(schemaFile, JSON.stringify(schema, null, 2) + '\n', 'utf8');
+  config.reload();
+}
+
+function schemaWithTipo(options) {
+  return {
+    idPrefix: 'T-',
+    idFrom: 'titulo',
+    properties: {
+      titulo: { type: 'string', required: true, label: 'Título' },
+      status: { type: 'enum', required: true, label: 'Status', system: true, options: ['backlog'], default: 'backlog' },
+      tipo: { type: 'enum', label: 'Tipo', options },
+    },
+  };
+}
+
+describe('config — options mistas de enum (split values + optionMeta)', () => {
+  it('array mista em disco → options vira string[] (ordem preservada) + optionMeta só pra quem tem cor', () => {
+    writeSchema(schemaWithTipo(['bug', { value: 'feature', color: '#4caf72' }, 'docs']));
+    const tipo = config.schema.properties.tipo;
+    expect(tipo.options).toEqual(['bug', 'feature', 'docs']);
+    expect(tipo.optionMeta).toEqual({ feature: { color: '#4caf72' } });
+  });
+
+  it('color inválida é descartada silenciosamente (a opção fica, sem meta)', () => {
+    writeSchema(schemaWithTipo([
+      { value: 'a', color: 'vermelho' },
+      { value: 'b', color: '#12345' },
+      { value: 'c', color: '#1234567' },
+      { value: 'd', color: '#A1b2C3' },
+    ]));
+    const tipo = config.schema.properties.tipo;
+    expect(tipo.options).toEqual(['a', 'b', 'c', 'd']);
+    expect(tipo.optionMeta).toEqual({ d: { color: '#A1b2C3' } });
+  });
+
+  it('value duplicado → primeira vence (inclusive misto string × objeto)', () => {
+    writeSchema(schemaWithTipo(['bug', { value: 'bug', color: '#4caf72' }, { value: 'docs', color: '#112233' }, 'docs']));
+    const tipo = config.schema.properties.tipo;
+    expect(tipo.options).toEqual(['bug', 'docs']);
+    // 'bug' apareceu primeiro como string crua → sem meta; 'docs' primeiro com cor → meta fica
+    expect(tipo.optionMeta).toEqual({ docs: { color: '#112233' } });
+  });
+
+  it('entrada sem value string utilizável é ignorada (self-heal, nunca lança)', () => {
+    writeSchema(schemaWithTipo([
+      'ok',
+      42,
+      null,
+      '',
+      '   ',
+      { color: '#112233' },
+      { value: 7, color: '#112233' },
+      { value: '', color: '#112233' },
+      ['array'],
+    ]));
+    const tipo = config.schema.properties.tipo;
+    expect(tipo.options).toEqual(['ok']);
+    expect(tipo.optionMeta).toEqual({});
+  });
+
+  it('round-trip: a mista em disco é PRESERVADA pelo load (config nunca reescreve o schema.json)', () => {
+    const mista = ['bug', { value: 'feature', color: '#4caf72' }, 'docs'];
+    writeSchema(schemaWithTipo(mista));
+    config.reload();
+    const onDisk = JSON.parse(fs.readFileSync(schemaFile, 'utf8'));
+    expect(onDisk.properties.tipo.options).toEqual(mista);
+    // e em memória segue split
+    expect(config.schema.properties.tipo.options).toEqual(['bug', 'feature', 'docs']);
+  });
+
+  it('options string[] puro (legado) → no-op com optionMeta vazio', () => {
+    writeSchema(schemaWithTipo(['x', 'y']));
+    const tipo = config.schema.properties.tipo;
+    expect(tipo.options).toEqual(['x', 'y']);
+    expect(tipo.optionMeta).toEqual({});
+  });
+});
+
+describe('config — sanitizeOptionsForDisk (persistência seletiva)', () => {
+  it('objeto {value,color} só pra opção com cor válida; string crua pro resto', () => {
+    expect(config.sanitizeOptionsForDisk(['bug', { value: 'feature', color: '#4caf72' }, 'docs']))
+      .toEqual(['bug', { value: 'feature', color: '#4caf72' }, 'docs']);
+  });
+
+  it('cor inválida → degrada pra string crua; dups e entradas sem value caem fora', () => {
+    expect(config.sanitizeOptionsForDisk([
+      { value: 'a', color: 'zzz' },
+      { value: 'b', color: '#aabbcc' },
+      'b',
+      null,
+      { color: '#aabbcc' },
+    ])).toEqual(['a', { value: 'b', color: '#aabbcc' }]);
+  });
+
+  it('input não-array → array vazia (nunca lança)', () => {
+    expect(config.sanitizeOptionsForDisk(undefined)).toEqual([]);
+    expect(config.sanitizeOptionsForDisk('bug')).toEqual([]);
+  });
+
+  it('round-trip disco→memória→disco é estável (idempotente)', () => {
+    const mista = ['bug', { value: 'feature', color: '#4caf72' }, 'docs'];
+    const persisted = config.sanitizeOptionsForDisk(mista);
+    expect(persisted).toEqual(mista);
+    const { options, optionMeta } = config.splitOptions(persisted);
+    expect(options).toEqual(['bug', 'feature', 'docs']);
+    expect(optionMeta).toEqual({ feature: { color: '#4caf72' } });
+    expect(config.sanitizeOptionsForDisk(persisted)).toEqual(mista);
+  });
+});

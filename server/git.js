@@ -180,6 +180,52 @@ async function pull() {
   }
 }
 
+// Classifica a falha de um pull num reason estável pro front:
+// 'no-remote' | 'timeout' | 'auth' | 'diverged' | 'other'. Ordem importa:
+// timeout/auth antes de diverged (mensagens de auth podem citar "rebase").
+function classifyPullReason(msg) {
+  const m = String(msg || '').toLowerCase();
+  if (/nenhum remote|origin ausente|no remote|does not appear to be a git repository/.test(m)) return 'no-remote';
+  if (/timeout|timed out/.test(m)) return 'timeout';
+  if (/authentication|could not read username|could not read password|permission denied|publickey|access denied|terminal prompts disabled|http basic|401|403/.test(m)) return 'auth';
+  if (/not possible to fast-forward|cannot fast-forward|divergent|diverged|conflict|conflito|needs merge|could not apply|unmerged|rebase/.test(m)) return 'diverged';
+  return 'other';
+}
+
+// pullRebase: `git pull --rebase --autostash`. NUNCA lança — retorna
+// { ok:true, message } ou { ok:false, reason, detail }. GARANTIA: o working
+// tree nunca fica no meio de um rebase — em erro tenta `rebase --abort`
+// (best-effort, falha do abort é engolida: sem rebase em andamento ele falha).
+async function pullRebase() {
+  try {
+    const remotes = await git().getRemotes(false);
+    if (!remotes || !remotes.length) {
+      return { ok: false, reason: 'no-remote', detail: 'nenhum remote configurado (origin ausente)' };
+    }
+    const out = await git().raw(['pull', '--rebase', '--autostash']);
+
+    // Mesmo guarda do pull(): se o re-apply do autostash deixar unmerged no
+    // index (edge — o git costuma guardar no stash e sair limpo), restaura o
+    // working tree pro HEAD pós-rebase; as mudanças locais ficam no stash.
+    const unmerged = (await git().raw(['ls-files', '-u'])).trim();
+    if (unmerged) {
+      await git().raw(['reset', '--hard', 'HEAD']);
+      return {
+        ok: false,
+        reason: 'diverged',
+        detail: 'pull trouxe conflito com mudanças locais não commitadas. O working tree foi restaurado; suas mudanças locais ficaram no stash (git stash list).',
+      };
+    }
+    return { ok: true, message: oneLine(out) || 'pull concluído' };
+  } catch (err) {
+    try {
+      await git().raw(['rebase', '--abort']);
+    } catch { /* sem rebase em andamento — engole */ }
+    const detail = oneLine(err.message);
+    return { ok: false, reason: classifyPullReason(detail), detail };
+  }
+}
+
 // ── Commit ───────────────────────────────────────────────────────────────────
 // Commita um arquivo de tarefa com a mensagem dada, usando a identidade do repo.
 async function commitTask(filePath, message) {
@@ -464,6 +510,8 @@ module.exports = {
   commitPaths,
   pushNow,
   pull,
+  pullRebase,
+  classifyPullReason,
   healthGit,
   getIdentity,
   getUserId,

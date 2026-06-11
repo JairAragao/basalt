@@ -450,14 +450,17 @@ async function buildNotifications(before, after) {
 }
 
 // ── Sync / Health ────────────────────────────────────────────────────────────
-// Pull sob demanda (fast-forward only). Nunca lança — devolve o resultado do git.
+// Pull sob demanda. body opcional { strategy: 'safe' | 'rebase' } — default
+// 'safe' (= --ff-only --autostash, compat com quem não manda body); 'rebase'
+// usa pull --rebase --autostash. Nunca lança — devolve o resultado do git.
 router.post('/sync/pull', async (req, res) => {
   try {
+    const strategy = ((req.body || {}).strategy === 'rebase') ? 'rebase' : 'safe';
     // Captura HEAD antes/depois DENTRO da fila git (atômico com o pull) para
     // descobrir o range de commits que chegaram e montar notificações.
     const r = await gitSerial(async () => {
       const before = await git.currentHead();
-      const result = await git.pull();
+      const result = strategy === 'rebase' ? await git.pullRebase() : await git.pull();
       const after = await git.currentHead();
       return { result, before, after };
     });
@@ -470,8 +473,16 @@ router.post('/sync/pull', async (req, res) => {
         console.warn('[notif] build falhou:', e.message);
       }
     }
+    // Sucesso mantém os campos atuais; falha vira { ok:false, reason, detail }
+    // (reason ∈ diverged|no-remote|auth|timeout|other). `error` fica como alias
+    // de detail enquanto o front antigo ainda lê esse campo.
+    let payload = r.result || {};
+    if (payload.ok === false) {
+      const detail = payload.detail || payload.error || '';
+      payload = { ok: false, reason: payload.reason || git.classifyPullReason(detail), detail, error: detail };
+    }
     // resultado (ok/erro) vai no CORPO; status 200 — falha de pull não é erro HTTP.
-    res.json({ ...r.result, newNotifications, notifications: config.getNotifications() });
+    res.json({ ...payload, newNotifications, notifications: config.getNotifications() });
   } catch (err) { fail(res, err); }
 });
 
@@ -778,21 +789,19 @@ router.put('/schema/properties', async (req, res) => {
       properties.status.system = true;
     }
 
-    schema.properties = properties;
-    writeJsonAtomic(schemaFile(), schema);
+    // Options mistas no payload (string | {value,color}): sanitiza pro disco —
+    // objeto SÓ pra opção com cor válida (#rrggbb), string crua pro resto.
+    // optionMeta ecoado pelo front é descartado (campo DERIVADO no reload).
+    for (const spec of Object.values(properties)) {
+      if (!spec || typeof spec !== 'object') continue;
+      delete spec.optionMeta;
+      if ((spec.type === 'enum' || spec.type === 'multiselect') && spec.options !== undefined) {
+        spec.options = config.sanitizeOptionsForDisk(spec.options);
+      }
+    }
 
-    const newKeys = Object.keys(properties);
     const rn = rnRaw;
     const renameMap = new Map(rn.map((r) => [r.from, r.to]));
-    const removed = oldKeys.filter((k) => !newKeys.includes(k) && !renameMap.has(k) && !derived.has(k));
-    // Props NOVAS a semear nas tarefas — exclui renomeadas e props type 'formula'
-    // (estas são derivadas: o watcher as calcula, não viram campo manual vazio).
-    const added = newKeys.filter(
-      (k) =>
-        !oldKeys.includes(k) &&
-        ![...renameMap.values()].includes(k) &&
-        !(properties[k] && properties[k].type === 'formula')
-    );
 
     // optionRenames: [{property,from,to}] — migra valores de opção enum.
     // Indexado por propriedade-DESTINO (após eventual rename de chave), pois a
@@ -807,9 +816,39 @@ router.put('/schema/properties', async (req, res) => {
       optByProp.get(prop).set(o.from, o.to);
     }
 
+    // Rename de opção preserva a cor: se o payload não trouxe cor explícita pro
+    // novo nome, herda a cor que o nome antigo tinha no schema em disco.
+    for (const o of optRn) {
+      const newKey = renameMap.has(o.property) ? renameMap.get(o.property) : o.property;
+      const spec = properties[newKey];
+      if (!spec || !Array.isArray(spec.options)) continue;
+      let oldKey = newKey;
+      for (const [from, to] of renameMap) { if (to === newKey) oldKey = from; }
+      const oldSpec = oldProps[oldKey];
+      if (!oldSpec) continue;
+      const oldMeta = config.splitOptions(oldSpec.options).optionMeta;
+      const color = oldMeta[o.from] && oldMeta[o.from].color;
+      if (!color) continue;
+      spec.options = spec.options.map((opt) => (opt === o.to ? { value: o.to, color } : opt));
+    }
+
+    schema.properties = properties;
+    writeJsonAtomic(schemaFile(), schema);
+
+    const newKeys = Object.keys(properties);
+    const removed = oldKeys.filter((k) => !newKeys.includes(k) && !renameMap.has(k) && !derived.has(k));
+    // Props NOVAS a semear nas tarefas — exclui renomeadas e props type 'formula'
+    // (estas são derivadas: o watcher as calcula, não viram campo manual vazio).
+    const added = newKeys.filter(
+      (k) =>
+        !oldKeys.includes(k) &&
+        ![...renameMap.values()].includes(k) &&
+        !(properties[k] && properties[k].type === 'formula')
+    );
+
     // Opções REMOVIDAS de cada enum/multiselect (sumiram e NÃO foram renomeadas) →
-    // limpar o valor nas tarefas que as usavam. Compara options antigas (oldProps)
-    // x novas, ignorando os 'from' de renames (que já viram migração de valor).
+    // limpar o valor nas tarefas que as usavam. Compara por VALUE (as arrays
+    // podem ser mistas dos dois lados), ignorando os 'from' de renames.
     const optRemovalsByProp = new Map();
     for (const newKey of newKeys) {
       const spec = properties[newKey];
@@ -818,9 +857,9 @@ router.put('/schema/properties', async (req, res) => {
       for (const [from, to] of renameMap) { if (to === newKey) oldKey = from; }
       const oldSpec = oldProps[oldKey];
       if (!oldSpec || !Array.isArray(oldSpec.options)) continue;
-      const newOpts = new Set(Array.isArray(spec.options) ? spec.options : []);
+      const newOpts = new Set(config.splitOptions(spec.options).options);
       const renamedFrom = optByProp.has(newKey) ? new Set(optByProp.get(newKey).keys()) : new Set();
-      const removedOpts = oldSpec.options.filter((o) => !newOpts.has(o) && !renamedFrom.has(o));
+      const removedOpts = config.splitOptions(oldSpec.options).options.filter((o) => !newOpts.has(o) && !renamedFrom.has(o));
       if (removedOpts.length) optRemovalsByProp.set(newKey, new Set(removedOpts));
     }
 

@@ -123,6 +123,45 @@ function validateBoard(board) {
 // Carimbo genérico escrito pelo motor de fórmula (substitui o antigo gute_computed_at).
 const STAMP_FIELD = 'computed_at';
 
+// ── Opções de enum/multiselect: array MISTA em disco, split em memória ───────
+// Em disco `options` pode misturar `string` e `{ value, color }` (objeto SÓ pra
+// opção com cor → diff git mínimo). Em memória `options` volta a ser string[]
+// (todos os consumidores atuais — validate, front — seguem vendo strings) e a
+// cor vai pra `optionMeta = { [value]: { color } }`.
+const OPTION_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+// splitOptions(raw) → { options: string[], optionMeta }. Self-heal, nunca lança:
+// entrada sem value string utilizável é ignorada; value duplicado → primeira
+// vence; color fora do formato #rrggbb é descartada silenciosamente.
+function splitOptions(raw) {
+  const options = [];
+  const optionMeta = {};
+  const seen = new Set();
+  for (const entry of Array.isArray(raw) ? raw : []) {
+    let value = null;
+    let color = null;
+    if (typeof entry === 'string') {
+      value = entry;
+    } else if (isPlainObject(entry) && typeof entry.value === 'string') {
+      value = entry.value;
+      if (typeof entry.color === 'string' && OPTION_COLOR_RE.test(entry.color)) color = entry.color;
+    }
+    if (value === null || value.trim() === '' || seen.has(value)) continue;
+    seen.add(value);
+    options.push(value);
+    if (color) optionMeta[value] = { color };
+  }
+  return { options, optionMeta };
+}
+
+// sanitizeOptionsForDisk(raw) → array mista saneada pro schema.json: objeto
+// {value,color} SÓ pra opção com cor válida; string crua pro resto. Mesmas
+// regras de self-heal do splitOptions (dedup, color inválida fora).
+function sanitizeOptionsForDisk(raw) {
+  const { options, optionMeta } = splitOptions(raw);
+  return options.map((v) => (optionMeta[v] ? { value: v, color: optionMeta[v].color } : v));
+}
+
 // schema.derived = chaves de props type 'formula' + o stamp 'computed_at'.
 function deriveDerived(schema) {
   const keys = [];
@@ -238,6 +277,8 @@ function safeIsFile(p) {
 const configObj = {
   ROOT, // raiz do app (defaults/seed)
   STAMP_FIELD,
+  splitOptions, // mista (disco) → { options: string[], optionMeta } (memória)
+  sanitizeOptionsForDisk, // payload misto → array saneada pro schema.json
   VAULT: null,
   CONFIG_DIR: null,
   TASKS_DIR: null,
@@ -304,6 +345,16 @@ function load() {
   board.columns = deriveColumns(board);
   if (schema.properties && schema.properties.status) {
     schema.properties.status.options = deriveStatusOptions(board);
+  }
+
+  // Options de enum/multiselect: o disco pode ter array MISTA (string |
+  // {value,color}); em memória options vira string[] e a cor vai pra
+  // optionMeta. Roda DEPOIS do derive de status (que é string[] puro → no-op).
+  for (const spec of Object.values(schema.properties || {})) {
+    if (!spec || (spec.type !== 'enum' && spec.type !== 'multiselect')) continue;
+    const { options, optionMeta } = splitOptions(spec.options);
+    spec.options = options;
+    spec.optionMeta = optionMeta;
   }
 
   // schema.derived é DERIVADO (props formula + stamp), sobrescreve qualquer array fixo.
