@@ -6,12 +6,26 @@
         :key="grp.id || gi"
         class="rounded-lg border border-ink-500 bg-ink-850 p-3"
       >
-        <!-- rótulo do grupo (editável) -->
-        <input
-          v-model="grp.label"
-          class="field mb-3 !bg-transparent !border-transparent !px-1 text-[12px] font-semibold uppercase tracking-wide text-faint hover:!border-ink-500 focus:!border-accent"
-          :placeholder="'Grupo ' + (gi + 1)"
-        />
+        <!-- rótulo do grupo (editável) + toggle de grupo de conclusão -->
+        <div class="mb-3 flex items-center gap-2">
+          <input
+            v-model="grp.label"
+            class="field !bg-transparent !border-transparent !px-1 text-[12px] font-semibold uppercase tracking-wide text-faint hover:!border-ink-500 focus:!border-accent"
+            :placeholder="'Grupo ' + (gi + 1)"
+          />
+          <!-- 0 ou 1 grupo marcado; clicar no marcado desmarca (→ null) -->
+          <button
+            type="button"
+            class="flex flex-shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors"
+            :class="doneGroupId === grp.id ? 'border-accent/60 bg-accent/15 text-txt' : 'border-ink-500 text-faint hover:text-muted'"
+            :aria-pressed="doneGroupId === grp.id ? 'true' : 'false'"
+            title="Grupo de conclusão: tarefa movida pra cá ganha carimbo automático de 'Concluída em/por' (clique de novo pra desmarcar)"
+            @click="toggleDoneGroup(grp.id)"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><circle cx="10" cy="10" r="7" /><path d="M7 10.5l2 2 4-4.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            Conclusão
+          </button>
+        </div>
 
         <!-- etapas (arraste pela alça p/ reordenar dentro do grupo macro) -->
         <draggable
@@ -122,6 +136,7 @@ export default {
   data() {
     return {
       groups: [],
+      doneGroupId: null, // grupo de conclusão (carimbo automático) — 0 ou 1 marcado
       palette: PALETTE,
       openSwatch: null,
       saving: false,
@@ -133,6 +148,8 @@ export default {
   },
   methods: {
     load() {
+      // backend já normaliza órfão → null (self-heal)
+      this.doneGroupId = (this.config.board && this.config.board.doneGroupId) || null;
       const src = (this.config.board && this.config.board.statusGroups) || [];
       // clone profundo + _uid estável por etapa (p/ casar renames)
       this.groups = src.map((g) => ({
@@ -166,6 +183,9 @@ export default {
       stage.color = value;
       this.openSwatch = null;
       document.removeEventListener('mousedown', this.onDocClick);
+    },
+    toggleDoneGroup(id) {
+      this.doneGroupId = this.doneGroupId === id ? null : id;
     },
     addStage(grp) {
       grp.stages.push({ _uid: nextUid(), _originalId: null, label: '', color: DEFAULT_COLOR });
@@ -211,7 +231,8 @@ export default {
       }
 
       this.saving = true;
-      saveStatus({ statusGroups, renames })
+      // doneGroupId sempre no payload: null explícito desmarca (contrato D1.5)
+      saveStatus({ statusGroups, renames, doneGroupId: this.doneGroupId })
         .then((updated) => { this.$emit('saved', updated); })
         .catch((e) => { this.error = e.message || 'Falha ao salvar.'; })
         .finally(() => { this.saving = false; });

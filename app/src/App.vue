@@ -10,12 +10,25 @@
       @remove="removeVaultTab"
     />
 
+    <!-- corpo: sidebar (rail à esquerda) + coluna de conteúdo. A sidebar some
+         durante o setup do vault (SetupWizard ocupa a área toda). -->
+    <div class="flex min-h-0 flex-1">
+    <Sidebar
+      v-if="config && !configuring"
+      :active="activeView"
+      @navigate="setActiveView"
+      @open-settings="settingsOpen = true"
+    />
+
+    <div class="flex min-w-0 flex-1 flex-col">
     <!-- Toolbar (filtros/view/ações) — só com vault ativo e fora da configuração -->
     <header v-if="config && !loadError && !configuring" class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 bg-ink-850 px-4">
       <span class="font-mono text-[11px] text-faint" title="Versão do Basalt">v{{ version }}</span>
       <div class="flex-1"></div>
 
       <template v-if="config && !loadError">
+        <!-- controles específicos da view de tarefas -->
+        <template v-if="activeView === 'tasks'">
         <!-- Filtros (board.filters) com Dropdown -->
         <Dropdown
           v-for="f in filterFields"
@@ -78,14 +91,7 @@
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><circle cx="10" cy="10" r="6" /><path d="M10 4a6 6 0 0 0 0 12" fill="currentColor" stroke="none" /></svg>
           Colorir
         </button>
-
-        <!-- Configurações -->
-        <button class="icon-btn h-8 w-8" title="Configurações" @click="settingsOpen = true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </button>
+        </template>
 
         <!-- Sincronizar (git pull) -->
         <button class="icon-btn h-8 w-8" title="Sincronizar (git pull)" :disabled="syncing" @click="doSync">
@@ -140,6 +146,7 @@
 
         <!-- Nova tarefa -->
         <button
+          v-if="activeView === 'tasks'"
           class="flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40"
           @click="openCreate"
         >
@@ -179,30 +186,32 @@
         </div>
       </div>
 
-      <template v-else-if="config">
-        <Board
-          v-if="view === 'kanban'"
-          :tasks="filteredTasks"
-          :config="config"
-          :color-columns="colorColumns"
-          :sort="sort"
-          @open="openEdit"
-          @delete="confirmDelete"
-          @moved="onMoved"
-          @config-saved="onConfigSaved"
-          @error="(m) => notify(m, 'error')"
-        />
-        <TableView
-          v-else
-          :tasks="filteredTasks"
-          :config="config"
-          :sort="sort"
-          @open="openEdit"
-          @sort="(s) => (sort = s)"
-        />
-      </template>
+      <TasksView
+        v-else-if="config && activeView === 'tasks'"
+        :tasks="filteredTasks"
+        :config="config"
+        :view="view"
+        :color-columns="colorColumns"
+        :sort="sort"
+        @open="openEdit"
+        @delete="confirmDelete"
+        @moved="onMoved"
+        @config-saved="onConfigSaved"
+        @error="(m) => notify(m, 'error')"
+        @sort="(s) => (sort = s)"
+      />
+      <!-- dashboard recebe as tarefas SEM os filtros do toolbar (tem período próprio) -->
+      <DashboardView
+        v-else-if="config && activeView === 'dashboard'"
+        :config="config"
+        :tasks="tasks"
+        :users="users"
+        @open-settings="settingsOpen = true"
+      />
       </template>
     </main>
+    </div>
+    </div>
 
     <!-- Peek lateral (criar/editar) — auto-save, sem botões -->
     <TaskPeek
@@ -258,22 +267,27 @@
 </template>
 
 <script>
-import { computed } from 'vue';
-import Board from './components/Board.vue';
-import TableView from './components/TableView.vue';
+import { computed, defineAsyncComponent } from 'vue';
+import TasksView from './views/TasksView.vue';
 import TaskPeek from './components/TaskPeek.vue';
 import Settings from './components/Settings.vue';
 import SetupWizard from './components/SetupWizard.vue';
 import Dropdown from './components/Dropdown.vue';
 import TitleBar from './components/TitleBar.vue';
+import Sidebar from './components/Sidebar.vue';
 import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications } from './api';
 
+// Lazy: dashboard (uPlot) fora do bundle inicial — só carrega ao abrir a view
+// (mesmo padrão do BodyEditor no TaskPeek).
+const DashboardView = defineAsyncComponent(() => import('./views/DashboardView.vue'));
+
 const COLOR_KEY = 'basalt.colorColumns';
+const viewKey = 'basalt.viewByVault'; // { "<vaultPath exato da API /vaults>": 'tasks'|'dashboard' }
 const AUTO_PULL_MS = 60000; // auto-pull periódico p/ trazer mudanças + notificações
 
 export default {
   name: 'App',
-  components: { Board, TableView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar },
+  components: { TasksView, DashboardView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar, Sidebar },
   // disponibiliza o roster (reativo) para componentes filhos (ex.: TaskCard resolve user id → nome)
   provide() {
     return { basaltUsers: computed(() => this.users) };
@@ -287,6 +301,7 @@ export default {
       loading: false,
       loadError: '',
       view: 'kanban',
+      activeView: 'tasks', // 'tasks' | 'dashboard' — restaurado por vault (viewKey)
       // default genérico; o board.sort do vault sobrescreve em loadActive()
       sort: { by: 'created_at', dir: 'desc' },
       colorColumns: this.loadColorColumns(),
@@ -351,6 +366,10 @@ export default {
       return this.tasks.filter((t) => active.every((k) => t[k] === this.filters[k]));
     },
   },
+  watch: {
+    // troca de aba (vault) restaura a view salva daquele vault (default 'tasks')
+    activeVault() { this.restoreView(); },
+  },
   async created() {
     await this.bootstrap();
     // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
@@ -364,6 +383,23 @@ export default {
     toggleColorColumns() {
       this.colorColumns = !this.colorColumns;
       try { localStorage.setItem(COLOR_KEY, this.colorColumns ? '1' : '0'); } catch (e) { /* ignore */ }
+    },
+    // ── view ativa (tasks | dashboard), persistida POR VAULT ──
+    readViewMap() {
+      try { return JSON.parse(localStorage.getItem(viewKey) || '{}') || {}; } catch (e) { return {}; }
+    },
+    setActiveView(v) {
+      this.activeView = v === 'dashboard' ? 'dashboard' : 'tasks';
+      if (!this.activeVault) return;
+      try {
+        const map = this.readViewMap();
+        map[this.activeVault] = this.activeView; // chave = path EXATO da API /vaults
+        localStorage.setItem(viewKey, JSON.stringify(map));
+      } catch (e) { /* ignore */ }
+    },
+    restoreView() {
+      const map = this.readViewMap();
+      this.activeView = map[this.activeVault] === 'dashboard' ? 'dashboard' : 'tasks';
     },
     setFilter(name, value) {
       this.filters[name] = value == null ? null : value;
