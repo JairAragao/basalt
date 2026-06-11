@@ -35,6 +35,24 @@ describe('describeChanges', () => {
     expect(msg).toBe('status alterado de "A fazer" para "Pausado"');
   });
 
+  it('move pra done: carimbo de conclusão (completed_*) não polui a mensagem', () => {
+    const after = {
+      ...base,
+      status: 'Concluído',
+      completed_at: '2026-06-10T12:00:00Z',
+      completed_by: 'Jair',
+    };
+    const msg = describeChanges(base, after, 'move', base.id, 'titulo');
+    expect(msg).toBe('status alterado de "A fazer" para "Concluído"');
+  });
+
+  it('saída de done: remoção dos carimbos também é silenciosa', () => {
+    const before = { ...base, status: 'Concluído', completed_at: '2026-06-10T12:00:00Z', completed_by: 'Jair' };
+    const after = { ...base, status: 'A fazer' };
+    const msg = describeChanges(before, after, 'move', base.id, 'titulo');
+    expect(msg).toBe('status alterado de "Concluído" para "A fazer"');
+  });
+
   it('update: só o corpo mudou → "conteúdo atualizado" (não "Sem alterações")', () => {
     expect(describeChanges(base, { ...base }, 'update', base.id, 'titulo', { bodyChanged: true }))
       .toBe('conteúdo atualizado');

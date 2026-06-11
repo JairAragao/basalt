@@ -119,6 +119,12 @@ function create(data, body, actor) {
   clean.created_by = who;
   clean.updated_at = now;
   clean.updated_by = who;
+  // Conclusão: criar direto numa etapa do grupo done conta como transição → carimba.
+  const done = config.doneStageIds || new Set();
+  if (done.has(clean.status)) {
+    clean.completed_at = now;
+    clean.completed_by = who;
+  }
   ATOMIC_writeTask(id, clean, body);
   return { id };
 }
@@ -161,6 +167,23 @@ function update(id, data, body, actor) {
   clean.created_by = ex.created_by !== undefined ? ex.created_by : who;
   clean.updated_at = now;
   clean.updated_by = who;
+
+  // Conclusão: carimbo SÓ na transição ∉done→∈done; limpa na inversa; preserva
+  // em todo o resto (legado em done sem carimbo continua sem — nada de
+  // retro-carimbo; sem doneGroupId nenhum carimbo novo, mas o existente fica).
+  const done = config.doneStageIds || new Set();
+  const wasDone = done.has(ex.status);
+  const isDone = done.has(clean.status);
+  if (!wasDone && isDone) {
+    clean.completed_at = now;
+    clean.completed_by = who;
+  } else if (wasDone && !isDone) {
+    delete clean.completed_at;
+    delete clean.completed_by;
+  } else {
+    if ('completed_at' in ex) clean.completed_at = ex.completed_at;
+    if ('completed_by' in ex) clean.completed_by = ex.completed_by;
+  }
 
   const finalBody = body === undefined ? existing.content : body;
   ATOMIC_writeTask(id, clean, finalBody);

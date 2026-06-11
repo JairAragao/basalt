@@ -68,7 +68,7 @@ function diffFields(oldData, newData) {
   const keys = new Set([...Object.keys(o), ...Object.keys(n)]);
   keys.delete('id'); // id não é "campo de conteúdo"
   // auditoria/carimbo mudam a cada edição — não poluem a mensagem.
-  for (const k of ['created_at', 'created_by', 'updated_at', 'updated_by', 'computed_at']) keys.delete(k);
+  for (const k of ['created_at', 'created_by', 'updated_at', 'updated_by', 'completed_at', 'completed_by', 'computed_at']) keys.delete(k);
 
   const parts = [];
   for (const k of keys) {

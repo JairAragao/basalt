@@ -3,6 +3,9 @@
   "version": "0.4.0",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
+  "license": "MIT",
+  "author": "Jair Aragão",
+  "repository": "github:JairAragao/basalt",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently -n server,app -c blue,green \"npm:dev:server\" \"npm:dev:app\"",
@@ -33,6 +36,7 @@
     "simple-git": "^3.25.0",
     "tippy.js": "^6.3.7",
     "tiptap-markdown": "^0.8.10",
+    "uplot": "^1.6.32",
     "vue": "^3.5.13",
     "vue3-emoji-picker": "^1.1.8",
     "vuedraggable": "^4.1.0"

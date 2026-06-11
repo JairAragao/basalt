@@ -1,5 +1,6 @@
 {
   "groupBy": "status",
+  "doneGroupId": "done",
   "statusGroups": [
     {
       "id": "todo",

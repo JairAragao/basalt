@@ -145,7 +145,12 @@ function schedulePush() {
 
 // ── Tarefas ──────────────────────────────────────────────────────────────────
 router.get('/config', (req, res) => {
-  res.json({ schema: config.schema, board: config.board, gute: config.gute });
+  res.json({
+    schema: config.schema,
+    board: config.board,
+    gute: config.gute,
+    doneStageIds: Array.from(config.doneStageIds || []),
+  });
 });
 
 // ── Vault (pasta config/ + tasks/ + git próprio escolhida pelo usuário) ───────
@@ -631,11 +636,20 @@ router.get('/board', (req, res) => {
 
 router.put('/board/status', async (req, res) => {
   try {
-    const { statusGroups, renames } = req.body || {};
+    const { statusGroups, renames, doneGroupId } = req.body || {};
     validateStatusGroups(statusGroups);
+    // doneGroupId opcional: null explícito desmarca; string deve referenciar um
+    // grupo do PAYLOAD (validação estrita aqui — o self-heal do config.js é só
+    // pra board.json gravado à mão).
+    if (doneGroupId !== undefined && doneGroupId !== null) {
+      if (typeof doneGroupId !== 'string' || !statusGroups.some((g) => g && g.id === doneGroupId)) {
+        return res.status(400).json({ error: `doneGroupId "${doneGroupId}" não corresponde a nenhum grupo` });
+      }
+    }
 
     const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
     board.statusGroups = statusGroups;
+    if (doneGroupId !== undefined) board.doneGroupId = doneGroupId;
     writeJsonAtomic(boardFile(), board);
 
     const rn = (Array.isArray(renames) ? renames : []).filter((r) => r && r.from && r.to && r.from !== r.to);

@@ -245,6 +245,7 @@ const configObj = {
   board: null,
   gute: null, // legado: pode ficar null se gute.json não existir
   users: [], // roster do time (config/users.json)
+  doneStageIds: new Set(), // ids de etapa do grupo de conclusão (derivado de board.doneGroupId)
 };
 
 // Assinantes notificados quando o VAULT efetivo muda (ex.: watcher re-globa).
@@ -308,6 +309,20 @@ function load() {
   // schema.derived é DERIVADO (props formula + stamp), sobrescreve qualquer array fixo.
   schema.derived = deriveDerived(schema);
 
+  // doneGroupId (semântica de conclusão): self-heal — ref órfã (grupo que não
+  // existe em statusGroups) vira null, nunca lança. Derive: doneStageIds = ids
+  // de etapa do grupo done (Set vazio se null). Recomputado a cada load/reload.
+  board.doneGroupId =
+    typeof board.doneGroupId === 'string' && board.statusGroups.some((g) => g && g.id === board.doneGroupId)
+      ? board.doneGroupId
+      : null;
+  const doneGroup = board.doneGroupId
+    ? board.statusGroups.find((g) => g && g.id === board.doneGroupId)
+    : null;
+  const doneStageIds = new Set(
+    doneGroup ? (doneGroup.stages || []).map((s) => s && s.id).filter(Boolean) : []
+  );
+
   // Normaliza board.filters: sempre um array de strings (props do schema).
   board.filters = Array.isArray(board.filters)
     ? board.filters.filter((f) => typeof f === 'string' && f.trim() !== '')
@@ -320,7 +335,19 @@ function load() {
   //
   // 1) Campos de auditoria são gerenciados pelo engine (tasks-repo carimba):
   //    garante system+auto (read-only no editor) mesmo se o vault não declarou.
-  const AUDIT_FIELDS = ['created_at', 'created_by', 'updated_at', 'updated_by'];
+  //    completed_* são posteriores aos vaults já semeados — injeta o spec em
+  //    memória se faltar (senão stripManaged/orderFrontmatter não os reconhecem);
+  //    o arquivo em disco se auto-cura no próximo save, como o resto da seção.
+  const COMPLETED_SPECS = {
+    completed_at: { type: 'datetime', label: 'Concluída em' },
+    completed_by: { type: 'string', label: 'Concluída por' },
+  };
+  if (schema.properties) {
+    for (const [k, spec] of Object.entries(COMPLETED_SPECS)) {
+      if (!schema.properties[k]) schema.properties[k] = { ...spec };
+    }
+  }
+  const AUDIT_FIELDS = ['created_at', 'created_by', 'updated_at', 'updated_by', 'completed_at', 'completed_by'];
   for (const k of AUDIT_FIELDS) {
     if (schema.properties && schema.properties[k]) {
       schema.properties[k].system = true;
@@ -352,6 +379,7 @@ function load() {
   configObj.board = board;
   configObj.gute = gute;
   configObj.users = users;
+  configObj.doneStageIds = doneStageIds;
 
   // Notifica assinantes se a pasta do vault MUDOU (não em reload no mesmo vault).
   if (prevVault && prevVault !== vault) {
