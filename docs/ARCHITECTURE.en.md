@@ -6,13 +6,12 @@ How Basalt actually works, for people who want to contribute. Last full audit: 2
 
 ## The big picture
 
-Three repositories, one boundary:
+Two repositories, one boundary:
 
 | Repo | Role |
 |---|---|
 | **basalt** (this one) | The generic **engine**: server, SPA, Electron shell. Ships empty. |
 | **basalt-vault** | A **vault**: `config/` + `tasks/` + its own git repo. Your data. |
-| **basalt-lp** | Static landing page with download links. |
 
 ```
 ┌─ Electron main ── starts the server on a free 127.0.0.1 port, IPC for folder picker
@@ -104,6 +103,23 @@ UI (auto-save) → PUT /api/tasks/:id
   unit-tested) over `GET /tasks`; uPlot renders the time series inside a lazy chunk.
   Revisit server-side aggregation only past ~5k tasks. See
   [ADR-002](adr/ADR-002-client-side-reports.md).
+- **Colored options (0.6.0)** — on disk, `options` accepts a MIXED array
+  (`string | {value, color}`; object only for colored options — minimal git diff).
+  In memory / `GET /config`, `options` stays `string[]` and `optionMeta =
+  { value: { color } }` is derived (self-heal: non-`#rrggbb` colors dropped, duplicates
+  first-wins). Color is presentation — it **never** enters the task `.md`. Renaming an
+  option carries its color.
+- **Type-aware filters (0.6.0)** — `app/src/filtering.js` (pure): normalized contains
+  (NFD, diacritics stripped) for `string`, equality for `int`, inclusive local-day range
+  for `datetime`, equality/containment for enum/user/multiselect; AND across props.
+  Counts ALWAYS derive from the full filtered set — board/table pagination is a **render
+  window** only (50/column, 100/table, IntersectionObserver), never a data window.
+- **Pull strategies (0.6.0)** — `POST /sync/pull {strategy}`: `safe`
+  (`--ff-only --autostash`, compat default) or `rebase` (`pull --rebase --autostash`
+  with a **guaranteed `rebase --abort`** on conflict — the working tree is never left
+  mid-rebase). Failures classify a `reason` (`diverged|no-remote|auth|timeout|other`)
+  and the UI never goes silent (amber icon + deduped toast; "ask" mode opens a modal).
+  App-level prefs: `basalt.pullIntervalMs`, `basalt.pullStrategy`.
 
 ## Known edges (accepted, single-user scale)
 

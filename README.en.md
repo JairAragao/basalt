@@ -40,17 +40,28 @@ and every change becomes a descriptive git commit, automatically.
 - **Completion semantics** *(new in 0.5.0)* — mark one status group as the "done" group;
   the engine stamps `completed_at` / `completed_by` automatically when a task crosses into
   it (and clears them when it leaves). Audit fields, never editable by hand.
+- **Colored, inline-editable options** *(new in 0.6.0)* — rename, recolor (13-color
+  palette) and delete enum/multiselect options right from the select in a card or in
+  Settings, Notion-style. Colors live in the vault schema; without one, the automatic
+  hash color applies.
+- **Type-aware filters** *(new in 0.6.0)* — free text (case/accent-insensitive) for
+  `string`, exact number for `int`, date range for `datetime`, selects for the rest.
+  Composed with AND; counts always reflect the full filtered set.
+- **Configurable sync** *(new in 0.6.0)* — auto-pull interval and conflict strategy
+  (`rebase` with safe abort · fast-forward only · ask) in Settings. A failed pull is
+  never silent. Large lists render in an incremental window (50/column, 100/table)
+  without lying in the counts.
 - **Per-card history + diff** — every change is a git commit with an automatic, descriptive
   message in plain language; inspect before/after per card.
 - **Desktop app** — Electron shell reusing the same backend, with native folder picker,
   frameless dark window and installers for Win/Mac/Linux.
 
-## The three repositories
+## The repositories
 
 | Repo | What it is |
 |---|---|
 | **basalt** (this one) | The engine/app. Ships **empty** — just what is needed to install and configure. |
-| **basalt-vault** | A **data vault**: `config/` + `tasks/` (your tasks), versioned separately.
+| **basalt-vault** | A **data vault**: `config/` + `tasks/` (your tasks), versioned separately. |
 
 ## Quickstart
 

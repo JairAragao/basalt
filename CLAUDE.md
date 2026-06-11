@@ -11,11 +11,10 @@
 - Projeto/IP pessoal de Jair (JairAragao). Repo: `github.com/JairAragao/basalt`.
 - Por que "Basalt": a rocha se forma em **colunas retas** (junção colunar) = colunas do kanban; e é escura (tema dark).
 
-## Três repositórios (separados)
+## Dois repositórios (separados)
 
 - **basalt** (este) — o engine/app. Vai **vazio**, só o necessário pra instalar + configurar. Default mínimo (`título` + `status` + auditoria).
 - **basalt-vault** — o **vault de dados** (`config/` + `tasks/`). Versionado à parte; é onde as tarefas vivem.
-- **basalt-lp** — landing page (HTML estático) com downloads Win/Mac/Linux.
 
 ## Stack
 
@@ -61,7 +60,7 @@ app/src/components/  Board (edição inline de etapas) · TableView · TaskCard 
                BodyEditor (TipTap) · CardHistory · Dropdown · Settings · StatusEditor ·
                PropertyEditor · FiltersEditor · CardEditor · SetupWizard (stepper) · FolderPicker
 ```
-> `landing/` e `tasks/` saíram deste repo (→ `basalt-lp` e `basalt-vault`).
+> `tasks/`/`config/` não são versionados aqui — os dados vivem no `basalt-vault`.
 
 ## Conceitos-chave
 
@@ -121,19 +120,24 @@ Doc completa do funcionamento: `docs/ARCHITECTURE.md` (EN) / `docs/ARCHITECTURE.
 - **0.5.0 — Sidebar de navegação** (rail recolhido: Tarefas/Dashboard/Configurações; view lembrada POR vault em `basalt.viewByVault`; Settings agora abre pela sidebar — engrenagem do header saiu; board/tabela extraídos pra `views/TasksView.vue`).
 - **0.5.0 — Semântica de conclusão** (`doneGroupId` no board.json com self-heal; `completed_at`/`completed_by` carimbados pelo tasks-repo SÓ na transição; grupo marcável no editor de Status; ver `docs/adr/ADR-001`).
 - **0.5.0 — Dashboard de relatórios** (`app/src/reports.js` puro + `views/DashboardView.vue` chunk lazy com uPlot; criadas/finalizadas/abertas/lead time, série temporal, quebras por usuário e por prop enum; ver `docs/adr/ADR-002`).
+- **0.6.0 — Opções com cor + edição inline** (`options` mista `string|{value,color}` no disco; `optionMeta` derivado no `GET /config`; `OptionMenu.vue` estilo Notion — renomear/13 cores/excluir — no PropSelect do card E no PropertyEditor; rename herda a cor; `palette.colorFor(value, meta)` com fallback hash).
+- **0.6.0 — Filtros tipados** (`app/src/filtering.js` puro: texto livre normalizado, int exato, datetime range, selects; AND; datetime virou filtrável no FiltersEditor).
+- **0.6.0 — Janela de render incremental** (50/coluna no Board, 100 na TableView + rodapé "Mostrando X de Y"; contagens sempre do conjunto completo; reset em filtro/sort/vault).
+- **0.6.0 — Sidebar padrão ACM** (w-14↔w-56, botão flutuante na borda, Dashboard acima de Tarefas, Configurações no rodapé) + **logo com glow pulsante** (sem quadrado) + **X de limpar** no trigger dos selects (fim do "— limpar —"; busca do PropSelect = "Buscar ou criar…").
+- **0.6.0 — Sync configurável** (aba Sync: intervalo `basalt.pullIntervalMs` e estratégia `basalt.pullStrategy` rebase|safe|ask; `POST /sync/pull {strategy}` com `pullRebase()` + abort garantido e `reason` classificado; falha de pull nunca silenciosa — âmbar + toast dedupe + modal no ask).
 
 ## Pendente / próximos passos
-0. **Pós-run 2026-06-10 (0.5.0 + open source)**: (a) smoke manual de UI do roteiro do QA
-   (board pós-extração TasksView, sidebar×wizard, viewByVault entre abas, StatusEditor,
-   dashboard) — `qa-report.md` da run do squad; (b) `git push` dos commits da run;
-   (c) GitHub Release `v0.5.0` com `release/Basalt Setup 0.5.0.exe` + blockmap + latest.yml;
-   (d) tornar o repo público (docs prontos: LICENSE MIT, README/CONTRIBUTING EN+PT,
-   CODE_OF_CONDUCT, SECURITY, templates, ARCHITECTURE, ADRs, CHANGELOG); (e) screenshot
-   real no README (TODO marcado); (f) atualizar links da basalt-lp.
+0. **Pós-runs 2026-06-10/11 (0.5.0 + 0.6.0 + open source)**: (a) smoke manual de UI dos
+   roteiros de QA das duas runs do squad (board/TasksView, sidebar ACM, viewByVault,
+   StatusEditor, dashboard; cores de opção, filtros tipados, janela incremental, aba
+   Sync); (b) GitHub Release `v0.6.0` com `release/Basalt Setup 0.6.0.exe` + blockmap +
+   latest.yml; (c) tornar o repo público (docs prontos: LICENSE MIT, README/CONTRIBUTING
+   pt+EN, CODE_OF_CONDUCT, SECURITY, templates, ARCHITECTURE, ADRs, CHANGELOG);
+   (d) screenshot real no README (TODO marcado).
 1. **Plugins (código)** — direção escolhida pra extensibilidade. Por ora a config declarativa cobre; o passo é presets/plugins de campos (ex.: GUTE, Dev) que injetam propriedades + ajustes de board com 1 clique (reusa `PUT /schema/properties`). GUTE é o 1º candidato.
-2. **Publicar releases** — rodar `npm run electron:build` e subir os instaladores no GitHub Releases (os botões da `basalt-lp` apontam pra lá). Dívidas de release conhecidas:
+2. **Publicar releases** — rodar `npm run electron:build` e subir os instaladores no GitHub Releases. Dívidas de release conhecidas:
    - **Não assinado** — sem certificado → SmartScreen (Win)/Gatekeeper (Mac) avisam. Precisa de cert de code-signing.
-   - **Auto-update NÃO fiado** — o electron-builder gera `latest.yml`/`app-update.yml` (provider github), mas **não há `electron-updater` nem `build.publish` ligados** → o app não checa updates. Update é **manual** via basalt-lp. Pra fiar de verdade: add `electron-updater` + `build.publish`.
+   - **Auto-update NÃO fiado** — o electron-builder gera `latest.yml`/`app-update.yml` (provider github), mas **não há `electron-updater` nem `build.publish` ligados** → o app não checa updates. Update é **manual** (instalar por cima). Pra fiar de verdade: add `electron-updater` + `build.publish`.
    - **Ícone** — `basalt.png` é 461×443 (não-quadrado); ideal um `.ico`/`.icns` quadrado ≥256² por plataforma.
    - **Electron** atualizado p/ **42** (electron-builder **26**) em 2026-06-09 (zerou as vulns de toolchain) — **fazer smoke-test do app empacotado** (abre, splash, `/api`, picker de pasta) ao validar um release.
 3. ~~Otimizar bundle~~ ✅ feito: BodyEditor (TipTap) e o emoji picker viraram chunks **lazy** (`defineAsyncComponent`) — bundle inicial caiu de ~1.05MB → **~448KB** (chunks sob demanda: BodyEditor ~510KB, emoji ~149KB).

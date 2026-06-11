@@ -7,13 +7,12 @@ Como o Basalt funciona de verdade, pra quem quer contribuir. Última auditoria c
 
 ## Visão geral
 
-Três repositórios, uma fronteira:
+Dois repositórios, uma fronteira:
 
 | Repo | Papel |
 |---|---|
 | **basalt** (este) | O **engine** genérico: server, SPA, shell Electron. Vai vazio. |
 | **basalt-vault** | Um **vault**: `config/` + `tasks/` + git próprio. Seus dados. |
-| **basalt-lp** | Landing page estática com downloads. |
 
 ```
 ┌─ Electron main ── sobe o server numa porta livre 127.0.0.1, IPC pro picker de pasta
@@ -104,6 +103,22 @@ UI (auto-save) → PUT /api/tasks/:id
   testado) sobre `GET /tasks`; uPlot renderiza a série temporal num chunk lazy. Endpoint
   server-side só se um vault passar de ~5k tarefas. Ver
   [ADR-002](adr/ADR-002-client-side-reports.md).
+- **Opções com cor (0.6.0)** — no disco, `options` aceita array MISTA
+  (`string | {value, color}`; objeto só pra opção com cor — diff git mínimo). Em memória/
+  `GET /config`, `options` segue `string[]` e nasce `optionMeta = { valor: { color } }`
+  (self-heal: cor fora de `#rrggbb` descartada, duplicata primeira-vence). A cor é
+  apresentação — **nunca** entra no `.md` da tarefa. Rename de opção herda a cor.
+- **Filtros tipados (0.6.0)** — `app/src/filtering.js` (puro): contains normalizado
+  (NFD sem diacríticos) pra `string`, igualdade pra `int`, range inclusivo por dia local
+  pra `datetime`, igualdade/contém pra enum/user/multiselect; AND entre props. As
+  contagens derivam SEMPRE do conjunto filtrado completo — a paginação do board/tabela é
+  só **janela de render** (50/coluna, 100/tabela, IntersectionObserver), nunca de dados.
+- **Estratégias de pull (0.6.0)** — `POST /sync/pull {strategy}`: `safe`
+  (`--ff-only --autostash`, default de compat) ou `rebase` (`pull --rebase --autostash`
+  com **`rebase --abort` garantido** em conflito — o working tree nunca fica mid-rebase).
+  Falha classifica `reason` (`diverged|no-remote|auth|timeout|other`) e a UI nunca
+  silencia (ícone âmbar + toast com dedupe; modo "perguntar" abre modal). Preferências
+  no app: `basalt.pullIntervalMs`, `basalt.pullStrategy`.
 
 ## Edges conhecidos (aceitos, escala single-user)
 

@@ -44,18 +44,27 @@ vira um commit git descritivo, automaticamente.
   de "conclusão"; o engine carimba `completed_at` / `completed_by` automaticamente
   quando a tarefa entra nele (e limpa quando sai). Campos de auditoria, nunca editáveis
   à mão.
+- **Opções com cor, editáveis inline** *(novo no 0.6.0)* — renomeie, recolora (paleta de
+  13) e exclua opções de enum/multiselect direto do select no card ou nas Configurações,
+  estilo Notion. A cor vive no schema do vault; sem cor, vale o hash automático.
+- **Filtros que seguem o tipo do campo** *(novo no 0.6.0)* — texto livre (sem
+  caixa/acento) pra `string`, número exato pra `int`, intervalo de datas pra `datetime`,
+  selects pro resto. Compostos por E; contagens sempre do conjunto completo.
+- **Sync configurável** *(novo no 0.6.0)* — intervalo do auto-pull e estratégia de
+  conflito (`rebase` com abort seguro · só fast-forward · perguntar) nas Configurações.
+  Falha de pull nunca é silenciosa. Listas grandes rendem em janela incremental
+  (50/coluna, 100/tabela) sem mentir nas contagens.
 - **Histórico + diff por card** — toda mudança é um commit git com mensagem automática
   e descritiva em linguagem natural; inspecione antes/depois por card.
 - **App desktop** — shell Electron reusando o mesmo backend, com seletor nativo de
   pasta, janela frameless dark e instaladores Win/Mac/Linux.
 
-## Os três repositórios
+## Os repositórios
 
 | Repo | O que é |
 |---|---|
 | **basalt** (este) | O engine/app. Vai **vazio** — só o necessário pra instalar e configurar. |
 | **basalt-vault** | Um **vault de dados**: `config/` + `tasks/` (suas tarefas), versionado à parte. |
-| **basalt-lp** | A landing page (HTML estático) com os downloads. |
 
 ## Quickstart
 
