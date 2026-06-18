@@ -226,6 +226,51 @@ async function pullRebase() {
   }
 }
 
+// Detecta rejeição de push por NON-FAST-FORWARD (remoto à frente do local) —
+// o único caso em que vale integrar o remoto e tentar de novo. Falhas de
+// auth/rede/sem-remote NÃO casam aqui (pull não as resolve).
+function isNonFastForward(msg) {
+  const m = String(msg || '').toLowerCase();
+  return /non-fast-forward|fetch first|\[rejected\]|updates were rejected|tip of your current branch is behind|cannot lock ref|failed to push some refs/.test(m);
+}
+
+// pushSync: push best-effort que SE AUTO-CURA quando o remoto divergiu — evita
+// que commits locais fiquem presos à frente do origin travando a sincronização.
+// NUNCA lança (delega no pushNow/pullRebase, que não lançam). Fluxo:
+//   1) tenta `git push`. Sucesso → { ok:true }.
+//   2) se foi REJEITADO por non-fast-forward (remoto à frente), integra com
+//      `pull --rebase --autostash` (= stash do tree sujo + rebase dos commits
+//      locais sobre o remoto + pop do stash) e tenta o push de novo. Repete até
+//      MAX vezes (cobre o remoto mudar entre o pull e o push).
+//   3) conflito REAL de rebase / auth / sem-remote → { ok:false, error, reason? }
+//      sem deixar o repo em estado ruim (pullRebase aborta o rebase em falha).
+// Quando precisou integrar, devolve { pulled, before, after } pra rota montar as
+// notificações dos commits que chegaram (mesmo caminho do /sync/pull).
+async function pushSync() {
+  const MAX = 3;
+  let firstBefore = null;
+  let lastAfter = null;
+  for (let attempt = 0; attempt < MAX; attempt++) {
+    const r = await pushNow();
+    if (r.ok) {
+      return firstBefore && lastAfter && firstBefore !== lastAfter
+        ? { ok: true, pulled: true, before: firstBefore, after: lastAfter }
+        : { ok: true };
+    }
+    // Só divergência se cura com pull; qualquer outra falha propaga direto.
+    if (!isNonFastForward(r.error)) return r;
+    const before = await currentHead();
+    if (firstBefore === null) firstBefore = before;
+    const pr = await pullRebase();
+    if (!pr.ok) {
+      return { ok: false, error: pr.detail || 'pull --rebase falhou', reason: pr.reason };
+    }
+    lastAfter = await currentHead();
+    // próximo giro do loop re-tenta o push já com o remoto integrado
+  }
+  return { ok: false, error: 'push rejeitado repetidamente: o remoto está mudando rápido demais — tente sincronizar de novo' };
+}
+
 // ── Commit ───────────────────────────────────────────────────────────────────
 // Commita um arquivo de tarefa com a mensagem dada, usando a identidade do repo.
 async function commitTask(filePath, message) {
@@ -509,6 +554,7 @@ module.exports = {
   removeAndCommit,
   commitPaths,
   pushNow,
+  pushSync,
   pull,
   pullRebase,
   classifyPullReason,

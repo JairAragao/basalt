@@ -131,9 +131,22 @@ function schedulePush() {
     try {
       while (_pushPending) {
         _pushPending = false;
-        const r = await git.pushNow();
+        // pushSync se auto-cura em divergência: ao ser rejeitado por non-fast-
+        // forward, faz `pull --rebase --autostash` e re-tenta — assim os commits
+        // locais nunca ficam presos à frente do origin travando a sincronização.
+        const r = await git.pushSync();
         _lastPushWarning = (r && r.ok === false) ? `push falhou: ${r.error}` : undefined;
         if (_lastPushWarning) console.warn('[git]', _lastPushWarning);
+        // Se o push precisou integrar o remoto, surfaça os commits que chegaram
+        // como notificações (mesmo caminho do /sync/pull).
+        if (r && r.ok && r.pulled && r.before && r.after && r.before !== r.after) {
+          try {
+            const ns = await buildNotifications(r.before, r.after);
+            if (ns.length) config.addNotifications(ns);
+          } catch (e) {
+            console.warn('[notif] build pós-push falhou:', e.message);
+          }
+        }
       }
     } catch (e) {
       console.warn('[git] loop de push falhou:', (e && e.message) || e);
