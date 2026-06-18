@@ -4,7 +4,13 @@
       value (md) -> setContent -> edição visual -> onUpdate -> emite input (md)
     TipTap v2 instanciado imperativamente (sem binding oficial p/ Vue 2.7).
   -->
-  <div class="body-editor relative">
+  <!--
+    -mx-6 anula o px-6 do container pai (TaskPeek): o respiro lateral passa a
+    ser padding INTERNO do .ProseMirror (ver CSS), então clicar/arrastar na
+    margem ao redor do texto já seleciona — como no Notion — em vez de exigir
+    o clique exato sobre o glifo.
+  -->
+  <div class="body-editor relative -mx-6">
     <!-- superfície de edição (ProseMirror é montado aqui) -->
     <div ref="editor" class="body-editor__surface"></div>
 
@@ -646,14 +652,19 @@ export default {
 /* ====== superfície de edição ====== */
 .body-editor__surface {
   font-size: 14px;
-  line-height: 1.7;
+  line-height: 1.6;
   color: #e9e9e7;
 }
 
-/* ProseMirror raiz */
+/* ProseMirror raiz.
+   padding lateral = o respiro do card (antes vinha do px-6 do pai, fora do
+   contenteditable): agora faz parte da superfície editável, então clicar/
+   arrastar na margem ou no fim da linha cai dentro do editor e posiciona o
+   cursor pelo ponto mais próximo (comportamento Notion). */
 .body-editor__surface :deep(.ProseMirror) {
   outline: none;
   min-height: 120px;
+  padding: 2px 1.5rem 10px 1.5rem;
   white-space: pre-wrap;
   word-wrap: break-word;
   caret-color: #e9e9e7;
@@ -955,7 +966,10 @@ export default {
 /* ====== handle de bloco (6 pontinhos) ====== */
 .be-blockhandle {
   position: absolute;
-  left: -22px;
+  /* dentro do gutter esquerdo (padding-left do .ProseMirror), coladinho ao
+     texto — antes ficava em -22px, espremido na borda do painel e quase
+     invisível. Aparece no hover do bloco (onSurfaceMouseMove). */
+  left: 2px;
   width: 18px;
   height: 22px;
   display: inline-flex;

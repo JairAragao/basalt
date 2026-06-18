@@ -17,6 +17,18 @@
 
           <div class="flex-1"></div>
 
+          <!-- status de autosave: discreto, só aparece quando há algo a sinalizar
+               (erro / salvando / "salvo" efêmero / pendente). Tudo salvo = some. -->
+          <span
+            class="mr-1 flex h-7 w-7 items-center justify-center"
+            :title="errorMsg || (autosaving ? 'Salvando…' : (savedNote ? 'Salvo' : (dirty ? 'Alterações não salvas' : 'Tudo salvo')))"
+          >
+            <svg v-if="errorMsg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4 text-red-300"><circle cx="10" cy="10" r="7" /><path d="M10 6.5v4.5" stroke-linecap="round" /><circle cx="10" cy="14" r="0.7" fill="currentColor" stroke="none" /></svg>
+            <svg v-else-if="autosaving" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4 animate-spin text-faint"><path d="M16 10a6 6 0 1 1-1.8-4.3" stroke-linecap="round" /></svg>
+            <svg v-else-if="savedNote" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4 text-green-400"><path d="M5 10.5l3 3 7-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            <span v-else-if="dirty" class="h-2 w-2 rounded-full bg-amber-400" title="Alterações não salvas"></span>
+          </span>
+
           <!-- modos de abertura (side / center / full) -->
           <div class="mr-1 flex items-center rounded-md border border-ink-500 p-0.5">
             <button
@@ -266,11 +278,8 @@
           </template>
         </Teleport>
 
-        <!-- footer: SEM botões — salva sozinho (a cada mudança / ao fechar). Fechar é o X no topo. -->
-        <footer class="flex flex-shrink-0 items-center gap-2 border-t border-ink-500 px-4 py-2">
-          <span v-if="errorMsg" class="flex-1 truncate text-[12px] text-red-300" :title="errorMsg">{{ errorMsg }}</span>
-          <span v-else class="flex-1 text-[12px] text-faint">{{ autosaving ? 'Salvando…' : (savedNote ? 'Salvo ✓' : (dirty ? '' : 'Tudo salvo')) }}</span>
-        </footer>
+        <!-- salva sozinho (a cada mudança / ao fechar). Status no ícone do header;
+             fechar é o X no topo. Sem barra inferior. -->
       </aside>
         <CardHistory
           v-if="isEdit"
