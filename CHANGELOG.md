@@ -3,6 +3,26 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.6.1] - 2026-06-18
+
+### Corrigido
+
+- **Sincronização não trava mais em divergência** — o push em background era um
+  `git push` puro: ao ser rejeitado por *non-fast-forward* (remoto à frente, ex.
+  outra máquina rodando o Basalt), nada reintegrava o remoto e os commits locais
+  iam se acumulando à frente do origin — o `pull --ff-only` deixava de avançar e a
+  sincronização ficava presa até intervenção manual. Agora o push se **auto-cura**:
+  ao detectar divergência, faz `pull --rebase --autostash` (empilha o working tree,
+  rebaseia os commits locais sobre o remoto, devolve o stash) e re-tenta o push (até
+  3x). Conflito real de conteúdo aborta o rebase com o working tree intacto (sem
+  marcadores que corromperiam o `.md`) e sinaliza `diverged`. Os commits integrados
+  pelo push viram notificações, como no pull manual.
+
+### Notas
+
+- Suite de testes: 103 → 107 (integração real de push: divergência limpa, conflito
+  real e sem-remote).
+
 ## [0.6.0] - 2026-06-11
 
 ### Adicionado
