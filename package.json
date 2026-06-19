@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "license": "MIT",
