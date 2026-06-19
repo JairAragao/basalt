@@ -3,6 +3,20 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.6.2] - 2026-06-18
+
+### Mudado
+
+- **Edição do card mais fluida (estilo Notion)** — o respiro lateral do corpo passou
+  a fazer parte da área editável: clicar e arrastar na margem ao redor do texto já
+  seleciona (sem precisar mirar no glifo) e clicar no fim da linha posiciona o cursor
+  ali. O handle de bloco (6 pontinhos) saiu da borda do painel para o gutter coladinho
+  ao texto, visível no hover de cada linha.
+- **Status de salvamento no topo** — a barra inferior "Salvando…/Salvo ✓" deu lugar a
+  um indicador discreto no header do card: ponto âmbar (pendente), spinner (salvando),
+  ✓ verde efêmero (salvou) e nada quando tudo está salvo. Erro vira ícone vermelho com
+  a mensagem no tooltip.
+
 ## [0.6.1] - 2026-06-18
 
 ### Corrigido
