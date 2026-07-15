@@ -16,14 +16,16 @@
     <Sidebar
       v-if="config && !configuring"
       :active="activeView"
+      :view="view"
+      :version="version"
       @navigate="setActiveView"
+      @set-view="setView"
       @open-settings="settingsOpen = true"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
     <!-- Toolbar (filtros/view/ações) — só com vault ativo e fora da configuração -->
     <header v-if="config && !loadError && !configuring" class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 bg-ink-850 px-4">
-      <span class="font-mono text-[11px] text-faint" title="Versão do Basalt">v{{ version }}</span>
       <div class="flex-1"></div>
 
       <template v-if="config && !loadError">
@@ -110,27 +112,7 @@
         <!-- separador -->
         <span class="mx-0.5 h-5 w-px bg-ink-500"></span>
 
-        <!-- Toggle de view (Kanban | Tabela) -->
-        <div class="flex items-center rounded-md border border-ink-500 p-0.5 text-[13px]">
-          <button
-            class="flex items-center gap-1.5 rounded px-2 py-1 transition-colors"
-            :class="view === 'kanban' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
-            @click="view = 'kanban'"
-          >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><rect x="3" y="4" width="4" height="12" rx="1" /><rect x="8.5" y="4" width="4" height="8" rx="1" /><rect x="14" y="4" width="4" height="10" rx="1" /></svg>
-            Kanban
-          </button>
-          <button
-            class="flex items-center gap-1.5 rounded px-2 py-1 transition-colors"
-            :class="view === 'table' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
-            @click="view = 'table'"
-          >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><rect x="3" y="4" width="14" height="12" rx="1" /><path d="M3 8h14M3 12h14M9 4v12" /></svg>
-            Tabela
-          </button>
-        </div>
-
-        <!-- Colorir colunas (só no kanban) -->
+        <!-- Colorir colunas (só no kanban; troca de view fica na sidebar) -->
         <button
           v-if="view === 'kanban'"
           class="flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors"
@@ -265,6 +247,12 @@
         :users="users"
         @open-settings="settingsOpen = true"
       />
+      <!-- extensões (plugins puxados do GitHub) -->
+      <ExtensionsView
+        v-else-if="config && activeView === 'extensions'"
+        @error="(m) => notify(m, 'error')"
+        @notify="(m) => notify(m)"
+      />
       </template>
     </main>
     </div>
@@ -355,8 +343,10 @@ import { matchesTask } from './filtering';
 // Lazy: dashboard (uPlot) fora do bundle inicial — só carrega ao abrir a view
 // (mesmo padrão do BodyEditor no TaskPeek).
 const DashboardView = defineAsyncComponent(() => import('./views/DashboardView.vue'));
+const ExtensionsView = defineAsyncComponent(() => import('./views/ExtensionsView.vue'));
 
 const COLOR_KEY = 'basalt.colorColumns';
+const tasksViewKey = 'basalt.tasksView'; // 'kanban' | 'table' — visualização das tarefas
 const viewKey = 'basalt.viewByVault'; // { "<vaultPath exato da API /vaults>": 'tasks'|'dashboard' }
 const pullIntervalKey = 'basalt.pullIntervalMs'; // '0'|'30000'|'60000'|'300000'|'900000'
 const pullStrategyKey = 'basalt.pullStrategy'; // 'rebase' (default) | 'safe' | 'ask'
@@ -372,7 +362,7 @@ const PULL_REASON_LABELS = {
 
 export default {
   name: 'App',
-  components: { TasksView, DashboardView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar, Sidebar },
+  components: { TasksView, DashboardView, ExtensionsView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar, Sidebar },
   // disponibiliza roster + tarefas (reativos) para componentes filhos
   // (TaskCard resolve user id → nome; OptionMenu conta uso de opção)
   provide() {
@@ -390,7 +380,7 @@ export default {
       filterDrafts: {}, // texto cru dos filtros string (o commit em filters tem debounce)
       loading: false,
       loadError: '',
-      view: 'kanban',
+      view: this.loadView(), // 'kanban' | 'table' (persistido em basalt.tasksView)
       activeView: 'tasks', // 'tasks' | 'dashboard' — restaurado por vault (viewKey)
       // default genérico; o board.sort do vault sobrescreve em loadActive()
       sort: { by: 'created_at', dir: 'desc' },
@@ -490,12 +480,22 @@ export default {
       this.colorColumns = !this.colorColumns;
       try { localStorage.setItem(COLOR_KEY, this.colorColumns ? '1' : '0'); } catch (e) { /* ignore */ }
     },
+    // ── visualização das tarefas (kanban | table), na sidebar ──
+    loadView() {
+      try { return localStorage.getItem(tasksViewKey) === 'table' ? 'table' : 'kanban'; } catch (e) { return 'kanban'; }
+    },
+    setView(v) {
+      this.view = v === 'table' ? 'table' : 'kanban';
+      // trocar de visualização implica estar nas tarefas
+      if (this.activeView !== 'tasks') this.setActiveView('tasks');
+      try { localStorage.setItem(tasksViewKey, this.view); } catch (e) { /* ignore */ }
+    },
     // ── view ativa (tasks | dashboard), persistida POR VAULT ──
     readViewMap() {
       try { return JSON.parse(localStorage.getItem(viewKey) || '{}') || {}; } catch (e) { return {}; }
     },
     setActiveView(v) {
-      this.activeView = v === 'dashboard' ? 'dashboard' : 'tasks';
+      this.activeView = ['dashboard', 'extensions'].includes(v) ? v : 'tasks';
       if (!this.activeVault) return;
       try {
         const map = this.readViewMap();
@@ -505,7 +505,8 @@ export default {
     },
     restoreView() {
       const map = this.readViewMap();
-      this.activeView = map[this.activeVault] === 'dashboard' ? 'dashboard' : 'tasks';
+      const v = map[this.activeVault];
+      this.activeView = ['dashboard', 'extensions'].includes(v) ? v : 'tasks';
     },
     distinctValues(name) {
       const seen = new Set();

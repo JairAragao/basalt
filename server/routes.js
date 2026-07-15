@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const config = require('./config');
 const tasksRepo = require('./tasks-repo');
 const git = require('./git');
+const plugins = require('./plugins');
 const { describeChanges } = require('./commit-msg');
 const { validatePropertySpec } = require('./validate');
 
@@ -845,8 +846,37 @@ router.put('/schema/properties', async (req, res) => {
       spec.options = spec.options.map((opt) => (opt === o.to ? { value: o.to, color } : opt));
     }
 
+    // idFrom acompanha o rename da chave (senão o id passa a usar o fallback e o
+    // campo-título deixa de gerar id).
+    if (schema.idFrom && renameMap.has(schema.idFrom)) schema.idFrom = renameMap.get(schema.idFrom);
+
     schema.properties = properties;
     writeJsonAtomic(schemaFile(), schema);
+
+    // Referências do board às chaves renomeadas acompanham o rename (self-heal):
+    // título do card, subtitle, badge, campos exibidos, filtros e sort. Sem isso,
+    // renomear a prop-título (ex.: "titulo" → "tarefa") faz o card perder o título
+    // e o campo virar uma propriedade comum.
+    let boardChanged = false;
+    if (renameMap.size) {
+      const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
+      const mapKey = (k) => (k && renameMap.has(k) ? renameMap.get(k) : k);
+      if (board.card && typeof board.card === 'object') {
+        for (const f of ['title', 'subtitle', 'badge']) {
+          if (board.card[f] && renameMap.has(board.card[f])) { board.card[f] = renameMap.get(board.card[f]); boardChanged = true; }
+        }
+        if (Array.isArray(board.card.fields)) {
+          const nf = board.card.fields.map(mapKey);
+          if (nf.some((v, i) => v !== board.card.fields[i])) { board.card.fields = nf; boardChanged = true; }
+        }
+      }
+      if (Array.isArray(board.filters)) {
+        const nf = board.filters.map(mapKey);
+        if (nf.some((v, i) => v !== board.filters[i])) { board.filters = nf; boardChanged = true; }
+      }
+      if (board.sort && board.sort.by && renameMap.has(board.sort.by)) { board.sort.by = renameMap.get(board.sort.by); boardChanged = true; }
+      if (boardChanged) writeJsonAtomic(boardFile(), board);
+    }
 
     const newKeys = Object.keys(properties);
     const removed = oldKeys.filter((k) => !newKeys.includes(k) && !renameMap.has(k) && !derived.has(k));
@@ -926,7 +956,9 @@ router.put('/schema/properties', async (req, res) => {
 
     config.reload();
     const optNote = optRn.length ? `, ${optRn.length} opção(ões) migrada(s)` : '';
-    const warning = await commitAwaited(() => git.commitPaths([schemaFile(), ...changed], `schema: propriedades atualizadas${optNote}`));
+    const commitList = [schemaFile(), ...changed];
+    if (boardChanged) commitList.push(boardFile());
+    const warning = await commitAwaited(() => git.commitPaths(commitList, `schema: propriedades atualizadas${optNote}`));
     schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -1073,6 +1105,96 @@ router.get('/assets/:name', (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.sendFile(file);
   } catch (err) { fail(res, err); }
+});
+
+// ── Plugins / Extensões ──────────────────────────────────────────────────────
+// Instalação por-vault (<vault>/plugins/<name>/). Ver server/plugins.js.
+function pluginRelPaths() {
+  // caminho do dir plugins relativo ao vault (posix) p/ git add/commit
+  return path.relative(config.VAULT, plugins.pluginsDir()).split(path.sep).join('/');
+}
+
+router.get('/plugins', (req, res) => {
+  try { res.json({ plugins: plugins.list() }); } catch (err) { fail(res, err); }
+});
+
+router.post('/plugins/install', async (req, res) => {
+  try {
+    const { repo, ref } = req.body || {};
+    if (typeof repo !== 'string' || !repo.trim()) throw new Error('validação: repo é obrigatório');
+    const r = await plugins.install(repo.trim(), (ref || '').trim() || null);
+    // versiona o plugin no vault (best-effort; .env e node_modules são gitignorados)
+    const warning = await commitAwaited(() => git.commitPaths([path.join(config.VAULT, '.gitignore'), pluginRelPaths()], `plugins: instala ${r.name}`));
+    schedulePush();
+    res.json(withWarning({ plugins: plugins.list(), name: r.name, depsWarning: r.warning || '' }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+router.delete('/plugins/:name', async (req, res) => {
+  try {
+    plugins.remove(req.params.name);
+    const warning = await commitAwaited(() => git.commitPaths([pluginRelPaths()], `plugins: remove ${req.params.name}`));
+    schedulePush();
+    res.json(withWarning({ plugins: plugins.list() }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+router.get('/plugins/:name/env', (req, res) => {
+  try { res.json({ values: plugins.readEnvFile(req.params.name) }); } catch (err) { fail(res, err); }
+});
+
+router.put('/plugins/:name/env', (req, res) => {
+  try {
+    const { values } = req.body || {};
+    if (!values || typeof values !== 'object') throw new Error('validação: values deve ser um objeto');
+    plugins.writeEnvFile(req.params.name, values);
+    // .env é gitignorado no vault → não commita (segredos ficam locais)
+    const found = plugins.list().find((p) => p.name === req.params.name);
+    res.json({ ok: true, configured: !!(found && found.configured) });
+  } catch (err) { fail(res, err); }
+});
+
+router.get('/plugins/:name/icon', (req, res) => {
+  try {
+    const p = plugins.iconPath(req.params.name);
+    if (!p) return res.status(404).json({ error: 'sem ícone' });
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(p);
+  } catch (err) { fail(res, err); }
+});
+
+router.post('/plugins/:name/run', (req, res) => {
+  try {
+    const { commandId } = req.body || {};
+    const runId = plugins.startRun(req.params.name, (commandId || '').trim() || null);
+    res.json({ runId });
+  } catch (err) { fail(res, err); }
+});
+
+// SSE: transmite o log do run (buffer + ao vivo) e fecha ao terminar.
+router.get('/plugins/:name/run/:runId', (req, res) => {
+  const rec = plugins.getRun(req.params.runId);
+  if (!rec) return res.status(404).json({ error: 'run não encontrado' });
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  const send = (event, data) => { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
+  // despeja o que já saiu
+  if (rec.chunks.length) send('log', rec.chunks.join(''));
+  if (rec.done) { send('done', { code: rec.code }); return res.end(); }
+
+  const onData = (chunk, code) => {
+    if (chunk != null) send('log', chunk);
+    if (code !== undefined && code !== null || (chunk == null)) {
+      send('done', { code: rec.code });
+      rec.listeners.delete(onData);
+      res.end();
+    }
+  };
+  rec.listeners.add(onData);
+  req.on('close', () => { rec.listeners.delete(onData); });
 });
 
 module.exports = router;

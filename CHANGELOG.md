@@ -3,6 +3,80 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.8.2] - 2026-07-14
+
+### Corrigido
+
+- **Instalar extensão falhava no Windows (EPERM ao remover `.git`)** — o git marca
+  arquivos do `.git/` como somente-leitura; o `fs.rmSync` (mesmo com force) dava
+  EPERM. Agora a remoção limpa o atributo read-only da árvore antes de apagar (com
+  retries). Vale pro `.git` do clone e pra remoção/limpeza de plugins.
+- **Renomear a propriedade-título soltava o título do card** — renomear uma prop
+  (ex.: `titulo` → `tarefa`) migrava o frontmatter das tarefas, mas `board.card.title`,
+  `subtitle`, `badge`, `fields`, `filters`, `sort.by` e `schema.idFrom` continuavam
+  apontando pro nome antigo → o card perdia o título e o campo virava uma propriedade
+  comum. Agora essas referências acompanham o rename (self-heal).
+
+## [0.8.1] - 2026-07-14
+
+### Mudado
+
+- **Notion Import virou um plugin em repositório próprio** (`basalt-plugin-notion-import`),
+  extraído de `orchestra-basalt/scripts`. Instala pela aba **Extensões**; usa
+  `BASALT_VAULT` pra escrever no vault ativo. Sem mudanças no engine (rebuild).
+
+## [0.8.0] - 2026-07-14
+
+### Adicionado
+
+- **Aba de Extensões (plugins do GitHub)** — instale plugins colando `owner/repo`
+  (ou a URL). O Basalt clona (`--depth 1`), lê o manifesto `basalt-plugin.json` +
+  README (descrição) + ícone, roda `npm install` e mostra um card estilo VSCode.
+  Configuração das variáveis do plugin por formulário (grava um `.env` local),
+  execução com **log ao vivo** (SSE) e remoção. Instalação **por-vault**
+  (`plugins/<name>/`, versionado no git do vault); `.env` e `node_modules` são
+  gitignorados — segredos não viajam no push. Plugins rodam com o Node embutido
+  (sem depender de node no PATH) e recebem `BASALT_VAULT`/`BASALT_PLUGIN_DIR`.
+  Aviso explícito antes de executar (código de terceiros).
+
+### Corrigido
+
+- **Imagem no corpo do card não aparecia no `.md`** — com a imagem em bloco
+  (`inline:false`), o serializer default do tiptap-markdown (inline) não emitia
+  a marcação: o asset era salvo mas o `.md` ficava sem `![](…)` e nada renderizava
+  no round-trip. Agora um serializer de bloco explícito grava `![](src)` em linha
+  própria. Vale pros três caminhos (colar, arrastar, `/imagem`).
+
+### Mudado
+
+- **Versão do Basalt saiu do topo para o rodapé da barra lateral.**
+
+## [0.7.0] - 2026-07-14
+
+### Adicionado
+
+- **Arrastar colunas no kanban** — cada etapa tem uma alça de arraste: reordene
+  as colunas e **mova uma etapa de um grupo macro para outro** (ex.: "Finalizado"
+  de *Concluído* → *Em andamento*) direto no board. Persiste na hora; grupo macro
+  nunca fica sem etapa (reverte com aviso).
+- **Menu ⋮ por coluna** — edição rápida de nome e cor da etapa num popover, sem
+  abrir as Configurações.
+- **Arrastar etapas entre grupos nas Configurações › Status** — além de reordenar,
+  agora dá pra arrastar uma etapa de um grupo macro para outro; e reordenar os
+  próprios grupos macro pela alça.
+- **Imagem no corpo do card via "/"** — o menu de blocos ganhou "Imagem" (abre o
+  seletor de arquivo). Colar (Ctrl+V) e arrastar-e-soltar já subiam a imagem pro
+  vault (`assets/`) e inseriam a URL servível; o "/" completa os três caminhos.
+
+### Mudado
+
+- **Alternar Kanban/Lista saiu da topbar para a barra lateral** — virou submenu de
+  *Tarefas*, com linha-guia e indentação (hierarquia clara) e barra âmbar no ativo.
+  A preferência é lembrada (`basalt.tasksView`).
+- **Instalador (Windows) voltou ao visual padrão** — o dark parcial do NSIS deixava
+  botões/radios nativos claros (look quebrado, sem plugin de dark-mode); o padrão é
+  consistente.
+
 ## [0.6.2] - 2026-06-18
 
 ### Mudado

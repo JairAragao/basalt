@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.6.2",
+  "version": "0.8.2",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "license": "MIT",
@@ -75,8 +75,7 @@
       "icon": "basalt.ico"
     },
     "nsis": {
-      "oneClick": false,
-      "include": "build/installer.nsh"
+      "oneClick": false
     },
     "mac": {
       "target": "dmg",

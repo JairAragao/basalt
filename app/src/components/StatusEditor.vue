@@ -1,13 +1,25 @@
 <template>
   <div class="flex h-full flex-col">
-    <div class="flex-1 space-y-6 overflow-y-auto p-1">
-      <div
-        v-for="(grp, gi) in groups"
-        :key="grp.id || gi"
-        class="rounded-lg border border-ink-500 bg-ink-850 p-3"
-      >
+    <!-- grupos macro — arraste pela alça .group-handle p/ reordenar -->
+    <draggable
+      :list="groups"
+      item-key="_gid"
+      handle=".group-handle"
+      :animation="160"
+      ghost-class="group-ghost"
+      class="flex-1 space-y-6 overflow-y-auto p-1"
+    >
+      <template #item="{ element: grp, index: gi }">
+      <div class="rounded-lg border border-ink-500 bg-ink-850 p-3">
         <!-- rótulo do grupo (editável) + toggle de grupo de conclusão -->
         <div class="mb-3 flex items-center gap-2">
+          <!-- alça de arraste do grupo macro -->
+          <span
+            class="group-handle grid h-7 w-5 flex-shrink-0 cursor-grab place-items-center text-faint hover:text-muted active:cursor-grabbing"
+            title="Arrastar para reordenar grupo"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7.5" cy="5" r="1.25" /><circle cx="12.5" cy="5" r="1.25" /><circle cx="7.5" cy="10" r="1.25" /><circle cx="12.5" cy="10" r="1.25" /><circle cx="7.5" cy="15" r="1.25" /><circle cx="12.5" cy="15" r="1.25" /></svg>
+          </span>
           <input
             v-model="grp.label"
             class="field !bg-transparent !border-transparent !px-1 text-[12px] font-semibold uppercase tracking-wide text-faint hover:!border-ink-500 focus:!border-accent"
@@ -27,14 +39,15 @@
           </button>
         </div>
 
-        <!-- etapas (arraste pela alça p/ reordenar dentro do grupo macro) -->
+        <!-- etapas — arraste pela alça p/ reordenar OU mover para outro grupo macro -->
         <draggable
           :list="grp.stages"
+          :group="{ name: 'status-stages' }"
           item-key="_uid"
           handle=".stage-handle"
           :animation="160"
           ghost-class="stage-ghost"
-          class="space-y-1.5"
+          class="min-h-[8px] space-y-1.5"
         >
           <template #item="{ element: stage, index: si }">
             <div class="flex items-center gap-2">
@@ -104,7 +117,8 @@
           etapa
         </button>
       </div>
-    </div>
+      </template>
+    </draggable>
 
     <!-- footer -->
     <div class="flex flex-shrink-0 items-center gap-3 border-t border-ink-500 pt-3">
@@ -152,7 +166,8 @@ export default {
       this.doneGroupId = (this.config.board && this.config.board.doneGroupId) || null;
       const src = (this.config.board && this.config.board.statusGroups) || [];
       // clone profundo + _uid estável por etapa (p/ casar renames)
-      this.groups = src.map((g) => ({
+      this.groups = src.map((g, gi) => ({
+        _gid: `g${gi}`, // key estável p/ o draggable de grupos
         id: g.id,
         label: g.label || '',
         stages: (g.stages || []).map((s) => ({
@@ -197,6 +212,7 @@ export default {
     validate() {
       const seen = new Set();
       for (const grp of this.groups) {
+        if (!grp.stages.length) return `O grupo "${(grp.label || '').trim() || grp.id}" precisa de ao menos uma etapa.`;
         for (const stage of grp.stages) {
           const label = (stage.label || '').trim();
           if (!label) return 'Toda etapa precisa de um nome.';
@@ -250,4 +266,7 @@ export default {
 /* etapa sendo arrastada (ghost do vuedraggable) */
 .stage-ghost { opacity: .5; }
 .stage-ghost :deep(.field) { border-color: #d9a01e; }
+/* grupo macro sendo arrastado */
+.group-ghost { opacity: .5; }
+.group-ghost > div { border-color: #d9a01e; }
 </style>

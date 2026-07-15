@@ -20,8 +20,22 @@ your data lives in a separate **vault** (a folder with its own git repo). Editin
 in the UI, in your text editor, or via a script all converge to the same `.md` file —
 and every change becomes a descriptive git commit, automatically.
 
+> **🤖 AI-friendly by design.** Since **everything is plain markdown in git** — tasks,
+> config (`schema.json`/`board.json`) and card bodies — an AI agent (Claude, etc.)
+> **reads, creates and edits tasks with its own file tools**, with no proprietary API or
+> closed schema in the way. History is `git log`, the audit trail is `git diff`, and the
+> whole board fits in a prompt. Markdown is the LLMs' native format — Basalt never makes
+> you export anything to put AI to work on your tasks.
+
 ## Features
 
+- **AI-first, no lock-in** — data is 100% versioned markdown: an LLM manipulates tasks
+  directly in the files and versions/audits via git. No proprietary format in between.
+- **Extensions (GitHub plugins)** *(new in 0.8.0)* — install plugins from a GitHub repo
+  via the **Extensions** tab: a `basalt-plugin.json` manifest, variables configured through
+  a form (local `.env`), execution with a **live log**. E.g. a Notion importer.
+- **Images in the card body** — paste (Ctrl+V), drag-and-drop or use `/image`; the file is
+  uploaded to the vault (`assets/`), referenced in the `.md` (`![](…)`) and rendered inline.
 - **Kanban + table view** — macro groups × stages, drag and drop, per-property sorting,
   editable filters, colored columns. Stages can be renamed/recolored/added inline on the board.
 - **Notion-style peek** — side / center / full modes, rich-text body editor (TipTap) with
@@ -160,10 +174,11 @@ Sync and assets:
 
 ## Roadmap
 
-Honest list — none of this is started yet:
+Honest list:
 
-- **Plugins / presets** — today extensibility is the declarative config; next step is
-  one-click field presets (e.g. a GUTE prioritization preset) built on `PUT /schema/properties`.
+- **Plugins** ✅ *(shipped in 0.8.0)* — install plugins from GitHub repos via the
+  Extensions tab. Next: one-click **field presets** (e.g. a GUTE prioritization preset)
+  built on `PUT /schema/properties`.
 - **Code signing** — installers are unsigned; SmartScreen/Gatekeeper warn on first run.
 - **Auto-update** — `latest.yml` is generated but `electron-updater` is not wired;
   updating is manual (install over the previous version).

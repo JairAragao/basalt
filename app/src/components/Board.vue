@@ -3,7 +3,7 @@
     <div class="flex h-full items-start gap-5 p-4">
       <!-- Cada grupo macro (A fazer / Em andamento / Concluído) -->
       <div
-        v-for="grp in groups"
+        v-for="grp in layout"
         :key="grp.id"
         class="flex h-full min-h-0 flex-shrink-0 flex-col"
       >
@@ -31,111 +31,126 @@
           <span v-else class="opacity-0">·</span>
         </div>
 
-        <!-- colunas de etapa do grupo (flex-1 + min-h-0 = ocupa abaixo do rótulo sem estourar) -->
-        <div class="flex min-h-0 flex-1 items-start gap-3">
-          <div
-            v-for="col in grp.columns"
-            :key="col.id"
-            class="flex h-full min-h-0 w-[280px] flex-shrink-0 flex-col"
-            :class="colorColumns ? 'rounded-xl border p-1.5' : ''"
-            :style="columnStyle(col)"
-          >
-            <!-- header da coluna (tingível, editável inline) -->
+        <!-- colunas de etapa do grupo — arrastáveis (reordena e move ENTRE grupos
+             macro pela alça .col-handle; group compartilhado 'board-cols') -->
+        <draggable
+          :list="grp.columns"
+          :group="{ name: 'board-cols' }"
+          item-key="id"
+          handle=".col-handle"
+          :animation="160"
+          ghost-class="col-ghost"
+          class="flex min-h-0 flex-1 items-start gap-3"
+          @change="onColChange"
+        >
+          <template #item="{ element: col }">
             <div
-              class="group/hdr mb-2 flex flex-shrink-0 items-center gap-2 rounded-md px-2 py-2"
-              :style="headerStyle(col)"
+              class="flex h-full min-h-0 w-[280px] flex-shrink-0 flex-col"
+              :class="colorColumns ? 'rounded-xl border p-1.5' : ''"
+              :style="columnStyle(col)"
             >
-              <!-- bolinha de cor: clica abre swatches (só etapas reais) -->
-              <div class="relative flex-shrink-0">
-                <button
-                  type="button"
-                  class="grid h-4 w-4 place-items-center rounded-full"
-                  :class="grp.id !== '__fallback' ? 'hover:ring-2 hover:ring-ink-line' : 'cursor-default'"
-                  :title="grp.id !== '__fallback' ? 'Mudar cor' : ''"
-                  :disabled="grp.id === '__fallback' || savingCfg"
-                  @click="toggleSwatch(col.id)"
+              <!-- header da coluna (tingível) -->
+              <div
+                class="mb-2 flex flex-shrink-0 items-center gap-1.5 rounded-md px-2 py-2"
+                :style="headerStyle(col)"
+              >
+                <!-- alça de arraste (só etapas reais) -->
+                <span
+                  v-if="grp.id !== '__fallback'"
+                  class="col-handle grid h-5 w-4 flex-shrink-0 cursor-grab place-items-center text-faint hover:text-muted active:cursor-grabbing"
+                  title="Arrastar para reordenar ou mover de grupo"
                 >
-                  <span class="h-2 w-2 rounded-full" :style="{ background: col.color }"></span>
-                </button>
-                <transition name="dd">
-                  <div
-                    v-if="openSwatch === col.id"
-                    :ref="'swatch-' + col.id"
-                    class="absolute left-0 top-6 z-50 grid w-[156px] grid-cols-5 gap-1.5 rounded-lg border border-ink-line bg-ink-700 p-2 shadow-xl"
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7.5" cy="5" r="1.25" /><circle cx="12.5" cy="5" r="1.25" /><circle cx="7.5" cy="10" r="1.25" /><circle cx="12.5" cy="10" r="1.25" /><circle cx="7.5" cy="15" r="1.25" /><circle cx="12.5" cy="15" r="1.25" /></svg>
+                </span>
+
+                <!-- indicador de cor -->
+                <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: col.color }"></span>
+
+                <!-- nome da etapa -->
+                <span class="min-w-0 flex-1 truncate text-[14px] font-medium text-muted">{{ col.label }}</span>
+
+                <span class="rounded bg-ink-700 px-1.5 py-0.5 text-[11px] text-faint">{{ (grouped[col.id] || []).length }}</span>
+
+                <!-- menu ⋮ — edição rápida de nome + cor (só etapas reais) -->
+                <div v-if="grp.id !== '__fallback'" :ref="'menuwrap-' + col.id" class="relative flex-shrink-0">
+                  <button
+                    type="button"
+                    class="icon-btn h-6 w-6"
+                    title="Editar etapa (nome e cor)"
+                    :disabled="savingCfg"
+                    @click="toggleMenu(col)"
                   >
-                    <button
-                      v-for="p in palette"
-                      :key="p.value"
-                      type="button"
-                      class="h-5 w-5 rounded-full hover:ring-2 hover:ring-ink-line"
-                      :class="{ 'ring-2 ring-accent': col.color === p.value }"
-                      :style="{ background: p.value }"
-                      :title="p.name"
-                      @click="recolor(col, p.value)"
-                    ></button>
-                  </div>
-                </transition>
+                    <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4"><circle cx="10" cy="4.5" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="10" cy="15.5" r="1.4" /></svg>
+                  </button>
+                  <transition name="dd">
+                    <div
+                      v-if="openMenu === col.id"
+                      class="absolute right-0 top-8 z-50 w-[220px] rounded-lg border border-ink-line bg-ink-700 p-2.5 shadow-xl"
+                    >
+                      <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-faint">Nome</label>
+                      <input
+                        :ref="'menuinput-' + col.id"
+                        v-model="menuLabel"
+                        class="field mb-3 w-full text-[13px]"
+                        placeholder="Nome da etapa"
+                        @keydown.enter.prevent="commitMenuRename(col)"
+                        @keydown.esc="closeMenu"
+                      />
+                      <div class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">Cor</div>
+                      <div class="grid grid-cols-5 gap-1.5">
+                        <button
+                          v-for="p in palette"
+                          :key="p.value"
+                          type="button"
+                          class="h-6 w-6 rounded-full hover:ring-2 hover:ring-ink-line"
+                          :class="{ 'ring-2 ring-accent': col.color === p.value }"
+                          :style="{ background: p.value }"
+                          :title="p.name"
+                          @click="pickMenuColor(col, p.value)"
+                        ></button>
+                      </div>
+                    </div>
+                  </transition>
+                </div>
               </div>
 
-              <!-- nome: clica pra renomear (só etapas reais) -->
-              <input
-                v-if="editingCol === col.id"
-                :ref="'edit-' + col.id"
-                v-model="editLabel"
-                class="min-w-0 flex-1 rounded border border-accent bg-ink-900 px-1 py-0.5 text-[14px] font-medium text-txt focus:outline-none"
-                @keydown.enter.prevent="commitRename(col)"
-                @keydown.esc="cancelRename"
-                @blur="commitRename(col)"
-              />
+              <!-- cards (janela incremental: renderiza as primeiras N; a sentinela
+                   no fim da coluna carrega +N ao entrar na viewport. A contagem do
+                   header continua vindo do conjunto completo em grouped) -->
+              <div class="thin-scroll flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg">
+                <draggable
+                  :list="visibleOf(col.id)"
+                  :group="{ name: 'tasks' }"
+                  :animation="160"
+                  item-key="id"
+                  ghost-class="board-ghost"
+                  drag-class="board-drag"
+                  class="flex min-h-[24px] flex-1 flex-col gap-2 p-1"
+                  @change="(evt) => onChange(evt, col.id)"
+                >
+                  <template #item="{ element: task }">
+                    <TaskCard
+                      :task="task"
+                      :config="config"
+                      :tint="colorColumns ? col.color : null"
+                      @open="$emit('open', $event)"
+                      @delete="$emit('delete', $event)"
+                    />
+                  </template>
+                </draggable>
+                <div v-if="hasMoreCol(col.id)" :data-col="col.id" class="h-px flex-shrink-0"></div>
+              </div>
+
               <button
-                v-else
-                type="button"
-                class="min-w-0 flex-1 truncate text-left text-[14px] font-medium text-muted"
-                :class="grp.id !== '__fallback' ? 'hover:text-txt' : 'cursor-default'"
-                :disabled="grp.id === '__fallback' || savingCfg"
-                :title="grp.id !== '__fallback' ? 'Renomear etapa' : ''"
-                @click="startRename(col)"
-              >{{ col.label }}</button>
-
-              <span class="ml-auto rounded bg-ink-700 px-1.5 py-0.5 text-[11px] text-faint">{{ (grouped[col.id] || []).length }}</span>
-            </div>
-
-            <!-- cards (janela incremental: renderiza as primeiras N; a sentinela
-                 no fim da coluna carrega +N ao entrar na viewport. A contagem do
-                 header continua vindo do conjunto completo em grouped) -->
-            <div class="thin-scroll flex min-h-0 flex-1 flex-col overflow-y-auto rounded-lg">
-              <draggable
-                :list="visibleOf(col.id)"
-                :group="{ name: 'tasks' }"
-                :animation="160"
-                item-key="id"
-                ghost-class="board-ghost"
-                drag-class="board-drag"
-                class="flex min-h-[24px] flex-1 flex-col gap-2 p-1"
-                @change="(evt) => onChange(evt, col.id)"
+                class="mt-1 flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
+                @click="$emit('open', { status: col.id })"
               >
-                <template #item="{ element: task }">
-                  <TaskCard
-                    :task="task"
-                    :config="config"
-                    :tint="colorColumns ? col.color : null"
-                    @open="$emit('open', $event)"
-                    @delete="$emit('delete', $event)"
-                  />
-                </template>
-              </draggable>
-              <div v-if="hasMoreCol(col.id)" :data-col="col.id" class="h-px flex-shrink-0"></div>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M10 4v12M4 10h12" stroke-linecap="round" /></svg>
+                Nova
+              </button>
             </div>
-
-            <button
-              class="mt-1 flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
-              @click="$emit('open', { status: col.id })"
-            >
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M10 4v12M4 10h12" stroke-linecap="round" /></svg>
-              Nova
-            </button>
-          </div>
-        </div>
+          </template>
+        </draggable>
       </div>
 
       <!-- adicionar ETAPA (botão único no fim do board; escolhe em qual grupo macro entra) -->
@@ -193,14 +208,17 @@ export default {
   data() {
     return {
       grouped: {},
+      // cópia local editável do arranjo de colunas (grupos macro × etapas) —
+      // é o que o vuedraggable muta ao arrastar/mover colunas. Sincronizado
+      // a partir do config em syncLayout().
+      layout: [],
       // janela incremental de render por coluna (default WINDOW_STEP por coluna)
       windowByCol: {},
       io: null,
       // edição direta de etapas no board
       palette: PALETTE,
-      openSwatch: null, // col.id com popover de cor aberto
-      editingCol: null, // col.id em renomeação inline
-      editLabel: '',
+      openMenu: null,   // col.id com o menu ⋮ (nome + cor) aberto
+      menuLabel: '',    // rascunho do nome no menu ⋮
       editingGroup: null, // grp.id em renomeação inline
       editGroupLabel: '',
       showAddMenu: false, // popover "adicionar etapa em <grupo>"
@@ -241,9 +259,12 @@ export default {
   watch: {
     // refresh de dados NÃO reseta as janelas (não colapsa o scroll do usuário)
     tasks: { immediate: true, handler() { this.regroup(); } },
-    config() { this.resetWindows(); this.regroup(); },
+    config() { this.resetWindows(); this.syncLayout(); this.regroup(); },
     sort: { deep: true, handler() { this.resetWindows(); this.regroup(); } },
     filterKey() { this.resetWindows(); },
+  },
+  created() {
+    this.syncLayout();
   },
   mounted() {
     this.io = new IntersectionObserver(this.onSentinel, { rootMargin: '200px' });
@@ -272,6 +293,16 @@ export default {
         const cur = this.windowOf(colId);
         if (cur < total) this.windowByCol = { ...this.windowByCol, [colId]: cur + WINDOW_STEP };
       }
+    },
+    // ── layout local (arranjo de colunas arrastáveis) ──
+    // Espelha `groups` (derivado do config) numa cópia mutável. O vuedraggable
+    // reordena/move colunas dentro dessa cópia; onColChange persiste o resultado.
+    syncLayout() {
+      this.layout = this.groups.map((g) => ({
+        id: g.id,
+        label: g.label,
+        columns: g.columns.map((c) => ({ id: c.id, label: c.label, color: c.color })),
+      }));
     },
     headerStyle(col) {
       if (!this.colorColumns) return {};
@@ -348,6 +379,30 @@ export default {
       this.grouped[originCol] = this.sortColumn(this.grouped[originCol]);
     },
 
+    // ── Arraste de COLUNAS (reordenar / mover de grupo macro) ─────────────────
+    // O vuedraggable já mutou this.layout (source e/ou target). Uma passada de
+    // persist por drag (coalescida no nextTick — cross-group dispara 2 eventos).
+    onColChange() {
+      if (this._colScheduled) return;
+      this._colScheduled = true;
+      this.$nextTick(() => { this._colScheduled = false; this.persistLayout(); });
+    },
+    persistLayout() {
+      // grupo macro não pode ficar sem etapas (o backend rejeita) — reverte.
+      const empty = this.layout.find((g) => g.id !== '__fallback' && !g.columns.length);
+      if (empty) {
+        this.$emit('error', 'Cada grupo macro precisa de ao menos uma etapa.');
+        this.syncLayout();
+        return;
+      }
+      const groups = this.layout.map((g) => ({
+        id: g.id,
+        label: g.label,
+        stages: g.columns.map((c) => ({ origId: c.id, label: c.label, color: c.color })),
+      }));
+      this.persist(this.toPayload(groups));
+    },
+
     // ── Edição direta de etapas (renomear / recolorir / adicionar) ────────────
     // Clona statusGroups reais (sem o fallback sintético) preservando o id
     // original de cada etapa para casar renames na migração de tarefas.
@@ -391,52 +446,32 @@ export default {
         this.savingCfg = false;
       }
     },
-    // cor
-    toggleSwatch(colId) {
-      this.openSwatch = this.openSwatch === colId ? null : colId;
-      if (this.openSwatch) {
-        this.$nextTick(() => document.addEventListener('mousedown', this.onSwatchDocClick, true));
-      } else {
-        document.removeEventListener('mousedown', this.onSwatchDocClick, true);
-      }
-    },
-    onSwatchDocClick(e) {
-      const pop = this.$refs['swatch-' + this.openSwatch];
-      const el = Array.isArray(pop) ? pop[0] : pop;
-      if (el && el.contains(e.target)) return;
-      // o botão de cor tem seu próprio toggle — fecha só o popover
-      this.openSwatch = null;
-      document.removeEventListener('mousedown', this.onSwatchDocClick, true);
-    },
-    recolor(col, color) {
-      this.openSwatch = null;
-      document.removeEventListener('mousedown', this.onSwatchDocClick, true);
-      if (col.color === color) return;
-      const groups = this.cloneGroups();
-      for (const g of groups) {
-        for (const s of g.stages) if (s.origId === col.id) s.color = color;
-      }
-      this.persist(this.toPayload(groups));
-    },
-    // rename inline
-    startRename(col) {
-      this.editingCol = col.id;
-      this.editLabel = col.label;
+
+    // ── menu ⋮ da coluna (edição rápida: nome + cor) ──────────────────────────
+    toggleMenu(col) {
+      if (this.openMenu === col.id) { this.closeMenu(); return; }
+      this.openMenu = col.id;
+      this.menuLabel = col.label;
       this.$nextTick(() => {
-        const ref = this.$refs['edit-' + col.id];
+        document.addEventListener('mousedown', this.onMenuDocClick, true);
+        const ref = this.$refs['menuinput-' + col.id];
         const el = Array.isArray(ref) ? ref[0] : ref;
         if (el) { el.focus(); el.select(); }
       });
     },
-    cancelRename() {
-      this.editingCol = null;
-      this.editLabel = '';
+    closeMenu() {
+      this.openMenu = null;
+      document.removeEventListener('mousedown', this.onMenuDocClick, true);
     },
-    commitRename(col) {
-      if (this.editingCol !== col.id) return; // já tratado (blur após enter)
-      const to = (this.editLabel || '').trim();
-      this.editingCol = null;
-      if (!to || to === col.label) return; // vazio ou sem mudança → ignora
+    onMenuDocClick(e) {
+      const wrap = this.$refs['menuwrap-' + this.openMenu];
+      const el = Array.isArray(wrap) ? wrap[0] : wrap;
+      if (el && el.contains(e.target)) return; // botão/menu tratam o próprio clique
+      this.closeMenu();
+    },
+    commitMenuRename(col) {
+      const to = (this.menuLabel || '').trim();
+      if (!to || to === col.label) { this.closeMenu(); return; }
       // duplicidade: a etapa-alvo não pode colidir com outra existente
       const exists = ((this.config.board && this.config.board.statusGroups) || [])
         .some((g) => (g.stages || []).some((s) => s.id !== col.id && s.id === to));
@@ -445,8 +480,19 @@ export default {
       for (const g of groups) {
         for (const s of g.stages) if (s.origId === col.id) s.label = to;
       }
+      this.closeMenu();
       this.persist(this.toPayload(groups));
     },
+    pickMenuColor(col, color) {
+      this.closeMenu();
+      if (col.color === color) return;
+      const groups = this.cloneGroups();
+      for (const g of groups) {
+        for (const s of g.stages) if (s.origId === col.id) s.color = color;
+      }
+      this.persist(this.toPayload(groups));
+    },
+
     // adicionar etapa
     addStage(grp) {
       const groups = this.cloneGroups();
@@ -508,7 +554,7 @@ export default {
   },
   beforeUnmount() {
     if (this.io) { this.io.disconnect(); this.io = null; }
-    document.removeEventListener('mousedown', this.onSwatchDocClick, true);
+    document.removeEventListener('mousedown', this.onMenuDocClick, true);
     document.removeEventListener('mousedown', this.onAddMenuDocClick, true);
   },
 };
@@ -524,4 +570,14 @@ export default {
 .board-drag {
   transform: rotate(1.5deg);
 }
+/* coluna sendo arrastada (ghost do reorder de colunas) */
+.col-ghost {
+  opacity: 0.4;
+}
+.col-ghost > * {
+  border: 1px dashed #d9a01e !important;
+  border-radius: 0.75rem;
+}
+.dd-enter-active, .dd-leave-active { transition: opacity .12s ease, transform .12s ease; }
+.dd-enter-from, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>

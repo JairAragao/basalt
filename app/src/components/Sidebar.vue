@@ -48,6 +48,62 @@
       <span v-if="open" class="truncate">Tarefas</span>
     </button>
 
+    <!-- submenu de Tarefas: alterna visualização Kanban / Lista -->
+    <transition name="submenu">
+      <div v-if="active === 'tasks'" class="overflow-hidden">
+        <!-- expandido: linha-guia vertical + indentação (hierarquia clara) -->
+        <div v-if="open" class="relative ml-[1.6rem] mt-0.5 flex flex-col gap-0.5 border-l border-ink-500 pl-2.5">
+          <button
+            v-for="opt in viewOptions"
+            :key="opt.id"
+            type="button"
+            class="side-subitem relative"
+            :class="view === opt.id ? 'text-txt' : 'text-faint hover:bg-ink-700/60 hover:text-muted'"
+            @click="$emit('set-view', opt.id)"
+          >
+            <!-- barra accent sobre a linha-guia quando ativo -->
+            <span
+              v-if="view === opt.id"
+              class="absolute -left-[calc(0.625rem+1px)] top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
+            ></span>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5 flex-shrink-0" v-html="opt.svg"></svg>
+            <span class="truncate">{{ opt.label }}</span>
+          </button>
+        </div>
+
+        <!-- recolhido: ícones menores, recuados, com barra accent no ativo -->
+        <div v-else class="mt-0.5 flex flex-col items-center gap-0.5">
+          <button
+            v-for="opt in viewOptions"
+            :key="opt.id"
+            type="button"
+            class="relative flex h-7 w-7 items-center justify-center rounded-md transition-colors"
+            :class="view === opt.id ? 'bg-ink-700 text-accent' : 'text-faint hover:bg-ink-700 hover:text-muted'"
+            :title="opt.label"
+            @click="$emit('set-view', opt.id)"
+          >
+            <span
+              v-if="view === opt.id"
+              class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
+            ></span>
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" v-html="opt.svg"></svg>
+          </button>
+        </div>
+      </div>
+    </transition>
+
+    <button
+      type="button"
+      class="side-item"
+      :class="active === 'extensions' ? 'bg-ink-600 text-txt' : 'text-faint hover:bg-ink-700 hover:text-muted'"
+      :title="open ? null : 'Extensões'"
+      :aria-current="active === 'extensions' ? 'page' : null"
+      @click="$emit('navigate', 'extensions')"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 flex-shrink-0"><path d="M9 3h4v2.5a1.5 1.5 0 0 0 3 0V3h2v4h2.5a1.5 1.5 0 0 1 0 3H18v4h2a1 1 0 0 1 1 1v4H4V4a1 1 0 0 1 1-1h4Z" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      <span v-if="open" class="truncate">Extensões</span>
+    </button>
+
     <!-- Configurações ancorada no rodapé -->
     <div class="mt-auto">
       <div class="mx-2 mb-1 h-px bg-ink-500/60"></div>
@@ -63,6 +119,13 @@
         </svg>
         <span v-if="open" class="truncate">Configurações</span>
       </button>
+
+      <!-- versão do Basalt (rodapé) -->
+      <div
+        class="mt-1 select-none px-2 font-mono text-[10px] leading-none text-faint/70"
+        :class="open ? 'text-left' : 'text-center'"
+        :title="'Versão do Basalt: ' + version"
+      >{{ open ? ('v' + version) : version }}</div>
     </div>
   </nav>
 </template>
@@ -74,10 +137,18 @@ export default {
   name: 'Sidebar',
   props: {
     active: { type: String, default: 'tasks' }, // 'tasks' | 'dashboard'
+    view: { type: String, default: 'kanban' },   // 'kanban' | 'table' — visualização das tarefas
+    version: { type: String, default: '' },      // versão do Basalt (rodapé da sidebar)
   },
-  emits: ['navigate', 'open-settings'],
+  emits: ['navigate', 'open-settings', 'set-view'],
   data() {
-    return { open: this.loadOpen() };
+    return {
+      open: this.loadOpen(),
+      viewOptions: [
+        { id: 'kanban', label: 'Kanban', svg: '<rect x="3" y="4" width="4" height="12" rx="1" /><rect x="8.5" y="4" width="4" height="8" rx="1" /><rect x="14" y="4" width="4" height="10" rx="1" />' },
+        { id: 'table', label: 'Lista', svg: '<rect x="3" y="4" width="14" height="12" rx="1" /><path d="M3 8h14M3 12h14M9 4v12" />' },
+      ],
+    };
   },
   methods: {
     loadOpen() {
@@ -96,4 +167,9 @@ export default {
 .side-item {
   @apply mx-1.5 flex items-center gap-2.5 rounded-md px-2 py-2 text-[13px] transition-colors;
 }
+.side-subitem {
+  @apply flex items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] transition-colors;
+}
+.submenu-enter-active, .submenu-leave-active { transition: opacity .18s ease, max-height .22s ease; max-height: 120px; }
+.submenu-enter-from, .submenu-leave-to { opacity: 0; max-height: 0; }
 </style>

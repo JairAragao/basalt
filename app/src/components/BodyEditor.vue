@@ -11,6 +11,16 @@
     o clique exato sobre o glifo.
   -->
   <div class="body-editor relative -mx-6">
+    <!-- input oculto do "/ Imagem" (paste/drop não passam por aqui) -->
+    <input
+      ref="imageInput"
+      type="file"
+      accept="image/png,image/jpeg,image/gif,image/webp"
+      multiple
+      style="display: none"
+      @change="onImageFileChange"
+    />
+
     <!-- superfície de edição (ProseMirror é montado aqui) -->
     <div ref="editor" class="body-editor__surface"></div>
 
@@ -119,6 +129,27 @@ import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu';
 import { Markdown } from 'tiptap-markdown';
 import { uploadAsset } from '../api';
 
+// Image com serializer markdown de BLOCO explícito. O default do tiptap-markdown
+// serializa imagem como INLINE; com inline:false (nosso caso, imagem em bloco) a
+// marcação não é emitida e a imagem some do .md (asset fica órfão). Aqui geramos
+// `![](src)` em linha própria — round-trip correto com o markdown-it na volta.
+const MarkdownImage = Image.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state, node) {
+          const alt = state.esc(node.attrs.alt || '');
+          const src = node.attrs.src || '';
+          const title = node.attrs.title ? ` "${String(node.attrs.title).replace(/"/g, '\\"')}"` : '';
+          state.write(`![${alt}](${src}${title})`);
+          state.closeBlock(node);
+        },
+        parse: {}, // markdown-it já entende ![](...)
+      },
+    };
+  },
+});
+
 // Itens do menu de blocos (slash). `keywords` ajuda o filtro.
 // `action(editor)` recebe uma chain já com .focus() e .deleteRange() aplicados
 // (a barra "/" + texto digitado é removida antes de aplicar o bloco).
@@ -133,6 +164,7 @@ const ICONS = {
   quote: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 5v10" stroke-linecap="round"/><path d="M9 7h7M9 11h7" stroke-linecap="round"/></svg>',
   code: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 7l-3 3 3 3M13 7l3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   divider: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10h14" stroke-linecap="round"/></svg>',
+  image: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="12" rx="2"/><circle cx="7.5" cy="8.5" r="1.5"/><path d="M4 14l4-4 3 3 2-2 3 3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 function buildSlashItems() {
@@ -147,6 +179,8 @@ function buildSlashItems() {
     { id: 'quote', title: 'Citação', desc: 'Bloco de citação', icon: ICONS.quote, keywords: ['citacao', 'quote', 'blockquote'], action: (c) => c.toggleBlockquote().run() },
     { id: 'code', title: 'Código', desc: 'Bloco de código', icon: ICONS.code, keywords: ['codigo', 'code', 'codeblock'], action: (c) => c.toggleCodeBlock().run() },
     { id: 'divider', title: 'Divisor', desc: 'Linha separadora', icon: ICONS.divider, keywords: ['divisor', 'divider', 'hr', 'linha', 'separador'], action: (c) => c.setHorizontalRule().run() },
+    // Imagem: tratada à parte em applySlash (abre file picker → upload → insere URL).
+    { id: 'image', title: 'Imagem', desc: 'Enviar do computador', icon: ICONS.image, keywords: ['imagem', 'image', 'img', 'foto', 'picture', 'figura', 'anexo'], action: null },
   ];
 }
 
@@ -190,9 +224,9 @@ export default {
     };
   },
   computed: {
-    // itens de "transformar em" = blocos do slash, menos o divisor (não é um bloco-alvo)
+    // itens de "transformar em" = blocos do slash, menos os atoms (divisor/imagem não são alvos)
     turnIntoItems() {
-      return this.slashItems.filter((i) => i.id !== 'divider');
+      return this.slashItems.filter((i) => i.id !== 'divider' && i.id !== 'image');
     },
     filteredSlashItems() {
       const q = norm(this.slash.query);
@@ -283,8 +317,9 @@ export default {
         TaskList,
         TaskItem.configure({ nested: true }),
         // Imagens: src = URL (/api/assets/...). Nada de base64 inline (incha o .md);
-        // o paste/drop sobe o arquivo pro vault e insere a URL servível.
-        Image.configure({ inline: false, allowBase64: false }),
+        // o paste/drop/"/" sobe o arquivo pro vault e insere a URL servível.
+        // MarkdownImage garante a serialização `![](src)` no .md (ver acima).
+        MarkdownImage.configure({ inline: false, allowBase64: false }),
         Markdown.configure({
           html: false,
           tightLists: true,
@@ -512,6 +547,13 @@ export default {
       const chain = this.editor.chain().focus();
       // remove o trecho "/..." digitado antes de aplicar o bloco
       if (range) chain.deleteRange(range);
+      // imagem: só limpa a "/" e abre o seletor de arquivo (upload é assíncrono)
+      if (item.id === 'image') {
+        chain.run();
+        this.promptImageFile();
+        this.refreshMarks();
+        return;
+      }
       item.action(chain);
       this.refreshMarks();
     },
@@ -595,6 +637,17 @@ export default {
       try { node = this.editor.state.doc.nodeAt(start); } catch (_) { node = null; }
       if (!node) return;
       this.editor.chain().focus().insertContentAt(end, node.toJSON()).run();
+    },
+
+    // ---- imagem via "/" (abre o seletor de arquivo) ----
+    promptImageFile() {
+      const el = this.$refs.imageInput;
+      if (el) { el.value = ''; el.click(); }
+    },
+    onImageFileChange(e) {
+      const files = [...(e.target.files || [])].filter((f) => f.type && f.type.startsWith('image/'));
+      files.forEach((f) => this.uploadAndInsertImage(f));
+      e.target.value = '';
     },
 
     // ---- colar / arrastar imagem (Ctrl+V, drag-and-drop) ----

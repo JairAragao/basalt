@@ -213,6 +213,37 @@ export function uploadAsset({ data, mime }) {
   })
 }
 
+// --- Plugins / Extensões (instalação por-vault de repos GitHub) ---
+// lista: [{ name, title, version, description, readme, hasIcon, env:[{key,label,secret,required,placeholder}], commands:[{id,label}], configured }]
+export function listPlugins() {
+  return request(`${BASE}/plugins`)
+}
+// instala de "owner/repo" ou URL do GitHub (ref opcional) -> { plugins, name, depsWarning?, warning? }
+export function installPlugin(repo, ref) {
+  return request(`${BASE}/plugins/install`, { method: 'POST', body: JSON.stringify(ref ? { repo, ref } : { repo }) })
+}
+export function removePlugin(name) {
+  return request(`${BASE}/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' })
+}
+// valores atuais do .env do plugin -> { values }
+export function getPluginEnv(name) {
+  return request(`${BASE}/plugins/${encodeURIComponent(name)}/env`)
+}
+export function savePluginEnv(name, values) {
+  return request(`${BASE}/plugins/${encodeURIComponent(name)}/env`, { method: 'PUT', body: JSON.stringify({ values }) })
+}
+// inicia um comando do plugin -> { runId }. O log vem por SSE em pluginRunUrl().
+export function runPlugin(name, commandId) {
+  return request(`${BASE}/plugins/${encodeURIComponent(name)}/run`, { method: 'POST', body: JSON.stringify(commandId ? { commandId } : {}) })
+}
+// URL do stream SSE de um run (consumir com EventSource)
+export function pluginRunUrl(name, runId) {
+  return `${BASE}/plugins/${encodeURIComponent(name)}/run/${encodeURIComponent(runId)}`
+}
+export function pluginIconUrl(name) {
+  return `${BASE}/plugins/${encodeURIComponent(name)}/icon`
+}
+
 export default {
   getConfig,
   getBoard,
@@ -242,5 +273,13 @@ export default {
   clearNotifications,
   getHistory,
   getDiff,
-  uploadAsset
+  uploadAsset,
+  listPlugins,
+  installPlugin,
+  removePlugin,
+  getPluginEnv,
+  savePluginEnv,
+  runPlugin,
+  pluginRunUrl,
+  pluginIconUrl
 }

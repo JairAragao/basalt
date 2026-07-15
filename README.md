@@ -20,8 +20,22 @@ seus dados vivem num **vault** separado (uma pasta com git próprio). Editar uma
 na UI, no seu editor de texto ou via script converge pro mesmo `.md` — e toda mudança
 vira um commit git descritivo, automaticamente.
 
+> **🤖 Amigável para IA por design.** Como **tudo é markdown puro em git** — tarefas,
+> config (`schema.json`/`board.json`) e o corpo dos cards — um agente de IA (Claude, etc.)
+> **lê, cria e edita tarefas com as próprias ferramentas de arquivo**, sem API proprietária
+> nem schema fechado no caminho. O histórico é `git log`, a auditoria é `git diff`, e o
+> board inteiro cabe num prompt. Markdown é o formato nativo dos LLMs — o Basalt não te
+> obriga a exportar nada pra usar IA em cima das suas tarefas.
+
 ## Funcionalidades
 
+- **AI-first, sem lock-in** — dados 100% em markdown versionado: um LLM manipula tarefas
+  direto nos arquivos e versiona/audita via git. Nada de formato proprietário no meio.
+- **Extensões (plugins do GitHub)** *(novo no 0.8.0)* — instale plugins de um repositório
+  GitHub pela aba **Extensões**: manifesto `basalt-plugin.json`, configuração das variáveis
+  por formulário (`.env` local), execução com **log ao vivo**. Ex.: importador do Notion.
+- **Imagens no corpo do card** — cole (Ctrl+V), arraste-e-solte ou use `/imagem`; o arquivo
+  sobe pro vault (`assets/`), é referenciado no `.md` (`![](…)`) e renderiza no editor.
 - **Kanban + tabela** — grupos macro × etapas, drag and drop, ordenação por qualquer
   propriedade, filtros editáveis, colunas coloridas. Etapas podem ser renomeadas/
   recoloridas/adicionadas direto no board.
@@ -163,11 +177,11 @@ Sync e assets:
 
 ## Roadmap
 
-Lista honesta — nada disso começou ainda:
+Lista honesta:
 
-- **Plugins / presets** — hoje a extensibilidade é a config declarativa; o próximo passo
-  são presets de campos com 1 clique (ex.: preset de priorização GUTE) sobre
-  `PUT /schema/properties`.
+- **Plugins** ✅ *(entregue no 0.8.0)* — instalação de plugins de repos GitHub pela aba
+  Extensões. Próximo passo: **presets de campos** com 1 clique (ex.: priorização GUTE)
+  sobre `PUT /schema/properties`.
 - **Code signing** — os instaladores não são assinados; SmartScreen/Gatekeeper avisam na
   primeira execução.
 - **Auto-update** — o `latest.yml` é gerado mas o `electron-updater` não está ligado;
