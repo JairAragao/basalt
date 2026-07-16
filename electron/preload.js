@@ -9,22 +9,21 @@ contextBridge.exposeInMainWorld('electron', {
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   // Renderer avisa que terminou de carregar → main fecha a splash e mostra a janela.
   signalReady: () => ipcRenderer.send('app:ready'),
-  // Auto-update (electron-updater): eventos vindos do main + ações.
+  // Auto-update (electron-updater): status vindo do main + ações.
   update: {
-    // dispara quando há versão nova (começou a baixar)
-    onAvailable: (cb) => {
-      const h = (_e, info) => cb(info);
-      ipcRenderer.on('update:available', h);
-      return () => ipcRenderer.removeListener('update:available', h);
+    isElectron: true,
+    // status: { state:'checking'|'available'|'uptodate'|'downloading'|'downloaded'|'error', version?, percent?, error? }
+    onStatus: (cb) => {
+      const h = (_e, s) => cb(s);
+      ipcRenderer.on('update:status', h);
+      return () => ipcRenderer.removeListener('update:status', h);
     },
-    // dispara quando o download terminou (pronto pra instalar)
-    onDownloaded: (cb) => {
-      const h = (_e, info) => cb(info);
-      ipcRenderer.on('update:downloaded', h);
-      return () => ipcRenderer.removeListener('update:downloaded', h);
-    },
-    // checagem manual sob demanda → { ok, error? }
+    // é app empacotado? (updater só roda no empacotado)
+    isPackaged: () => ipcRenderer.invoke('update:isPackaged'),
+    // checagem manual → { ok, error?, reason? }
     check: () => ipcRenderer.invoke('update:check'),
+    // define o intervalo de auto-checagem em ms (0 = desligado)
+    setInterval: (ms) => ipcRenderer.send('update:setInterval', ms),
     // reinicia e instala a atualização baixada
     install: () => ipcRenderer.send('update:install'),
   },

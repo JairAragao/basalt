@@ -106,6 +106,21 @@
 
     <!-- Configurações ancorada no rodapé -->
     <div class="mt-auto">
+      <!-- destaque de atualização pendente (só quando há update disponível/pronto) -->
+      <button
+        v-if="updatePending"
+        type="button"
+        class="side-item relative mb-1 border border-accent/50 bg-accent/10 text-accent hover:bg-accent/15"
+        :title="open ? null : 'Atualização disponível'"
+        @click="$emit('open-update')"
+      >
+        <span class="relative flex-shrink-0">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M10 3v9M6 8l4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          <span class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent"></span>
+        </span>
+        <span v-if="open" class="truncate">Atualização disponível</span>
+      </button>
+
       <div class="mx-2 mb-1 h-px bg-ink-500/60"></div>
       <button
         type="button"
@@ -139,8 +154,9 @@ export default {
     active: { type: String, default: 'tasks' }, // 'tasks' | 'dashboard'
     view: { type: String, default: 'kanban' },   // 'kanban' | 'table' — visualização das tarefas
     version: { type: String, default: '' },      // versão do Basalt (rodapé da sidebar)
+    updatePending: { type: Boolean, default: false }, // atualização disponível/baixando/pronta
   },
-  emits: ['navigate', 'open-settings', 'set-view'],
+  emits: ['navigate', 'open-settings', 'set-view', 'open-update'],
   data() {
     return {
       open: this.loadOpen(),

@@ -18,9 +18,11 @@
       :active="activeView"
       :view="view"
       :version="version"
+      :update-pending="['available', 'downloading', 'downloaded'].includes(update.state)"
       @navigate="setActiveView"
       @set-view="setView"
-      @open-settings="settingsOpen = true"
+      @open-settings="openSettings('status')"
+      @open-update="openUpdate"
     />
 
     <div class="flex min-w-0 flex-1 flex-col">
@@ -279,6 +281,8 @@
       v-if="settingsOpen && config"
       :config="config"
       :last-pull-at="lastPullAt"
+      :initial-tab="settingsInitialTab"
+      :version="version"
       @saved="onConfigSaved"
       @close="settingsOpen = false"
     />
@@ -315,24 +319,28 @@
       </div>
     </div>
 
-    <!-- Banner de atualização pronta (estilo VSCode) — persiste até reiniciar/dispensar -->
+    <!-- Modal de atualização (estilizado, tema do app). Só quando PRONTA e não adiada. -->
     <transition name="toast">
-      <div
-        v-if="update.downloaded"
-        class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-accent/50 bg-ink-800 px-4 py-3 shadow-2xl"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 flex-shrink-0 text-accent"><path d="M10 3v9M6 8l4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round" /></svg>
-        <div class="min-w-0">
-          <div class="text-[13px] font-medium text-txt">Atualização pronta</div>
-          <div class="text-[12px] text-muted">Basalt {{ update.version }} — reinicie para aplicar.</div>
+      <div v-if="update.showModal && update.state === 'downloaded'" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="snoozeUpdate">
+        <div class="w-[440px] max-w-[92vw] overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
+          <div class="flex items-center gap-3 border-b border-ink-500 bg-ink-850 px-5 py-4">
+            <span class="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5"><path d="M10 3v9M6 8l4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+            <div class="min-w-0">
+              <div class="text-[14px] font-semibold text-txt">Atualização disponível</div>
+              <div class="text-[12px] text-muted">Basalt {{ update.version }} está pronto para instalar.</div>
+            </div>
+          </div>
+          <div class="px-5 py-4 text-[13px] leading-relaxed text-muted">
+            Uma nova versão foi baixada. Você pode reiniciar agora para aplicar, ou continuar e ela
+            se instala ao fechar o app. <button class="text-accent hover:underline" @click="openSettings('updates'); snoozeUpdate()">Ver novidades</button>.
+          </div>
+          <div class="flex items-center justify-end gap-2 border-t border-ink-500 px-5 py-3">
+            <button class="rounded-md px-3.5 py-1.5 text-[13px] text-muted hover:bg-ink-700" @click="snoozeUpdate">Depois</button>
+            <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110" @click="installUpdate">Reiniciar agora</button>
+          </div>
         </div>
-        <button
-          class="ml-1 flex-shrink-0 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
-          @click="installUpdate"
-        >Reiniciar</button>
-        <button class="icon-btn h-7 w-7 flex-shrink-0" title="Depois" @click="dismissUpdate">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
-        </button>
       </div>
     </transition>
 
@@ -426,7 +434,9 @@ export default {
       lastPullAt: null,    // timestamp do último pull OK (mostrado na aba Sync)
       pullError: null,     // reason do último pull falho (âmbar no botão) ou null
       askDiverged: false,  // modal da estratégia 'ask' em divergência
-      update: { available: false, downloaded: false, version: '' }, // auto-update (Electron)
+      settingsInitialTab: 'status', // aba ao abrir Configurações
+      // auto-update (Electron): state = idle|checking|available|downloading|downloaded|uptodate|error
+      update: { state: 'idle', version: '', percent: 0, snoozed: false, showModal: false },
     };
   },
   computed: {
@@ -492,18 +502,15 @@ export default {
     await this.bootstrap();
     // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
     try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
-    // Auto-update (só no Electron): escuta o main. Ao baixar uma versão nova,
-    // mostra o banner "Reiniciar" (o main checa no boot + a cada 3h).
+    // Auto-update (só no Electron): escuta o status do main e aplica a política de
+    // checagem (intervalo/desligado) salva. Modal só aparece quando a atualização
+    // está PRONTA e o usuário não deu "Depois" nesta sessão.
     try {
       const u = window.electron && window.electron.update;
       if (u) {
-        this._offUpdAvail = u.onAvailable((i) => {
-          this.update.version = (i && i.version) || '';
-          this.notify(`Baixando atualização ${this.update.version}…`);
-        });
-        this._offUpdDone = u.onDownloaded((i) => {
-          this.update = { available: false, downloaded: true, version: (i && i.version) || '' };
-        });
+        this._offUpd = u.onStatus((s) => this.onUpdateStatus(s));
+        this.applyUpdatePrefs();
+        window.addEventListener('update-prefs-changed', this.applyUpdatePrefs);
       }
     } catch (e) { /* noop */ }
   },
@@ -909,18 +916,52 @@ export default {
       this.toast = { show: true, text, type, timer: null };
       this.toast.timer = setTimeout(() => { this.toast.show = false; }, 3200);
     },
+    // abre Configurações numa aba específica
+    openSettings(tab) {
+      this.settingsInitialTab = tab || 'status';
+      this.settingsOpen = true;
+    },
     // ── auto-update (Electron) ──
+    readUpdateIntervalMs() {
+      try {
+        const v = parseInt(localStorage.getItem('basalt.updateIntervalMs'), 10);
+        return Number.isFinite(v) && v >= 0 ? v : 10800000; // default 3h
+      } catch (e) { return 10800000; }
+    },
+    applyUpdatePrefs() {
+      const u = window.electron && window.electron.update;
+      if (!u) return;
+      const ms = this.readUpdateIntervalMs();
+      u.setInterval(ms);        // agenda (ou desliga) o polling no main
+      if (ms > 0) u.check();    // checagem ao abrir / ao religar
+    },
+    onUpdateStatus(s) {
+      if (!s || !s.state) return;
+      this.update.state = s.state;
+      if (s.version) this.update.version = s.version;
+      if (typeof s.percent === 'number') this.update.percent = s.percent;
+      // pronto pra instalar → modal (a não ser que já tenha adiado nesta sessão)
+      if (s.state === 'downloaded' && !this.update.snoozed) this.update.showModal = true;
+    },
     installUpdate() {
       try { if (window.electron && window.electron.update) window.electron.update.install(); } catch (e) { /* noop */ }
     },
-    dismissUpdate() { this.update.downloaded = false; },
+    snoozeUpdate() {
+      this.update.snoozed = true;   // não mostra mais popup nesta sessão
+      this.update.showModal = false;
+    },
+    // clique no destaque lateral: pronto → reabre modal; senão abre a aba
+    openUpdate() {
+      if (this.update.state === 'downloaded') this.update.showModal = true;
+      else this.openSettings('updates');
+    },
   },
   beforeUnmount() {
     this.stopAutoPull();
     window.removeEventListener('sync-prefs-changed', this.onSyncPrefsChanged);
+    window.removeEventListener('update-prefs-changed', this.applyUpdatePrefs);
     Object.values(this._filterTimers || {}).forEach((t) => clearTimeout(t));
-    if (this._offUpdAvail) this._offUpdAvail();
-    if (this._offUpdDone) this._offUpdDone();
+    if (this._offUpd) this._offUpd();
   },
 };
 </script>

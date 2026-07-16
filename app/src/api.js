@@ -244,6 +244,11 @@ export function pluginIconUrl(name) {
   return `${BASE}/plugins/${encodeURIComponent(name)}/icon`
 }
 
+// --- Changelog (aba Atualizações) --- { markdown, version }
+export function getChangelog() {
+  return request(`${BASE}/changelog`)
+}
+
 export default {
   getConfig,
   getBoard,
@@ -281,5 +286,6 @@ export default {
   savePluginEnv,
   runPlugin,
   pluginRunUrl,
-  pluginIconUrl
+  pluginIconUrl,
+  getChangelog
 }

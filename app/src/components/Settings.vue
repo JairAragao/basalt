@@ -42,6 +42,10 @@
           v-else-if="tab === 'sync'"
           :last-pull-at="lastPullAt"
         />
+        <UpdateSettings
+          v-else-if="tab === 'updates'"
+          :version="version"
+        />
         <PropertyEditor
           v-else
           :config="config"
@@ -58,23 +62,28 @@ import PropertyEditor from './PropertyEditor.vue';
 import FiltersEditor from './FiltersEditor.vue';
 import CardEditor from './CardEditor.vue';
 import SyncSettings from './SyncSettings.vue';
+import UpdateSettings from './UpdateSettings.vue';
 
 export default {
   name: 'Settings',
-  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor, SyncSettings },
+  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor, SyncSettings, UpdateSettings },
   props: {
     config: { type: Object, required: true },
     lastPullAt: { type: Number, default: null }, // timestamp do último pull OK (App)
+    initialTab: { type: String, default: 'status' },
+    version: { type: String, default: '' },
   },
   data() {
+    const ids = ['status', 'properties', 'filters', 'card', 'sync', 'updates'];
     return {
-      tab: 'status',
+      tab: ids.includes(this.initialTab) ? this.initialTab : 'status',
       tabs: [
         { id: 'status', label: 'Status' },
         { id: 'properties', label: 'Propriedades' },
         { id: 'filters', label: 'Filtros' },
         { id: 'card', label: 'Cartão' },
         { id: 'sync', label: 'Sync' },
+        { id: 'updates', label: 'Atualizações' },
       ],
     };
   },

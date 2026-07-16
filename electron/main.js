@@ -113,28 +113,48 @@ function createWindow(url) {
 // instalador em background e AVISA DENTRO DO APP (banner "Reiniciar"), sem diálogo
 // nativo intrusivo. Só no app EMPACOTADO. Repo público → sem token pro usuário.
 // App não-assinado funciona (NSIS).
-const UPDATE_POLL_MS = 3 * 60 * 60 * 1000; // 3h
 let updateTimer = null;
+let updateReady = false; // listeners do autoUpdater já registrados?
 
 function sendToRenderer(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
     mainWindow.webContents.send(channel, payload);
   }
 }
+const sendUpdStatus = (state, extra) => sendToRenderer('update:status', { state, ...(extra || {}) });
 
+// Registra os listeners do autoUpdater UMA vez. A POLÍTICA (checar no boot,
+// intervalo, ligado/desligado) é dirigida pelo renderer (Configurações →
+// Atualizações) via IPC — aqui só reagimos. Só faz sentido no app empacotado.
 function setupAutoUpdate() {
-  if (!app.isPackaged) return;
+  if (!app.isPackaged || updateReady) return;
+  updateReady = true;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on('update-available', (info) => sendToRenderer('update:available', { version: info && info.version }));
-  autoUpdater.on('update-downloaded', (info) => sendToRenderer('update:downloaded', { version: info && info.version }));
-  // falha de update nunca derruba o app (offline, rate-limit, etc.) — só loga
-  autoUpdater.on('error', (e) => console.error('[updater]', (e && e.message) || e));
+  autoUpdater.on('checking-for-update', () => sendUpdStatus('checking'));
+  autoUpdater.on('update-available', (info) => sendUpdStatus('available', { version: info && info.version }));
+  autoUpdater.on('update-not-available', () => sendUpdStatus('uptodate'));
+  autoUpdater.on('download-progress', (p) => sendUpdStatus('downloading', { percent: Math.round((p && p.percent) || 0) }));
+  autoUpdater.on('update-downloaded', (info) => sendUpdStatus('downloaded', { version: info && info.version }));
+  autoUpdater.on('error', (e) => { console.error('[updater]', (e && e.message) || e); sendUpdStatus('error', { error: (e && e.message) || String(e) }); });
+}
 
-  const check = () => autoUpdater.checkForUpdates().catch((e) => console.error('[updater] check', (e && e.message) || e));
-  check(); // no boot
-  updateTimer = setInterval(check, UPDATE_POLL_MS); // e de tempos em tempos
+function runUpdateCheck() {
+  if (!app.isPackaged) return Promise.resolve({ ok: false, reason: 'dev' });
+  setupAutoUpdate();
+  return autoUpdater.checkForUpdates()
+    .then(() => ({ ok: true }))
+    .catch((e) => { const msg = (e && e.message) || String(e); console.error('[updater] check', msg); return { ok: false, error: msg }; });
+}
+
+// Aplica o intervalo de auto-checagem (ms). 0/negativo = desligado (sem timer).
+function applyUpdateInterval(ms) {
+  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+  if (!app.isPackaged) return;
+  setupAutoUpdate();
+  const n = Number(ms) || 0;
+  if (n > 0) updateTimer = setInterval(() => { runUpdateCheck(); }, n);
 }
 
 // Sobe o backend numa porta livre (0 = SO escolhe) e devolve a URL pronta.
@@ -180,12 +200,10 @@ ipcMain.handle('window:isMaximized', () => !!(mainWindow && mainWindow.isMaximiz
 // Renderer terminou de carregar (bootstrap pronto) → mostra a janela, fecha a splash.
 ipcMain.on('app:ready', () => reveal());
 
-// ── IPC: auto-update (checagem manual + instalar) ────────────────────────────
-ipcMain.handle('update:check', async () => {
-  if (!app.isPackaged) return { ok: false, reason: 'dev' };
-  try { await autoUpdater.checkForUpdates(); return { ok: true }; }
-  catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
-});
+// ── IPC: auto-update (checagem / intervalo / instalar) ───────────────────────
+ipcMain.handle('update:check', async () => runUpdateCheck());
+ipcMain.handle('update:isPackaged', () => app.isPackaged);
+ipcMain.on('update:setInterval', (_e, ms) => applyUpdateInterval(ms));
 ipcMain.on('update:install', () => {
   try { autoUpdater.quitAndInstall(); } catch (e) { console.error('[updater] install', (e && e.message) || e); }
 });
@@ -211,8 +229,9 @@ app.whenReady().then(async () => {
   try {
     const url = await startServer();
     createWindow(url);
-    // checa update depois do boot (não compete com o carregamento inicial)
-    setTimeout(setupAutoUpdate, 5000);
+    // registra os listeners do updater; a checagem/intervalo é dirigida pelo
+    // renderer (Configurações → Atualizações) — inclusive a checagem no boot.
+    setupAutoUpdate();
   } catch (e) {
     if (splashWin) { splashWin.close(); splashWin = null; }
     dialog.showErrorBox('Basalt — falha ao iniciar', String((e && e.message) || e));

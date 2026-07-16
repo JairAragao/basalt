@@ -3,6 +3,23 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.8.6] - 2026-07-16
+
+### Adicionado
+
+- **Aba "Atualizações" nas Configurações** — vê o **changelog das versões**, faz
+  **verificação manual** ("Verificar agora"), escolhe o **intervalo de auto-verificação**
+  (30 min / 1h / 3h / 6h / 24h) ou **desliga** de vez.
+- **Modal de atualização estilizado** (tema do app, não mais o diálogo nativo) com
+  "Reiniciar agora / Depois". **"Depois" adia pela sessão toda** — não reaparece popup
+  nas próximas verificações; fica só um **destaque na barra lateral** ("Atualização
+  disponível") que reabre o modal/leva pra aba.
+
+### Mudado
+
+- **Intervalo de auto-verificação agora é parametrizável** (default 3h) e pode ser
+  desligado — antes era fixo. A checagem no boot respeita a preferência.
+
 ## [0.8.5] - 2026-07-16
 
 ### Mudado

@@ -1197,4 +1197,16 @@ router.get('/plugins/:name/run/:runId', (req, res) => {
   req.on('close', () => { rec.listeners.delete(onData); });
 });
 
+// ── Changelog (aba Atualizações) ─────────────────────────────────────────────
+// Serve o CHANGELOG.md empacotado (versionado no repo do engine). Same-origin →
+// sem depender de rede/CSP. A versão corrente sai do package.json.
+const APP_VERSION = (() => { try { return require('../package.json').version || ''; } catch (_) { return ''; } })();
+router.get('/changelog', (req, res) => {
+  try {
+    let markdown = '';
+    try { markdown = fs.readFileSync(path.resolve(__dirname, '..', 'CHANGELOG.md'), 'utf8'); } catch (_) { markdown = ''; }
+    res.json({ markdown, version: APP_VERSION });
+  } catch (err) { fail(res, err); }
+});
+
 module.exports = router;

@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "license": "MIT",
@@ -78,7 +78,8 @@
       "defaults/**/*",
       "basalt.png",
       "basalt.ico",
-      "package.json"
+      "package.json",
+      "CHANGELOG.md"
     ],
     "win": {
       "target": "nsis",
