@@ -3,6 +3,25 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.9.4] - 2026-07-16
+
+### Corrigido
+
+- **Realce de sintaxe agora APARECE** (SQL e as demais linguagens ficam coloridas).
+  As regras de cor dos tokens estavam num bloco de CSS *scoped* onde o compilador
+  do Vue, ao processar `:deep()` numa lista de seletores, descartava o prefixo do
+  1º seletor de cada grupo — virava um `.hljs-keyword` global de baixa prioridade
+  que perdia pro `code { color: inherit }`. Movido pra um bloco global com `.be-prose`.
+- **Trocar a linguagem de um bloco de código NÃO apaga mais o conteúdo do card.**
+  A troca passou a usar `setNodeMarkup` na posição exata do bloco (sem depender de
+  `.focus()`/seleção, que o clique no `<select>` nativo desfazia). Somado a duas
+  redes de segurança: a serialização que falha não emite corpo vazio, e o editor
+  nunca substitui um corpo preenchido por um valor vazio vindo de fora.
+
+### Interno
+
+- Teste de regressão montando o componente real (troca de linguagem preserva o corpo).
+
 ## [0.9.3] - 2026-07-16
 
 ### Adicionado

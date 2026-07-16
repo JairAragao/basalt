@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "license": "MIT",
@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.11",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.1",
     "electron": "^42.3.3",

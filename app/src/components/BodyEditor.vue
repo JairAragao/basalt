@@ -278,7 +278,7 @@ export default {
       lightbox: { open: false, src: '', alt: '' }, // imagem expandida (estilo Notion)
       codeLangs: CODE_LANGS,
       // seletor de linguagem do code block sob o cursor (flutua no canto do bloco)
-      codeLang: { visible: false, top: 0, left: 0, value: 'plaintext' },
+      codeLang: { visible: false, top: 0, left: 0, value: 'plaintext', pos: -1 },
     };
   },
   computed: {
@@ -304,6 +304,10 @@ export default {
       const incoming = newVal || '';
       if (incoming === current) return;
       if (this.editor.isFocused) return;
+      // Rede de segurança: NÃO apaga um corpo não-vazio por um valor vazio que
+      // chegou de fora (ex.: um emit espúrio). O corpo é "dono" deste editor;
+      // limpeza real vem de setContent('') explícito num doc já vazio.
+      if (!incoming && current) return;
       this.editor.commands.setContent(incoming, false);
     },
   },
@@ -413,7 +417,11 @@ export default {
         },
       },
       onUpdate: () => {
-        this.$emit('input', this.getMarkdown());
+        // Se a serialização falhar, NÃO emite (senão emitiria '' e o pai salvaria
+        // o corpo vazio — era um dos jeitos de "sumir todo o texto").
+        let md;
+        try { md = this.editor.storage.markdown.getMarkdown(); } catch (e) { this.refreshSlash(); return; }
+        this.$emit('input', md);
         this.refreshSlash();
       },
       onSelectionUpdate: () => {
@@ -673,38 +681,62 @@ export default {
     // Mostra um <select> no canto do bloco de código sob o cursor. Trocar a
     // linguagem usa updateAttributes('codeBlock', ...) — comando padrão do TipTap,
     // que só altera o atributo do nó atual (nada de mexer no DOM/conteúdo à mão).
+    // Nunca deixa uma exceção aqui escapar: roda dentro de onTransaction, e um
+    // throw abortaria a atualização do editor.
     refreshCodeLang() {
-      if (!this.editor) { this.codeLang.visible = false; return; }
-      const { state, view } = this.editor;
-      const $from = state.selection.$from;
-      // acha um ancestral codeBlock da seleção
-      let depth = $from.depth;
-      let node = null;
-      let pos = -1;
-      while (depth > 0) {
-        const n = $from.node(depth);
-        if (n.type.name === 'codeBlock') { node = n; pos = $from.before(depth); break; }
-        depth--;
-      }
-      if (!node) { this.codeLang.visible = false; return; }
-      // posiciona o seletor no canto superior direito do <pre> do bloco
-      let dom = null;
-      try { dom = view.nodeDOM(pos); } catch (_) { dom = null; }
-      const rect = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : null;
-      if (!rect) { this.codeLang.visible = false; return; }
-      const host = this.$el.getBoundingClientRect();
-      this.codeLang = {
-        visible: true,
-        top: rect.top - host.top + 6,
-        left: rect.right - host.left - 118, // ~largura do select + respiro
-        value: node.attrs.language || 'plaintext',
-      };
+      try {
+        if (!this.editor) { this.codeLang.visible = false; return; }
+        const { state, view } = this.editor;
+        const $from = state.selection.$from;
+        // acha um ancestral codeBlock da seleção
+        let depth = $from.depth;
+        let node = null;
+        let pos = -1;
+        while (depth > 0) {
+          const n = $from.node(depth);
+          if (n.type.name === 'codeBlock') { node = n; pos = $from.before(depth); break; }
+          depth--;
+        }
+        if (!node) { this.codeLang.visible = false; return; }
+        // guarda a POSIÇÃO do bloco → onCodeLangChange usa ela direto (sem seleção)
+        const value = node.attrs.language || 'plaintext';
+        // posiciona o seletor no canto superior direito do <pre> do bloco
+        let dom = null;
+        try { dom = view.nodeDOM(pos); } catch (_) { dom = null; }
+        const rect = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : null;
+        const host = this.$el && this.$el.getBoundingClientRect ? this.$el.getBoundingClientRect() : null;
+        if (!rect || !host) { this.codeLang = { visible: true, top: 0, left: 0, pos, value }; return; }
+        this.codeLang = {
+          visible: true,
+          top: rect.top - host.top + 6,
+          left: rect.right - host.left - 118, // ~largura do select + respiro
+          pos,
+          value,
+        };
+      } catch (_) { this.codeLang.visible = false; }
     },
+    // Troca a linguagem via setNodeMarkup na POSIÇÃO EXATA do bloco (guardada em
+    // refreshCodeLang). NÃO usa .focus()/seleção: clicar no <select> nativo tira o
+    // foco do editor e bagunça a seleção — o caminho antigo (focus+updateAttributes)
+    // podia agir na seleção errada. setNodeMarkup só troca o atributo, preservando
+    // TODO o conteúdo do bloco (e do documento).
     onCodeLangChange(e) {
       if (!this.editor) return;
       const v = e.target.value;
       const lang = v === 'plaintext' ? null : v;
-      this.editor.chain().focus().updateAttributes('codeBlock', { language: lang }).run();
+      const { state, view } = this.editor;
+      let pos = this.codeLang.pos;
+      let node = (pos != null && pos >= 0) ? state.doc.nodeAt(pos) : null;
+      if (!node || node.type.name !== 'codeBlock') {
+        // fallback: acha o codeBlock na seleção atual
+        const $from = state.selection.$from;
+        node = null;
+        for (let d = $from.depth; d > 0; d -= 1) {
+          if ($from.node(d).type.name === 'codeBlock') { pos = $from.before(d); node = $from.node(d); break; }
+        }
+      }
+      if (!node || node.type.name !== 'codeBlock') return;
+      view.dispatch(state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, language: lang }));
       this.codeLang.value = v;
     },
 
@@ -1061,35 +1093,11 @@ export default {
 .be-codelang:hover, .be-codelang:focus { color: #e9e9e7; border-color: #4a4a4a; }
 .be-codelang option { background: #252525; color: #e9e9e7; }
 
-/* ===== highlight.js (lowlight) — tema dark alinhado à paleta do app ===== */
-.body-editor__surface :deep(.ProseMirror pre code .hljs-comment),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-quote) { color: #6f6f6f; font-style: italic; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-keyword),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-selector-tag),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-literal),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-type),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-name) { color: #d9a01e; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-string),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-meta .hljs-string),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-regexp) { color: #7fbf7f; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-number),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-symbol),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-bullet) { color: #d98a5e; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-title),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-title.function_),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-section) { color: #6fb3d9; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-attr),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-attribute),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-variable),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-template-variable) { color: #c99fd9; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-built_in),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-builtin-name),
-.body-editor__surface :deep(.ProseMirror pre code .hljs-class .hljs-title) { color: #6fb3d9; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-meta) { color: #9b9b9b; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-deletion) { color: #e0566b; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-addition) { color: #7fbf7f; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-emphasis) { font-style: italic; }
-.body-editor__surface :deep(.ProseMirror pre code .hljs-strong) { font-weight: 600; }
+/* Realce de sintaxe (lowlight): ver o bloco <style> GLOBAL no fim do arquivo.
+   Não fica aqui (scoped) porque o compilador de scoped-CSS + :deep() em lista
+   separada por vírgula descartava o prefixo do 1º seletor de cada grupo,
+   virando um `.hljs-keyword` global de baixa especificidade que PERDIA pro
+   `code { color: inherit }` — e o código ficava sem cor. */
 
 /* blockquote */
 .body-editor__surface :deep(.ProseMirror blockquote) {
@@ -1324,4 +1332,42 @@ export default {
   transition: background .12s;
 }
 .be-lightbox__close:hover { background: #2a2a2a; }
+</style>
+
+<!--
+  Realce de sintaxe (lowlight/highlight.js) — bloco GLOBAL (não-scoped) de
+  propósito. O ProseMirror recebe a classe `be-prose` (editorProps.attributes),
+  então `.be-prose ... .hljs-*` mira só este editor sem depender de :deep().
+  `!important` garante que a cor do token vença o `code { color: inherit }` do
+  bloco scoped (que tem especificidade maior). Tema dark alinhado à paleta.
+-->
+<style>
+.be-prose pre code .hljs-comment,
+.be-prose pre code .hljs-quote { color: #6f6f6f !important; font-style: italic; }
+.be-prose pre code .hljs-keyword,
+.be-prose pre code .hljs-selector-tag,
+.be-prose pre code .hljs-literal,
+.be-prose pre code .hljs-type,
+.be-prose pre code .hljs-name { color: #d9a01e !important; }
+.be-prose pre code .hljs-string,
+.be-prose pre code .hljs-meta .hljs-string,
+.be-prose pre code .hljs-regexp { color: #7fbf7f !important; }
+.be-prose pre code .hljs-number,
+.be-prose pre code .hljs-symbol,
+.be-prose pre code .hljs-bullet { color: #d98a5e !important; }
+.be-prose pre code .hljs-title,
+.be-prose pre code .hljs-title.function_,
+.be-prose pre code .hljs-section { color: #6fb3d9 !important; }
+.be-prose pre code .hljs-attr,
+.be-prose pre code .hljs-attribute,
+.be-prose pre code .hljs-variable,
+.be-prose pre code .hljs-template-variable { color: #c99fd9 !important; }
+.be-prose pre code .hljs-built_in,
+.be-prose pre code .hljs-builtin-name,
+.be-prose pre code .hljs-class .hljs-title { color: #6fb3d9 !important; }
+.be-prose pre code .hljs-meta { color: #9b9b9b !important; }
+.be-prose pre code .hljs-deletion { color: #e0566b !important; }
+.be-prose pre code .hljs-addition { color: #7fbf7f !important; }
+.be-prose pre code .hljs-emphasis { font-style: italic; }
+.be-prose pre code .hljs-strong { font-weight: 600; }
 </style>
