@@ -21,7 +21,7 @@ let splashWin = null;
 let serverListener = null;
 let revealed = false;
 let splashAt = 0;
-const MIN_SPLASH_MS = 3800; // tempo mínimo de splash (a barra enche em ~3.4s)
+const MIN_SPLASH_MS = 1400; // tempo mínimo de splash (a barra enche em ~1.2s)
 
 // Splash de carregamento — abre instantânea (HTML mínimo) enquanto o backend
 // sobe e o app carrega. Frameless, MESMO TAMANHO da janela principal, animação centralizada.
@@ -34,12 +34,20 @@ function createSplash() {
     backgroundColor: '#0a0a0b',
     skipTaskbar: true,
     alwaysOnTop: true, // fica por cima até fechar — o app não aparece "antes"
-    show: true,
+    // show:false até o conteúdo pintar. Mostrar antes causava um flash BRANCO
+    // (janela 1280x820 não-maximizada, ainda sem conteúdo) antes do splash real.
+    show: false,
   });
-  splashWin.maximize(); // tela cheia (combina com a janela principal maximizada)
   splashWin.loadFile(path.join(__dirname, 'splash.html'));
+  // Só maximiza + exibe quando a página já está pronta pra pintar (sem flash branco
+  // nem "salto" de tamanho). O crono do tempo mínimo começa aqui.
+  splashWin.once('ready-to-show', () => {
+    if (!splashWin) return;
+    splashWin.maximize();
+    splashWin.show();
+    splashAt = Date.now();
+  });
   splashWin.on('closed', () => { splashWin = null; });
-  splashAt = Date.now();
 }
 
 // Mostra a janela principal e fecha a splash (idempotente, respeitando o tempo mínimo).

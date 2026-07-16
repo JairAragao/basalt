@@ -90,7 +90,24 @@
             <BarList :rows="byUserCompleted" :color="colorCompleted" aria-label="Tarefas finalizadas por usuário" />
           </div>
           <div v-if="report.byEnum" class="rounded-lg border border-ink-500 bg-ink-850 p-4 md:col-span-2">
-            <div class="mb-3 text-[13px] font-medium text-muted">Criadas por {{ report.byEnum.label }}</div>
+            <div class="mb-3 flex items-center gap-2">
+              <div class="text-[13px] font-medium text-muted">Criadas por {{ report.byEnum.label }}</div>
+              <div class="flex-1"></div>
+              <div class="flex items-center rounded-md border border-ink-500 p-0.5 text-[12px]">
+                <button
+                  class="rounded px-2 py-0.5 transition-colors"
+                  :class="enumSort === 'count' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
+                  title="Ordenar pela quantidade"
+                  @click="setEnumSort('count')"
+                >Quantidade</button>
+                <button
+                  class="rounded px-2 py-0.5 transition-colors"
+                  :class="enumSort === 'sequence' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
+                  :title="enumKeyValid === groupByKey ? 'Ordenar pela sequência das etapas do board' : 'Ordenar pela ordem das opções'"
+                  @click="setEnumSort('sequence')"
+                >Sequência</button>
+              </div>
+            </div>
             <BarList :rows="enumRows" :color="colorEnum" :aria-label="'Tarefas criadas por ' + report.byEnum.label" />
           </div>
         </div>
@@ -108,6 +125,7 @@ import { PALETTE, DEFAULT_COLOR, colorFor } from '../palette';
 
 const rangeKey = 'basalt.dashRange';
 const enumPrefKey = 'basalt.dashEnumKey';
+const enumSortKey = 'basalt.dashEnumSort';
 const rangeModes = ['7', '30', '90', '365', 'all', 'custom'];
 
 // cores das séries vêm da paleta do projeto (palette.js) — sem hex inventado
@@ -135,6 +153,7 @@ export default {
       customFrom: '',
       customTo: '',
       enumKey: null,
+      enumSort: 'count', // 'count' | 'sequence'
       rangeOptions: [
         { value: '7', label: 'Últimos 7 dias' },
         { value: '30', label: 'Últimos 30 dias' },
@@ -209,16 +228,39 @@ export default {
     byUserCompleted() {
       return this.report.byUser.filter((u) => u.completed > 0).map((u) => ({ label: u.name, count: u.completed }));
     },
+    // chave de agrupamento do board (status por padrão)
+    groupByKey() { return (this.config.board && this.config.board.groupBy) || 'status'; },
+    // mapa etapa→cor (as cores do status vivem no board.json, não no optionMeta)
+    stageColorMap() {
+      const map = {};
+      const groups = (this.config.board && this.config.board.statusGroups) || [];
+      groups.forEach((g) => (g.stages || []).forEach((s) => { if (s && s.id) map[s.id] = s.color || DEFAULT_COLOR; }));
+      return map;
+    },
     enumRows() {
       if (!this.report.byEnum) return [];
-      // cor da barra = cor da opção (optionMeta › hash); buckets sintéticos em neutro
-      const prop = (this.schema.properties || {})[this.report.byEnum.key] || {};
+      const key = this.report.byEnum.key;
+      const prop = (this.schema.properties || {})[key] || {};
+      const isStatus = key === this.groupByKey;
       const synthetic = (o) => o === '(sem valor)' || o === '(removido)';
-      return this.report.byEnum.rows.map((r) => ({
-        label: r.option,
-        count: r.count,
-        color: synthetic(r.option) ? DEFAULT_COLOR : colorFor(r.option, prop.optionMeta),
-      }));
+      // cor da barra: status → cor da ETAPA (board); demais agrupadores → cor da
+      // OPÇÃO (optionMeta) e, sem cor explícita, o hash estável. Sintéticos neutros.
+      const colorOf = (o) => {
+        if (synthetic(o)) return DEFAULT_COLOR;
+        if (isStatus) return this.stageColorMap[o] || DEFAULT_COLOR;
+        return colorFor(o, prop.optionMeta);
+      };
+      let rows = this.report.byEnum.rows.map((r) => ({ label: r.option, count: r.count, color: colorOf(r.option), _o: r.option }));
+      // ordenação: 'count' (default, já vem do report) ou 'sequence' (ordem
+      // declarada — etapas do board pro status, opções do schema pros demais)
+      if (this.enumSort === 'sequence') {
+        const seq = isStatus
+          ? Object.keys(this.stageColorMap) // ordem de flatten das etapas
+          : (Array.isArray(prop.options) ? prop.options : []);
+        const rank = (o) => { const i = seq.indexOf(o); return i === -1 ? (synthetic(o) ? 2e9 : 1e9) : i; };
+        rows = rows.slice().sort((a, b) => rank(a._o) - rank(b._o));
+      }
+      return rows;
     },
     leadTimeLabel() {
       const v = this.report.counts.leadTimeAvgDays;
@@ -248,6 +290,15 @@ export default {
         const k = localStorage.getItem(enumPrefKey);
         if (k) this.enumKey = k;
       } catch (e) { /* ignore */ }
+      try {
+        const s = localStorage.getItem(enumSortKey);
+        if (s === 'count' || s === 'sequence') this.enumSort = s;
+      } catch (e) { /* ignore */ }
+    },
+    setEnumSort(v) {
+      if (v !== 'count' && v !== 'sequence') return;
+      this.enumSort = v;
+      try { localStorage.setItem(enumSortKey, v); } catch (e) { /* ignore */ }
     },
     setRangeMode(v) {
       if (!rangeModes.includes(v)) return;

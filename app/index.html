@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Basalt</title>
     <link rel="icon" type="image/png" href="/basalt.png" />
+    <!-- fundo dark ANTES do CSS/JS carregar — evita o flash BRANCO no boot
+         (o index.html cru era branco até o Tailwind aplicar). -->
+    <style>
+      html, body { margin: 0; background: #0a0a0b; color: #e9e9e7; }
+      #app { min-height: 100vh; background: #0a0a0b; }
+    </style>
   </head>
   <body>
     <div id="app"></div>

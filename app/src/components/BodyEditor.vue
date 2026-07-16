@@ -118,7 +118,7 @@
 
 <script>
 import { Editor, Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
@@ -338,6 +338,25 @@ export default {
         // Ctrl+V / arrastar imagem → sobe pro vault e insere a URL.
         handlePaste: (view, event) => self.handleImagePaste(event),
         handleDrop: (view, event) => self.handleImageDrop(event),
+        // Clique na área vazia: abaixo do conteúdo cria parágrafo (destrava code
+        // block); à direita de uma linha escrita põe o caret no fim dela.
+        handleClick: (view, pos, event) => self.onEditorClick(view, pos, event),
+        // Notion-like: clicar na zona VAZIA à direita do texto deve levar o caret
+        // ao fim daquela linha. O `pos` do PM (via posAtCoords) já é a posição
+        // certa; o default do browser às vezes cai na linha de baixo. Quando o
+        // clique é claramente à direita do conteúdo resolvido, força a seleção.
+        handleClick: (view, pos, event) => {
+          try {
+            const coords = view.coordsAtPos(pos);
+            if (event.clientX > coords.right + 2) {
+              const sel = TextSelection.near(view.state.doc.resolve(pos));
+              view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
+              view.focus();
+              return true;
+            }
+          } catch (_) { /* posição inválida → deixa o default agir */ }
+          return false;
+        },
       },
       onUpdate: () => {
         this.$emit('input', this.getMarkdown());
@@ -383,10 +402,12 @@ export default {
     // handle de bloco: segue o cursor sobre a superfície de edição
     this._onSurfaceMove = (e) => self.onSurfaceMouseMove(e);
     this._onSurfaceLeave = () => { if (!self.bm.open) self.bh.visible = false; };
+    this._onSurfaceClick = (e) => self.onSurfaceClick(e);
     const surf = this.$refs.editor;
     if (surf) {
       surf.addEventListener('mousemove', this._onSurfaceMove);
       surf.addEventListener('mouseleave', this._onSurfaceLeave);
+      surf.addEventListener('click', this._onSurfaceClick);
     }
   },
   beforeUnmount() {
@@ -396,6 +417,7 @@ export default {
     if (surf) {
       surf.removeEventListener('mousemove', this._onSurfaceMove);
       surf.removeEventListener('mouseleave', this._onSurfaceLeave);
+      surf.removeEventListener('click', this._onSurfaceClick);
     }
     this.editor && this.editor.destroy();
     this.editor = null;
@@ -564,6 +586,28 @@ export default {
       this.closeSlash();
     },
 
+    // Clique na zona VAZIA abaixo do último bloco → cria/foca um parágrafo final
+    // (estilo Notion). Resolve o "preso no code block": dentro do bloco de código
+    // o Enter só quebra linha; sem um parágrafo depois, não dava pra sair. Agora
+    // basta clicar abaixo pra ganhar (ou focar) a linha fora do bloco.
+    onSurfaceClick(e) {
+      if (!this.editor || this.slash.open || this.bm.open) return;
+      const view = this.editor.view;
+      const pmDom = view.dom;
+      if (!pmDom) return;
+      const last = pmDom.lastElementChild;
+      // clique dentro (ou acima) do conteúdo → deixa o ProseMirror posicionar
+      if (last && e.clientY <= last.getBoundingClientRect().bottom) return;
+      const { state } = view;
+      const lastNode = state.doc.lastChild;
+      const isEmptyPara = lastNode && lastNode.type.name === 'paragraph' && lastNode.content.size === 0;
+      if (isEmptyPara) {
+        this.editor.chain().focus('end').run(); // já existe linha vazia no fim → só foca
+      } else {
+        this.editor.chain().insertContentAt(state.doc.content.size, { type: 'paragraph' }).focus('end').run();
+      }
+    },
+
     // ---- handle de bloco (6 pontinhos por linha, estilo Notion) ----
     onSurfaceMouseMove(e) {
       if (!this.editor || this.bm.open) return;
@@ -637,6 +681,41 @@ export default {
       try { node = this.editor.state.doc.nodeAt(start); } catch (_) { node = null; }
       if (!node) return;
       this.editor.chain().focus().insertContentAt(end, node.toJSON()).run();
+    },
+
+    // ---- clique na área vazia (estilo Notion) ----
+    // Resolve dois incômodos:
+    //  (3) clicar ABAIXO de todo o conteúdo cria/foca um parágrafo vazio no fim —
+    //      essencial quando o último bloco é um code block (senão fica preso nele);
+    //  (2) clicar À DIREITA de uma linha já escrita põe o caret no fim daquela
+    //      linha visual (em vez de não mover ou pular pra próxima).
+    onEditorClick(view, pos, event) {
+      const dom = view.dom;
+      const last = dom.lastElementChild;
+      // (3) abaixo do último bloco
+      if (last && event.clientY > last.getBoundingClientRect().bottom) {
+        const doc = view.state.doc;
+        const lastNode = doc.lastChild;
+        const emptyPara = lastNode && lastNode.type.name === 'paragraph' && lastNode.content.size === 0;
+        if (emptyPara) this.editor.chain().focus('end').run();
+        else this.editor.chain().insertContentAt(doc.content.size, { type: 'paragraph' }).focus('end').run();
+        return true;
+      }
+      // (2) à direita do texto (dead zone do padding direito), na faixa Y de uma linha
+      const rect = dom.getBoundingClientRect();
+      const contentRight = rect.right - 24; // ~1.5rem de padding-right do .ProseMirror
+      if (event.clientX > contentRight - 2 && event.clientY <= (last ? last.getBoundingClientRect().bottom : rect.bottom)) {
+        let p = null;
+        try { p = view.posAtCoords({ left: contentRight - 2, top: event.clientY }); } catch (_) { p = null; }
+        if (p) {
+          // bias -1 = fica no FIM da linha visual (não no começo da próxima)
+          const sel = TextSelection.near(view.state.doc.resolve(p.pos), -1);
+          view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
+          view.focus();
+          return true;
+        }
+      }
+      return false;
     },
 
     // ---- imagem via "/" (abre o seletor de arquivo) ----
@@ -717,7 +796,9 @@ export default {
 .body-editor__surface :deep(.ProseMirror) {
   outline: none;
   min-height: 120px;
-  padding: 2px 1.5rem 10px 1.5rem;
+  /* padding-bottom generoso = alvo de clique "abaixo do texto" (onSurfaceClick
+     cria/foca um parágrafo final ali, como no Notion). */
+  padding: 2px 1.5rem 2.5rem 1.5rem;
   white-space: pre-wrap;
   word-wrap: break-word;
   caret-color: #e9e9e7;

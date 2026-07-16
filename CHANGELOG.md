@@ -3,6 +3,29 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.8.3] - 2026-07-16
+
+### Mudado
+
+- **Dashboard: cores do gráfico refletem as cores reais do agrupador** — ao agrupar
+  por **status**, cada barra usa a cor da etapa (do board); para qualquer outro
+  agrupador com cor de opção, usa a cor da opção (sem cor explícita, mantém o hash
+  estável). Nada de cores aleatórias.
+- **Dashboard: ordenação do agrupador** — alterna entre **Quantidade** (maior→menor)
+  e **Sequência** (ordem declarada — etapas do board pro status, ordem das opções
+  pros demais). Preferência lembrada.
+
+### Corrigido
+
+- **Flash branco no boot antes do splash** — o `index.html` cru não tinha fundo
+  definido, aparecendo branco até o CSS (Tailwind) aplicar. Agora o fundo dark é
+  inline no `<head>`, então nunca há um quadro branco antes da tela de carregamento.
+- **Clicar abaixo do texto não criava linha nova** — clicar na área vazia abaixo do
+  conteúdo agora cria/foca um parágrafo no fim (estilo Notion). Resolve o "trava"
+  quando o último bloco é um **code block** (o Enter fica preso dentro dele).
+- **Cursor não ia pro fim ao clicar no fim de uma linha escrita** — clicar à direita
+  do texto de uma linha agora posiciona o caret no fim daquela linha visual.
+
 ## [0.8.2] - 2026-07-14
 
 ### Corrigido
