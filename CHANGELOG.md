@@ -3,7 +3,16 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
-## [0.9.1] - 2026-07-16
+## [0.9.2] - 2026-07-16
+
+### Corrigido
+
+- **Realce de sintaxe dos blocos de código agora funciona** — o código dentro do
+  bloco fica **colorido** conforme a linguagem (tema dark). Antes o seletor de
+  linguagem existia mas o texto não coloria.
+- **Trocar a linguagem não apaga mais o conteúdo do card** — o seletor de linguagem
+  foi refeito como controle **flutuante fora do editor** (usa `updateAttributes`),
+  eliminando a corrupção que fazia todo o texto sumir ao mudar a linguagem.
 
 ### Mudado
 
@@ -12,7 +21,7 @@ Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segu
   wizard padrão do NSIS pedindo confirmação/pasta. O assistente de instalação
   continua valendo só na **instalação manual** (duplo-clique no `.exe`), não no update.
   > Observação: por rodar via o app já instalado, o comportamento silencioso passa a
-  > valer **a partir de updates que saem da 0.9.1** em diante.
+  > valer **a partir de updates que saem da 0.9.2** em diante.
 
 ## [0.9.0] - 2026-07-16
 

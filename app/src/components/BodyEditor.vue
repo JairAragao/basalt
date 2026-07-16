@@ -114,6 +114,19 @@
       <button class="be-slash__item be-blockmenu__danger" @mousedown.prevent @click="deleteBlock"><span class="be-slash__title">Excluir</span></button>
     </div>
 
+    <!-- seletor de linguagem do code block (flutua no canto do bloco sob o cursor).
+         FORA do ProseMirror → mexer nele não corrompe o documento. -->
+    <select
+      v-show="codeLang.visible"
+      class="be-codelang"
+      :style="{ top: codeLang.top + 'px', left: codeLang.left + 'px' }"
+      :value="codeLang.value"
+      @mousedown.stop
+      @change="onCodeLangChange"
+    >
+      <option v-for="l in codeLangs" :key="l.value" :value="l.value">{{ l.label }}</option>
+    </select>
+
     <!-- lightbox: clicar numa imagem do corpo abre ela expandida (estilo Notion) -->
     <div v-if="lightbox.open" class="be-lightbox" @click="closeLightbox">
       <button class="be-lightbox__close" title="Fechar (Esc)" @click.stop="closeLightbox">
@@ -169,57 +182,6 @@ const CODE_LANGS = [
   { value: 'diff', label: 'Diff' },
 ];
 
-// CodeBlockLowlight com NodeView em DOM puro: um <select> de linguagem no canto
-// (contentEditable=false) + o <pre><code> como conteúdo. O highlight é aplicado
-// por decorações do plugin sobre o contentDOM — o NodeView só controla a cerca.
-const CodeBlockPicker = CodeBlockLowlight.extend({
-  addNodeView() {
-    return ({ node, editor, getPos }) => {
-      const dom = document.createElement('div');
-      dom.className = 'be-codeblock';
-
-      const select = document.createElement('select');
-      select.className = 'be-codeblock__lang';
-      select.contentEditable = 'false';
-      for (const l of CODE_LANGS) {
-        const opt = document.createElement('option');
-        opt.value = l.value;
-        opt.textContent = l.label;
-        select.appendChild(opt);
-      }
-      const applyValue = (lang) => { select.value = lang && lang !== 'null' ? lang : 'plaintext'; };
-      applyValue(node.attrs.language);
-      select.addEventListener('mousedown', (e) => e.stopPropagation());
-      select.addEventListener('change', (e) => {
-        const lang = e.target.value === 'plaintext' ? null : e.target.value;
-        if (typeof getPos !== 'function') return;
-        editor.chain().focus().command(({ tr }) => {
-          tr.setNodeAttribute(getPos(), 'language', lang);
-          return true;
-        }).run();
-      });
-
-      const pre = document.createElement('pre');
-      const code = document.createElement('code');
-      pre.appendChild(code);
-      dom.appendChild(select);
-      dom.appendChild(pre);
-
-      return {
-        dom,
-        contentDOM: code,
-        update: (updated) => {
-          if (updated.type.name !== node.type.name) return false;
-          applyValue(updated.attrs.language);
-          return true;
-        },
-        // o <select> não faz parte do conteúdo editável → PM deve ignorá-lo
-        stopEvent: (e) => e.target === select,
-        ignoreMutation: (m) => m.target === select || select.contains(m.target),
-      };
-    };
-  },
-});
 
 // Image com serializer markdown de BLOCO explícito. O default do tiptap-markdown
 // serializa imagem como INLINE; com inline:false (nosso caso, imagem em bloco) a
@@ -314,6 +276,9 @@ export default {
       bm: { open: false, x: 0, y: 0 },
       blockItems: [], // opções "transformar em" aplicáveis ao bloco atual
       lightbox: { open: false, src: '', alt: '' }, // imagem expandida (estilo Notion)
+      codeLangs: CODE_LANGS,
+      // seletor de linguagem do code block sob o cursor (flutua no canto do bloco)
+      codeLang: { visible: false, top: 0, left: 0, value: 'plaintext' },
     };
   },
   computed: {
@@ -391,11 +356,12 @@ export default {
         StarterKit.configure({
           // mantém todos os nós/marcas que serializam p/ markdown
           heading: { levels: [1, 2, 3] },
-          // desliga o codeBlock do StarterKit — usamos o CodeBlockPicker
-          // (lowlight + seletor de linguagem) registrado abaixo.
+          // desliga o codeBlock do StarterKit — usamos o CodeBlockLowlight
+          // (realce de sintaxe via decorações; o seletor de linguagem é um
+          // controle flutuante FORA do ProseMirror, ver refreshCodeLang).
           codeBlock: false,
         }),
-        CodeBlockPicker.configure({ lowlight, defaultLanguage: null }),
+        CodeBlockLowlight.configure({ lowlight, defaultLanguage: null }),
         Placeholder.configure({
           placeholder: this.placeholder,
           // Só no 1º bloco e só quando o doc inteiro está vazio: o texto-guia
@@ -453,9 +419,11 @@ export default {
       onSelectionUpdate: () => {
         this.refreshMarks();
         this.refreshSlash();
+        this.refreshCodeLang();
       },
       onTransaction: () => {
         this.refreshMarks();
+        this.refreshCodeLang();
       },
     });
 
@@ -699,6 +667,45 @@ export default {
         // destrava code block/citação/heading e vira o "clique abaixo" do Notion
         this.editor.chain().insertContentAt(doc.content.size, { type: 'paragraph' }).focus('end').run();
       }
+    },
+
+    // ---- seletor de linguagem do code block (flutuante, fora do ProseMirror) ----
+    // Mostra um <select> no canto do bloco de código sob o cursor. Trocar a
+    // linguagem usa updateAttributes('codeBlock', ...) — comando padrão do TipTap,
+    // que só altera o atributo do nó atual (nada de mexer no DOM/conteúdo à mão).
+    refreshCodeLang() {
+      if (!this.editor) { this.codeLang.visible = false; return; }
+      const { state, view } = this.editor;
+      const $from = state.selection.$from;
+      // acha um ancestral codeBlock da seleção
+      let depth = $from.depth;
+      let node = null;
+      let pos = -1;
+      while (depth > 0) {
+        const n = $from.node(depth);
+        if (n.type.name === 'codeBlock') { node = n; pos = $from.before(depth); break; }
+        depth--;
+      }
+      if (!node) { this.codeLang.visible = false; return; }
+      // posiciona o seletor no canto superior direito do <pre> do bloco
+      let dom = null;
+      try { dom = view.nodeDOM(pos); } catch (_) { dom = null; }
+      const rect = dom && dom.getBoundingClientRect ? dom.getBoundingClientRect() : null;
+      if (!rect) { this.codeLang.visible = false; return; }
+      const host = this.$el.getBoundingClientRect();
+      this.codeLang = {
+        visible: true,
+        top: rect.top - host.top + 6,
+        left: rect.right - host.left - 118, // ~largura do select + respiro
+        value: node.attrs.language || 'plaintext',
+      };
+    },
+    onCodeLangChange(e) {
+      if (!this.editor) return;
+      const v = e.target.value;
+      const lang = v === 'plaintext' ? null : v;
+      this.editor.chain().focus().updateAttributes('codeBlock', { language: lang }).run();
+      this.codeLang.value = v;
     },
 
     // ---- lightbox (imagem expandida) ----
@@ -1014,17 +1021,14 @@ export default {
   color: #e0566b;
 }
 
-/* code block (wrapper com seletor de linguagem) */
-.body-editor__surface :deep(.ProseMirror .be-codeblock) {
-  position: relative;
-  margin: 0.5em 0;
-}
+/* code block */
 .body-editor__surface :deep(.ProseMirror pre) {
+  position: relative;
   background: #1d1d1d;
   border: 1px solid #2f2f2f;
   border-radius: 8px;
   padding: 0.8em 1em;
-  margin: 0;
+  margin: 0.5em 0;
   overflow-x: auto;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.86em;
@@ -1038,30 +1042,24 @@ export default {
   color: inherit;
   font-size: inherit;
 }
-/* seletor de linguagem no canto superior direito do bloco (aparece no hover) */
-.body-editor__surface :deep(.ProseMirror .be-codeblock__lang) {
+/* seletor de linguagem flutuante (fora do ProseMirror; posicionado por JS) */
+.be-codelang {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
+  z-index: 40;
   height: 22px;
+  width: 112px;
   padding: 0 6px;
   border-radius: 5px;
   background: #252525;
   border: 1px solid #373737;
-  color: #9b9b9b;
+  color: #c8c8c6;
   font-family: system-ui, sans-serif;
   font-size: 11px;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity .12s, color .12s, border-color .12s;
+  outline: none;
 }
-.body-editor__surface :deep(.ProseMirror .be-codeblock:hover .be-codeblock__lang),
-.body-editor__surface :deep(.ProseMirror .be-codeblock__lang:focus) {
-  opacity: 1;
-}
-.body-editor__surface :deep(.ProseMirror .be-codeblock__lang:hover) { color: #e9e9e7; border-color: #4a4a4a; }
-.body-editor__surface :deep(.ProseMirror .be-codeblock__lang option) { background: #252525; color: #e9e9e7; }
+.be-codelang:hover, .be-codelang:focus { color: #e9e9e7; border-color: #4a4a4a; }
+.be-codelang option { background: #252525; color: #e9e9e7; }
 
 /* ===== highlight.js (lowlight) — tema dark alinhado à paleta do app ===== */
 .body-editor__surface :deep(.ProseMirror pre code .hljs-comment),
