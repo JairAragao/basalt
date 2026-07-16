@@ -3,6 +3,17 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.9.1] - 2026-07-16
+
+### Mudado
+
+- **Update instala sem a telinha do instalador** — ao clicar "Reiniciar agora", a
+  nova versão é aplicada em **modo silencioso** e o app **reabre sozinho**, sem o
+  wizard padrão do NSIS pedindo confirmação/pasta. O assistente de instalação
+  continua valendo só na **instalação manual** (duplo-clique no `.exe`), não no update.
+  > Observação: por rodar via o app já instalado, o comportamento silencioso passa a
+  > valer **a partir de updates que saem da 0.9.1** em diante.
+
 ## [0.9.0] - 2026-07-16
 
 ### Adicionado

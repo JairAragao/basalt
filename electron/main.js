@@ -205,7 +205,11 @@ ipcMain.handle('update:check', async () => runUpdateCheck());
 ipcMain.handle('update:isPackaged', () => app.isPackaged);
 ipcMain.on('update:setInterval', (_e, ms) => applyUpdateInterval(ms));
 ipcMain.on('update:install', () => {
-  try { autoUpdater.quitAndInstall(); } catch (e) { console.error('[updater] install', (e && e.message) || e); }
+  // quitAndInstall(isSilent=true, isForceRunAfter=true): roda o instalador da nova
+  // versão em modo SILENCIOSO (/S) e reabre o app depois — sem a telinha padrão do
+  // NSIS pedindo confirmação/pasta. O wizard assistido continua valendo só na
+  // instalação MANUAL (duplo-clique no .exe), não no update.
+  try { autoUpdater.quitAndInstall(true, true); } catch (e) { console.error('[updater] install', (e && e.message) || e); }
 });
 
 app.whenReady().then(async () => {
