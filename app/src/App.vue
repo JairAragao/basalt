@@ -315,6 +315,27 @@
       </div>
     </div>
 
+    <!-- Banner de atualização pronta (estilo VSCode) — persiste até reiniciar/dispensar -->
+    <transition name="toast">
+      <div
+        v-if="update.downloaded"
+        class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-accent/50 bg-ink-800 px-4 py-3 shadow-2xl"
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 flex-shrink-0 text-accent"><path d="M10 3v9M6 8l4 4 4-4M4 16h12" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div class="min-w-0">
+          <div class="text-[13px] font-medium text-txt">Atualização pronta</div>
+          <div class="text-[12px] text-muted">Basalt {{ update.version }} — reinicie para aplicar.</div>
+        </div>
+        <button
+          class="ml-1 flex-shrink-0 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
+          @click="installUpdate"
+        >Reiniciar</button>
+        <button class="icon-btn h-7 w-7 flex-shrink-0" title="Depois" @click="dismissUpdate">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
+        </button>
+      </div>
+    </transition>
+
     <!-- Toast -->
     <transition name="toast">
       <div
@@ -405,6 +426,7 @@ export default {
       lastPullAt: null,    // timestamp do último pull OK (mostrado na aba Sync)
       pullError: null,     // reason do último pull falho (âmbar no botão) ou null
       askDiverged: false,  // modal da estratégia 'ask' em divergência
+      update: { available: false, downloaded: false, version: '' }, // auto-update (Electron)
     };
   },
   computed: {
@@ -470,6 +492,20 @@ export default {
     await this.bootstrap();
     // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
     try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
+    // Auto-update (só no Electron): escuta o main. Ao baixar uma versão nova,
+    // mostra o banner "Reiniciar" (o main checa no boot + a cada 3h).
+    try {
+      const u = window.electron && window.electron.update;
+      if (u) {
+        this._offUpdAvail = u.onAvailable((i) => {
+          this.update.version = (i && i.version) || '';
+          this.notify(`Baixando atualização ${this.update.version}…`);
+        });
+        this._offUpdDone = u.onDownloaded((i) => {
+          this.update = { available: false, downloaded: true, version: (i && i.version) || '' };
+        });
+      }
+    } catch (e) { /* noop */ }
   },
   methods: {
     loadColorColumns() {
@@ -873,11 +909,18 @@ export default {
       this.toast = { show: true, text, type, timer: null };
       this.toast.timer = setTimeout(() => { this.toast.show = false; }, 3200);
     },
+    // ── auto-update (Electron) ──
+    installUpdate() {
+      try { if (window.electron && window.electron.update) window.electron.update.install(); } catch (e) { /* noop */ }
+    },
+    dismissUpdate() { this.update.downloaded = false; },
   },
   beforeUnmount() {
     this.stopAutoPull();
     window.removeEventListener('sync-prefs-changed', this.onSyncPrefsChanged);
     Object.values(this._filterTimers || {}).forEach((t) => clearTimeout(t));
+    if (this._offUpdAvail) this._offUpdAvail();
+    if (this._offUpdDone) this._offUpdDone();
   },
 };
 </script>

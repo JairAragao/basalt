@@ -1,0 +1,12 @@
+{
+  "url": "https://api.github.com/repos/JairAragao/basalt/releases/355051375",
+  "assets_url": "https://api.github.com/repos/JairAragao/basalt/releases/355051375/assets",
+  "upload_url": "https://uploads.github.com/repos/JairAragao/basalt/releases/355051375/assets{?name,label}",
+  "html_url": "https://github.com/JairAragao/basalt/releases/tag/v0.8.4",
+  "id": 355051375,
+  "author": {
+    "login": "JairAragao",
+    "id": 40544962,
+    "node_id": "MDQ6VXNlcjQwNTQ0OTYy",
+    "avatar_url": "https:/... (7393 bytes total)
+[full output: ~/AppData\Local\rtk\tee\1784202435_curl.log]

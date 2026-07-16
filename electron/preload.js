@@ -9,6 +9,25 @@ contextBridge.exposeInMainWorld('electron', {
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   // Renderer avisa que terminou de carregar → main fecha a splash e mostra a janela.
   signalReady: () => ipcRenderer.send('app:ready'),
+  // Auto-update (electron-updater): eventos vindos do main + ações.
+  update: {
+    // dispara quando há versão nova (começou a baixar)
+    onAvailable: (cb) => {
+      const h = (_e, info) => cb(info);
+      ipcRenderer.on('update:available', h);
+      return () => ipcRenderer.removeListener('update:available', h);
+    },
+    // dispara quando o download terminou (pronto pra instalar)
+    onDownloaded: (cb) => {
+      const h = (_e, info) => cb(info);
+      ipcRenderer.on('update:downloaded', h);
+      return () => ipcRenderer.removeListener('update:downloaded', h);
+    },
+    // checagem manual sob demanda → { ok, error? }
+    check: () => ipcRenderer.invoke('update:check'),
+    // reinicia e instala a atualização baixada
+    install: () => ipcRenderer.send('update:install'),
+  },
   // Controles da janela (barra de título custom, frameless).
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

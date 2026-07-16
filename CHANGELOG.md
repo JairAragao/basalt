@@ -3,6 +3,16 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.8.5] - 2026-07-16
+
+### Mudado
+
+- **Auto-update estilo VSCode** — além de checar no boot, agora **verifica de tempos
+  em tempos** (a cada 3h) se há release nova no GitHub e **avisa dentro do app** com
+  um banner discreto "Atualização pronta — Reiniciar" (em vez do diálogo nativo).
+  Baixa em background; clicar em Reiniciar aplica na hora (ou aplica sozinha ao
+  fechar). Também expõe checagem manual (IPC `update:check`).
+
 ## [0.8.4] - 2026-07-16
 
 ### Adicionado
