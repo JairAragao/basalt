@@ -64,24 +64,14 @@
             @input="(e) => setIntFilter(f.name, e.target.value)"
           />
 
-          <!-- data (range inclusivo por dia local) -->
-          <div v-else-if="f.type === 'datetime'" class="flex items-center gap-1">
-            <input
-              type="date"
-              class="field date-dark h-8 !w-[8.25rem] !py-1 text-[12px]"
-              :title="f.label + ' — de'"
-              :value="filters[f.name] ? filters[f.name].from : ''"
-              @change="(e) => setDateFilter(f.name, 'from', e.target.value)"
-            />
-            <span class="text-[11px] text-faint">–</span>
-            <input
-              type="date"
-              class="field date-dark h-8 !w-[8.25rem] !py-1 text-[12px]"
-              :title="f.label + ' — até'"
-              :value="filters[f.name] ? filters[f.name].to : ''"
-              @change="(e) => setDateFilter(f.name, 'to', e.target.value)"
-            />
-          </div>
+          <!-- data (range inclusivo por dia local) — calendário único estilizado -->
+          <DateRangePicker
+            v-else-if="f.type === 'datetime'"
+            class="w-60"
+            :from="filters[f.name] ? filters[f.name].from : ''"
+            :to="filters[f.name] ? filters[f.name].to : ''"
+            @change="(r) => setDateRange(f.name, r)"
+          />
 
           <!-- enum/multiselect/user/demais: select (X de limpar no trigger) -->
           <Dropdown
@@ -364,10 +354,12 @@ import TaskPeek from './components/TaskPeek.vue';
 import Settings from './components/Settings.vue';
 import SetupWizard from './components/SetupWizard.vue';
 import Dropdown from './components/Dropdown.vue';
+import DateRangePicker from './components/DateRangePicker.vue';
 import TitleBar from './components/TitleBar.vue';
 import Sidebar from './components/Sidebar.vue';
 import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications } from './api';
 import { matchesTask } from './filtering';
+import { colorFor } from './palette';
 
 // Lazy: dashboard (uPlot) fora do bundle inicial — só carrega ao abrir a view
 // (mesmo padrão do BodyEditor no TaskPeek).
@@ -391,7 +383,7 @@ const PULL_REASON_LABELS = {
 
 export default {
   name: 'App',
-  components: { TasksView, DashboardView, ExtensionsView, TaskPeek, Settings, SetupWizard, Dropdown, TitleBar, Sidebar },
+  components: { TasksView, DashboardView, ExtensionsView, TaskPeek, Settings, SetupWizard, Dropdown, DateRangePicker, TitleBar, Sidebar },
   // disponibiliza roster + tarefas (reativos) para componentes filhos
   // (TaskCard resolve user id → nome; OptionMenu conta uso de opção)
   provide() {
@@ -457,8 +449,14 @@ export default {
         const type = prop.type || 'string';
         let options = [];
         if (type === 'enum' || type === 'multiselect') {
-          options = (prop.options || []).slice();
-          if (!options.length) options = this.distinctValues(name);
+          let vals = (prop.options || []).slice();
+          if (!vals.length) vals = this.distinctValues(name);
+          // resolve a MESMA cor da opção (optionMeta › hash) → filtro casa com card/peek
+          const meta = prop.optionMeta || {};
+          options = vals.map((o) => {
+            const val = (o && typeof o === 'object') ? o.value : o;
+            return { value: val, label: String(val), color: colorFor(val, meta) };
+          });
         } else if (type === 'user') {
           options = this.distinctValues(name).map((id) => {
             const u = this.users.find((x) => x.id === id);
@@ -593,10 +591,11 @@ export default {
       const empty = raw === '' || raw === null || raw === undefined;
       this.filters = { ...this.filters, [name]: empty ? null : { n: Number(raw) } };
     },
-    setDateFilter(name, side, value) {
-      const cur = { from: '', to: '', ...(this.filters[name] || {}) };
-      cur[side] = value || '';
-      this.filters = { ...this.filters, [name]: (cur.from || cur.to) ? { from: cur.from, to: cur.to } : null };
+    // DateRangePicker emite { from, to } (YYYY-MM-DD) — vazio nos dois = sem filtro
+    setDateRange(name, r) {
+      const from = (r && r.from) || '';
+      const to = (r && r.to) || '';
+      this.filters = { ...this.filters, [name]: (from || to) ? { from, to } : null };
     },
     setSortBy(by) {
       if (!by) return;

@@ -3,6 +3,27 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.9.3] - 2026-07-16
+
+### Adicionado
+
+- **Calendário próprio (dark) nos filtros e no dashboard** — filtro de data virou um
+  **calendário único**: clica na data inicial e depois na final (ou na mesma, pra um
+  dia só). Sem mais o input de data padrão do navegador.
+- **Seletor de data/hora estilizado** ao editar um campo de data no cartão (calendário
+  custom + hora), no lugar do `datetime-local` nativo.
+
+### Corrigido
+
+- **Cor da opção agora é a MESMA na prévia do card, ao abrir o cartão e no filtro** —
+  a cor era normalizada de formas diferentes (com/sem espaços), fazendo a mesma opção
+  (ex.: "bug") aparecer cinza na prévia e rosa ao abrir. Centralizado em `colorFor`.
+
+### Interno
+
+- Testes de regressão do bloco de código (troca de linguagem preserva o corpo) e de
+  consistência de cor das opções.
+
 ## [0.9.2] - 2026-07-16
 
 ### Corrigido

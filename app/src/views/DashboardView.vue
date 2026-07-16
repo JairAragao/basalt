@@ -6,12 +6,13 @@
         <h1 class="text-[15px] font-medium text-txt">Dashboard</h1>
         <div class="flex-1"></div>
         <Dropdown :value="rangeMode" :options="rangeOptions" class="w-44" @input="setRangeMode" />
-        <template v-if="rangeMode === 'custom'">
-          <!-- exceção documentada no design: input date nativo com color-scheme dark -->
-          <input v-model="customFrom" type="date" class="field date-dark w-36" aria-label="Data inicial" @change="persistRange" />
-          <span class="text-[12px] text-faint">até</span>
-          <input v-model="customTo" type="date" class="field date-dark w-36" aria-label="Data final" @change="persistRange" />
-        </template>
+        <DateRangePicker
+          v-if="rangeMode === 'custom'"
+          class="w-60"
+          :from="customFrom"
+          :to="customTo"
+          @change="onCustomRange"
+        />
         <Dropdown
           v-if="enumOptions.length"
           :value="enumKeyValid"
@@ -118,6 +119,7 @@
 
 <script>
 import Dropdown from '../components/Dropdown.vue';
+import DateRangePicker from '../components/DateRangePicker.vue';
 import UplotChart from '../components/UplotChart.vue';
 import BarList from '../components/BarList.vue';
 import { buildReport, dayKey } from '../reports';
@@ -135,7 +137,7 @@ const colorEnum = PALETTE.find((p) => p.name === 'Azul').value;
 
 export default {
   name: 'DashboardView',
-  components: { Dropdown, UplotChart, BarList },
+  components: { Dropdown, DateRangePicker, UplotChart, BarList },
   props: {
     // dados vindos do App (GET /config + /tasks + /users já carregados e
     // atualizados pelo auto-pull — evita fetch duplicado e drift)
@@ -310,6 +312,12 @@ export default {
         this.customFrom = dayKey(d);
         this.customTo = dayKey(new Date());
       }
+      this.persistRange();
+    },
+    // DateRangePicker emite { from, to } (YYYY-MM-DD)
+    onCustomRange(r) {
+      this.customFrom = (r && r.from) || '';
+      this.customTo = (r && r.to) || '';
       this.persistRange();
     },
     persistRange() {

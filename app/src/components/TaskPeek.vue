@@ -160,12 +160,10 @@
                       class="field !w-24"
                       placeholder="—"
                     />
-                    <input
+                    <DatePicker
                       v-else-if="field.type === 'datetime'"
-                      type="datetime-local"
-                      :value="toLocal(model[field.name])"
-                      class="field"
-                      @input="(e) => setDate(field.name, e.target.value)"
+                      :value="model[field.name] || ''"
+                      @input="(iso) => (model[field.name] = iso)"
                     />
                     <input v-else v-model="model[field.name]" class="field" :placeholder="field.label || field.name" />
                   </div>
@@ -298,6 +296,7 @@
 import { defineAsyncComponent } from 'vue';
 import { getTask, createTask, updateTask, uploadAsset, saveProperties, saveStatus, syncPull } from '../api';
 import Dropdown from './Dropdown.vue';
+import DatePicker from './DatePicker.vue';
 import PropSelect from './PropSelect.vue';
 import StatusSelect from './StatusSelect.vue';
 import CardHistory from './CardHistory.vue';
@@ -314,7 +313,7 @@ const MODE_KEY = 'basalt.peekMode';
 
 export default {
   name: 'TaskPeek',
-  components: { Dropdown, PropSelect, StatusSelect, CardHistory, BodyEditor, EmojiPicker },
+  components: { Dropdown, DatePicker, PropSelect, StatusSelect, CardHistory, BodyEditor, EmojiPicker },
   props: {
     open: { type: Boolean, default: false },
     config: { type: Object, required: true },
