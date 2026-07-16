@@ -3,6 +3,27 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.9.0] - 2026-07-16
+
+### Adicionado
+
+- **Blocos de código com linguagem + realce colorido** — cada bloco de código tem um
+  **seletor de linguagem** no canto (JavaScript, Python, SQL, JSON, Shell, Go, Rust e
+  mais 13). O realce de sintaxe é aplicado ao vivo (highlight.js/lowlight) e a linguagem
+  é **gravada na cerca do `.md`** (```` ```python ````) — ida e volta sem perda.
+- **Imagem expandida (lightbox)** — clicar numa imagem do corpo da tarefa abre ela em
+  tela cheia (estilo Notion); fecha no clique, `Esc` ou no ✕.
+
+### Corrigido
+
+- **Cursor pulava pro início da linha de baixo** ao clicar no fim de uma linha que
+  sofreu quebra — havia uma chave `handleClick` duplicada que anulava o tratamento
+  correto; agora o caret fica no fim da linha clicada.
+- **Clicar abaixo do conteúdo** cria (ou foca) um parágrafo simples de forma confiável,
+  **destravando o bloco de código** quando ele é o último bloco (antes ficava preso).
+- **Tela de carregamento (splash)** só fecha depois que o board realmente **renderiza** —
+  acabou o "frame bugado" que aparecia por um instante antes do conteúdo pintar.
+
 ## [0.8.6] - 2026-07-16
 
 ### Adicionado

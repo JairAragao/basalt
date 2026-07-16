@@ -113,6 +113,14 @@
       <button class="be-slash__item" @mousedown.prevent @click="duplicateBlock"><span class="be-slash__title">Duplicar</span></button>
       <button class="be-slash__item be-blockmenu__danger" @mousedown.prevent @click="deleteBlock"><span class="be-slash__title">Excluir</span></button>
     </div>
+
+    <!-- lightbox: clicar numa imagem do corpo abre ela expandida (estilo Notion) -->
+    <div v-if="lightbox.open" class="be-lightbox" @click="closeLightbox">
+      <button class="be-lightbox__close" title="Fechar (Esc)" @click.stop="closeLightbox">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20"><path d="M14 6l-8 8M6 6l8 8" stroke-linecap="round" /></svg>
+      </button>
+      <img :src="lightbox.src" :alt="lightbox.alt" class="be-lightbox__img" @click.stop />
+    </div>
   </div>
 </template>
 
@@ -126,8 +134,92 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Image from '@tiptap/extension-image';
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
 import { Markdown } from 'tiptap-markdown';
 import { uploadAsset } from '../api';
+
+// Syntax highlight dos code blocks. `common` = ~35 linguagens populares do
+// highlight.js. A linguagem escolhida vira o atributo `language` do nó e o
+// tiptap-markdown a serializa na cerca do .md (```lang) — round-trip completo.
+const lowlight = createLowlight(common);
+
+// Linguagens oferecidas no seletor do code block (value = id do highlight.js).
+// 'plaintext' = sem cor. Rótulos amigáveis; a lista cobre o dia-a-dia do ERP.
+const CODE_LANGS = [
+  { value: 'plaintext', label: 'Texto' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'json', label: 'JSON' },
+  { value: 'bash', label: 'Shell / Bash' },
+  { value: 'sql', label: 'SQL' },
+  { value: 'xml', label: 'HTML / XML' },
+  { value: 'css', label: 'CSS' },
+  { value: 'go', label: 'Go' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'java', label: 'Java' },
+  { value: 'c', label: 'C' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'csharp', label: 'C#' },
+  { value: 'php', label: 'PHP' },
+  { value: 'ruby', label: 'Ruby' },
+  { value: 'yaml', label: 'YAML' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'diff', label: 'Diff' },
+];
+
+// CodeBlockLowlight com NodeView em DOM puro: um <select> de linguagem no canto
+// (contentEditable=false) + o <pre><code> como conteúdo. O highlight é aplicado
+// por decorações do plugin sobre o contentDOM — o NodeView só controla a cerca.
+const CodeBlockPicker = CodeBlockLowlight.extend({
+  addNodeView() {
+    return ({ node, editor, getPos }) => {
+      const dom = document.createElement('div');
+      dom.className = 'be-codeblock';
+
+      const select = document.createElement('select');
+      select.className = 'be-codeblock__lang';
+      select.contentEditable = 'false';
+      for (const l of CODE_LANGS) {
+        const opt = document.createElement('option');
+        opt.value = l.value;
+        opt.textContent = l.label;
+        select.appendChild(opt);
+      }
+      const applyValue = (lang) => { select.value = lang && lang !== 'null' ? lang : 'plaintext'; };
+      applyValue(node.attrs.language);
+      select.addEventListener('mousedown', (e) => e.stopPropagation());
+      select.addEventListener('change', (e) => {
+        const lang = e.target.value === 'plaintext' ? null : e.target.value;
+        if (typeof getPos !== 'function') return;
+        editor.chain().focus().command(({ tr }) => {
+          tr.setNodeAttribute(getPos(), 'language', lang);
+          return true;
+        }).run();
+      });
+
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      pre.appendChild(code);
+      dom.appendChild(select);
+      dom.appendChild(pre);
+
+      return {
+        dom,
+        contentDOM: code,
+        update: (updated) => {
+          if (updated.type.name !== node.type.name) return false;
+          applyValue(updated.attrs.language);
+          return true;
+        },
+        // o <select> não faz parte do conteúdo editável → PM deve ignorá-lo
+        stopEvent: (e) => e.target === select,
+        ignoreMutation: (m) => m.target === select || select.contains(m.target),
+      };
+    };
+  },
+});
 
 // Image com serializer markdown de BLOCO explícito. O default do tiptap-markdown
 // serializa imagem como INLINE; com inline:false (nosso caso, imagem em bloco) a
@@ -221,6 +313,7 @@ export default {
       bh: { visible: false, top: 0, start: 0, end: 0 },
       bm: { open: false, x: 0, y: 0 },
       blockItems: [], // opções "transformar em" aplicáveis ao bloco atual
+      lightbox: { open: false, src: '', alt: '' }, // imagem expandida (estilo Notion)
     };
   },
   computed: {
@@ -298,8 +391,11 @@ export default {
         StarterKit.configure({
           // mantém todos os nós/marcas que serializam p/ markdown
           heading: { levels: [1, 2, 3] },
-          codeBlock: {},
+          // desliga o codeBlock do StarterKit — usamos o CodeBlockPicker
+          // (lowlight + seletor de linguagem) registrado abaixo.
+          codeBlock: false,
         }),
+        CodeBlockPicker.configure({ lowlight, defaultLanguage: null }),
         Placeholder.configure({
           placeholder: this.placeholder,
           // Só no 1º bloco e só quando o doc inteiro está vazio: o texto-guia
@@ -338,23 +434,15 @@ export default {
         // Ctrl+V / arrastar imagem → sobe pro vault e insere a URL.
         handlePaste: (view, event) => self.handleImagePaste(event),
         handleDrop: (view, event) => self.handleImageDrop(event),
-        // Clique na área vazia: abaixo do conteúdo cria parágrafo (destrava code
-        // block); à direita de uma linha escrita põe o caret no fim dela.
+        // Clicar À DIREITA de uma linha põe o caret no fim dela (não pula p/ a
+        // linha de baixo). Abaixo de todo o conteúdo é tratado por onSurfaceClick.
         handleClick: (view, pos, event) => self.onEditorClick(view, pos, event),
-        // Notion-like: clicar na zona VAZIA à direita do texto deve levar o caret
-        // ao fim daquela linha. O `pos` do PM (via posAtCoords) já é a posição
-        // certa; o default do browser às vezes cai na linha de baixo. Quando o
-        // clique é claramente à direita do conteúdo resolvido, força a seleção.
-        handleClick: (view, pos, event) => {
-          try {
-            const coords = view.coordsAtPos(pos);
-            if (event.clientX > coords.right + 2) {
-              const sel = TextSelection.near(view.state.doc.resolve(pos));
-              view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
-              view.focus();
-              return true;
-            }
-          } catch (_) { /* posição inválida → deixa o default agir */ }
+        // Clique sobre uma imagem → abre expandida (lightbox), não seleciona o nó.
+        handleClickOn: (view, pos, node, nodePos, event) => {
+          if (node && node.type && node.type.name === 'image') {
+            self.openLightbox(node.attrs.src, node.attrs.alt);
+            return true;
+          }
           return false;
         },
       },
@@ -413,6 +501,7 @@ export default {
   beforeUnmount() {
     document.removeEventListener('mousedown', this.onDocMouseDown, true);
     document.removeEventListener('mousedown', this.onBlockDocMouseDown, true);
+    document.removeEventListener('keydown', this.onLightboxKey, true);
     const surf = this.$refs.editor;
     if (surf) {
       surf.removeEventListener('mousemove', this._onSurfaceMove);
@@ -592,20 +681,38 @@ export default {
     // basta clicar abaixo pra ganhar (ou focar) a linha fora do bloco.
     onSurfaceClick(e) {
       if (!this.editor || this.slash.open || this.bm.open) return;
+      if (e.target && e.target.tagName === 'IMG') return; // imagem → lightbox (handleClickOn)
       const view = this.editor.view;
-      const pmDom = view.dom;
-      if (!pmDom) return;
-      const last = pmDom.lastElementChild;
-      // clique dentro (ou acima) do conteúdo → deixa o ProseMirror posicionar
-      if (last && e.clientY <= last.getBoundingClientRect().bottom) return;
-      const { state } = view;
-      const lastNode = state.doc.lastChild;
+      const doc = view.state.doc;
+      // Fim REAL do conteúdo (fundo da última linha do último bloco), medido pelo
+      // ProseMirror — mais confiável que lastElementChild.bottom p/ code block e
+      // citação (que têm padding). Clique acima disso → deixa o PM posicionar.
+      let endCoords;
+      try { endCoords = view.coordsAtPos(doc.content.size); } catch (_) { return; }
+      if (e.clientY <= endCoords.bottom) return;
+      const lastNode = doc.lastChild;
       const isEmptyPara = lastNode && lastNode.type.name === 'paragraph' && lastNode.content.size === 0;
       if (isEmptyPara) {
         this.editor.chain().focus('end').run(); // já existe linha vazia no fim → só foca
       } else {
-        this.editor.chain().insertContentAt(state.doc.content.size, { type: 'paragraph' }).focus('end').run();
+        // insere um parágrafo SIMPLES (sem formatação) após o último bloco —
+        // destrava code block/citação/heading e vira o "clique abaixo" do Notion
+        this.editor.chain().insertContentAt(doc.content.size, { type: 'paragraph' }).focus('end').run();
       }
+    },
+
+    // ---- lightbox (imagem expandida) ----
+    openLightbox(src, alt) {
+      if (!src) return;
+      this.lightbox = { open: true, src, alt: alt || '' };
+      document.addEventListener('keydown', this.onLightboxKey, true);
+    },
+    closeLightbox() {
+      this.lightbox.open = false;
+      document.removeEventListener('keydown', this.onLightboxKey, true);
+    },
+    onLightboxKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); this.closeLightbox(); }
     },
 
     // ---- handle de bloco (6 pontinhos por linha, estilo Notion) ----
@@ -690,31 +797,20 @@ export default {
     //  (2) clicar À DIREITA de uma linha já escrita põe o caret no fim daquela
     //      linha visual (em vez de não mover ou pular pra próxima).
     onEditorClick(view, pos, event) {
-      const dom = view.dom;
-      const last = dom.lastElementChild;
-      // (3) abaixo do último bloco
-      if (last && event.clientY > last.getBoundingClientRect().bottom) {
-        const doc = view.state.doc;
-        const lastNode = doc.lastChild;
-        const emptyPara = lastNode && lastNode.type.name === 'paragraph' && lastNode.content.size === 0;
-        if (emptyPara) this.editor.chain().focus('end').run();
-        else this.editor.chain().insertContentAt(doc.content.size, { type: 'paragraph' }).focus('end').run();
-        return true;
-      }
-      // (2) à direita do texto (dead zone do padding direito), na faixa Y de uma linha
-      const rect = dom.getBoundingClientRect();
-      const contentRight = rect.right - 24; // ~1.5rem de padding-right do .ProseMirror
-      if (event.clientX > contentRight - 2 && event.clientY <= (last ? last.getBoundingClientRect().bottom : rect.bottom)) {
-        let p = null;
-        try { p = view.posAtCoords({ left: contentRight - 2, top: event.clientY }); } catch (_) { p = null; }
-        if (p) {
-          // bias -1 = fica no FIM da linha visual (não no começo da próxima)
-          const sel = TextSelection.near(view.state.doc.resolve(p.pos), -1);
+      // Clique À DIREITA do glifo em `pos`. No fim de uma linha que sofreu wrap,
+      // o `pos` do PM é ambíguo (= início da próxima linha) e o default associa
+      // pra FRENTE → o caret salta pro começo da linha de baixo. Forçamos a
+      // associação pra TRÁS (bias -1) → o caret fica no FIM da linha clicada.
+      // (clique abaixo de todo o conteúdo é tratado por onSurfaceClick.)
+      try {
+        const coords = view.coordsAtPos(pos);
+        if (event.clientX > coords.right + 1) {
+          const sel = TextSelection.near(view.state.doc.resolve(pos), -1);
           view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
           view.focus();
           return true;
         }
-      }
+      } catch (_) { /* posição inválida → deixa o default agir */ }
       return false;
     },
 
@@ -918,13 +1014,17 @@ export default {
   color: #e0566b;
 }
 
-/* code block */
+/* code block (wrapper com seletor de linguagem) */
+.body-editor__surface :deep(.ProseMirror .be-codeblock) {
+  position: relative;
+  margin: 0.5em 0;
+}
 .body-editor__surface :deep(.ProseMirror pre) {
   background: #1d1d1d;
   border: 1px solid #2f2f2f;
   border-radius: 8px;
   padding: 0.8em 1em;
-  margin: 0.5em 0;
+  margin: 0;
   overflow-x: auto;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 0.86em;
@@ -938,6 +1038,60 @@ export default {
   color: inherit;
   font-size: inherit;
 }
+/* seletor de linguagem no canto superior direito do bloco (aparece no hover) */
+.body-editor__surface :deep(.ProseMirror .be-codeblock__lang) {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #252525;
+  border: 1px solid #373737;
+  color: #9b9b9b;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .12s, color .12s, border-color .12s;
+}
+.body-editor__surface :deep(.ProseMirror .be-codeblock:hover .be-codeblock__lang),
+.body-editor__surface :deep(.ProseMirror .be-codeblock__lang:focus) {
+  opacity: 1;
+}
+.body-editor__surface :deep(.ProseMirror .be-codeblock__lang:hover) { color: #e9e9e7; border-color: #4a4a4a; }
+.body-editor__surface :deep(.ProseMirror .be-codeblock__lang option) { background: #252525; color: #e9e9e7; }
+
+/* ===== highlight.js (lowlight) — tema dark alinhado à paleta do app ===== */
+.body-editor__surface :deep(.ProseMirror pre code .hljs-comment),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-quote) { color: #6f6f6f; font-style: italic; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-keyword),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-selector-tag),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-literal),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-type),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-name) { color: #d9a01e; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-string),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-meta .hljs-string),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-regexp) { color: #7fbf7f; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-number),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-symbol),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-bullet) { color: #d98a5e; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-title),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-title.function_),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-section) { color: #6fb3d9; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-attr),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-attribute),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-variable),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-template-variable) { color: #c99fd9; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-built_in),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-builtin-name),
+.body-editor__surface :deep(.ProseMirror pre code .hljs-class .hljs-title) { color: #6fb3d9; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-meta) { color: #9b9b9b; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-deletion) { color: #e0566b; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-addition) { color: #7fbf7f; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-emphasis) { font-style: italic; }
+.body-editor__surface :deep(.ProseMirror pre code .hljs-strong) { font-weight: 600; }
 
 /* blockquote */
 .body-editor__surface :deep(.ProseMirror blockquote) {
@@ -954,6 +1108,7 @@ export default {
   height: auto;
   border-radius: 8px;
   margin: 0.5em 0;
+  cursor: zoom-in; /* clique → abre expandida (lightbox) */
 }
 .body-editor__surface :deep(.ProseMirror img.ProseMirror-selectednode) {
   outline: 2px solid rgba(217, 160, 30, 0.6);
@@ -1131,4 +1286,44 @@ export default {
 .be-blockmenu__label { font-size: 11px; color: #6f6f6f; padding: 2px 8px 4px; }
 .be-blockmenu__sep { height: 1px; background: #373737; margin: 4px 0; }
 .be-blockmenu__danger .be-slash__title { color: #e0566b; }
+
+/* ====== lightbox (imagem expandida) ====== */
+.be-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+  animation: be-lightbox-in .12s ease;
+}
+@keyframes be-lightbox-in { from { opacity: 0; } to { opacity: 1; } }
+.be-lightbox__img {
+  max-width: 92vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+.be-lightbox__close {
+  position: fixed;
+  top: 18px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: #e9e9e7;
+  background: rgba(37, 37, 37, 0.8);
+  border: 1px solid #373737;
+  cursor: pointer;
+  transition: background .12s;
+}
+.be-lightbox__close:hover { background: #2a2a2a; }
 </style>

@@ -500,8 +500,11 @@ export default {
     // Settings salvou prefs de sync → re-agenda o auto-pull ao vivo
     window.addEventListener('sync-prefs-changed', this.onSyncPrefsChanged);
     await this.bootstrap();
-    // Avisa o Electron que o app está pronto → fecha a splash de carregamento.
-    try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
+    // Fecha a splash SÓ depois que o board (ou wizard) realmente PINTAR — senão a
+    // splash saía com os dados carregados mas antes do Vue renderizar, mostrando
+    // um frame "bugado" (meio pintado) antes do conteúdo. nextTick garante o
+    // DOM atualizado; o duplo rAF garante que o browser já pintou esse frame.
+    this.signalReadyWhenPainted();
     // Auto-update (só no Electron): escuta o status do main e aplica a política de
     // checagem (intervalo/desligado) salva. Modal só aparece quando a atualização
     // está PRONTA e o usuário não deu "Depois" nesta sessão.
@@ -515,6 +518,16 @@ export default {
     } catch (e) { /* noop */ }
   },
   methods: {
+    // Sinaliza "pronto" ao Electron (fecha a splash) só após o board pintar.
+    signalReadyWhenPainted() {
+      const done = () => {
+        try { if (window.electron && window.electron.signalReady) window.electron.signalReady(); } catch (e) { /* noop */ }
+      };
+      // se ainda estiver carregando (ex.: troca de vault em voo), espera terminar
+      this.$nextTick(() => {
+        requestAnimationFrame(() => requestAnimationFrame(done));
+      });
+    },
     loadColorColumns() {
       // default ATIVO: só fica off se o usuário tiver desligado explicitamente ('0').
       try { const v = localStorage.getItem(COLOR_KEY); return v === null ? true : v === '1'; } catch (e) { return true; }
