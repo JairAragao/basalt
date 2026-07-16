@@ -3,6 +3,19 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.8.4] - 2026-07-16
+
+### Adicionado
+
+- **Auto-update pela release mais recente do GitHub** (`electron-updater` +
+  provider GitHub). O app empacotado checa `JairAragao/basalt`, baixa o novo
+  instalador em background e oferece reiniciar (ou aplica ao fechar). Repo público
+  → sem token pro usuário; funciona mesmo sem assinatura (NSIS). Releases passam a
+  ser publicadas via `npm run release` (`electron-builder --publish always`), com
+  `latest.yml` + `.blockmap` e nomes de asset que o updater entende. **0.8.4 é a
+  primeira versão com updater** — instale-a manualmente; da próxima em diante é
+  automático.
+
 ## [0.8.3] - 2026-07-16
 
 ### Mudado

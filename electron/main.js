@@ -6,6 +6,7 @@
 
 const path = require('path');
 const { app, BrowserWindow, Menu, ipcMain, dialog, shell, session } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 // Sem menu de aplicação padrão (File/Edit/View/...). A navegação é toda na UI.
 Menu.setApplicationMenu(null);
@@ -106,6 +107,35 @@ function createWindow(url) {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// ── Auto-update (electron-updater › GitHub Releases) ─────────────────────────
+// Checa o repo público JairAragao/basalt: se houver uma release com versão maior
+// (lê o latest.yml do release), baixa o novo instalador em background e, ao ficar
+// pronto, oferece reiniciar. Só no app EMPACOTADO (em dev não há updater). Repo
+// público → o usuário não precisa de token. App não-assinado funciona (NSIS).
+function setupAutoUpdate() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-downloaded', (info) => {
+    if (!mainWindow) return;
+    const res = dialog.showMessageBoxSync(mainWindow, {
+      type: 'info',
+      buttons: ['Reiniciar agora', 'Depois'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Atualização disponível',
+      message: `Basalt ${info && info.version ? info.version : ''} está pronto`,
+      detail: 'Uma nova versão foi baixada. Reinicie para aplicar (ou aplica sozinha ao fechar).',
+    });
+    if (res === 0) { setImmediate(() => autoUpdater.quitAndInstall()); }
+  });
+  // falha de update nunca derruba o app (offline, rate-limit, etc.) — só loga
+  autoUpdater.on('error', (e) => console.error('[updater]', (e && e.message) || e));
+
+  autoUpdater.checkForUpdates().catch((e) => console.error('[updater] check', (e && e.message) || e));
+}
+
 // Sobe o backend numa porta livre (0 = SO escolhe) e devolve a URL pronta.
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -170,6 +200,8 @@ app.whenReady().then(async () => {
   try {
     const url = await startServer();
     createWindow(url);
+    // checa update depois do boot (não compete com o carregamento inicial)
+    setTimeout(setupAutoUpdate, 5000);
   } catch (e) {
     if (splashWin) { splashWin.close(); splashWin = null; }
     dialog.showErrorBox('Basalt — falha ao iniciar', String((e && e.message) || e));

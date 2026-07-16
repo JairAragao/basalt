@@ -1,6 +1,6 @@
 {
   "name": "basalt",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "private": true,
   "description": "Basalt — kanban git-native. Tarefas em markdown, versionadas no git. Local-first, dark.",
   "license": "MIT",
@@ -17,6 +17,7 @@
     "electron:dev": "npm run build && electron .",
     "electron:pack": "npm run build && electron-builder --dir",
     "electron:build": "npm run build && electron-builder",
+    "release": "npm run build && electron-builder --publish always",
     "test": "vitest run"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/suggestion": "^2.27.2",
     "chokidar": "^3.6.0",
+    "electron-updater": "^6.8.9",
     "expr-eval-fork": "^3.0.3",
     "express": "^4.19.2",
     "gray-matter": "^4.0.3",
@@ -58,6 +60,14 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JairAragao",
+        "repo": "basalt",
+        "releaseType": "release"
+      }
+    ],
     "asarUnpack": [
       "defaults/**"
     ],
