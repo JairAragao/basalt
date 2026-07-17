@@ -3,6 +3,20 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.10.0] - 2026-07-17
+
+### Adicionado
+
+- **Comentários por tarefa** — ícone com contador no topo do cartão abre um painel
+  lateral (igual ao histórico) com os comentários (autor + texto + data) e um campo
+  para adicionar. Ficam no frontmatter do `.md` e são versionados no git.
+
+### Mudado
+
+- **Cor de destaque agora é âmbar** (`#d9a01e`) em todo o app — botões, sidebar,
+  badges. Antes havia um azul remanescente na config (o botão de recolher o menu e
+  os botões de ação saíam azuis). Texto dos botões sólidos ajustado para escuro.
+
 ## [0.9.4] - 2026-07-16
 
 ### Corrigido
