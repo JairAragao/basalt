@@ -197,4 +197,36 @@ function remove(id) {
   return { id };
 }
 
-module.exports = { list, get, create, update, remove, ATOMIC_writeTask, resolveTaskPath };
+// Comentários no frontmatter (comments:[{author,text,at}]). Reescreve o
+// frontmatter inteiro só anexando/tirando da lista (preserva tudo o resto).
+function addComment(id, text, actor) {
+  const full = resolveTaskPath(id);
+  if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
+  const t = String(text == null ? '' : text).trim();
+  if (!t) throw new Error('validação: comentário vazio');
+  const parsed = matter.read(full);
+  const data = { ...parsed.data };
+  delete data.id;
+  const list = Array.isArray(data.comments) ? data.comments.slice() : [];
+  list.push({ author: actor || '', text: t, at: new Date().toISOString() });
+  data.comments = list;
+  ATOMIC_writeTask(id, data, parsed.content);
+  return { id, comments: list };
+}
+
+function removeComment(id, index) {
+  const full = resolveTaskPath(id);
+  if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
+  const parsed = matter.read(full);
+  const data = { ...parsed.data };
+  delete data.id;
+  const list = Array.isArray(data.comments) ? data.comments.slice() : [];
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 0 || i >= list.length) throw new Error('validação: índice de comentário inválido');
+  list.splice(i, 1);
+  if (list.length) data.comments = list; else delete data.comments;
+  ATOMIC_writeTask(id, data, parsed.content);
+  return { id, comments: list };
+}
+
+module.exports = { list, get, create, update, remove, addComment, removeComment, ATOMIC_writeTask, resolveTaskPath };

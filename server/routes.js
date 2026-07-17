@@ -590,6 +590,36 @@ router.post('/notifications/clear', (req, res) => {
   } catch (err) { fail(res, err); }
 });
 
+// ── Comentários por tarefa (frontmatter; autor = usuário do git) ─────────────
+router.get('/tasks/:id/comments', (req, res) => {
+  try {
+    const t = tasksRepo.get(req.params.id);
+    res.json({ id: t.id, comments: Array.isArray(t.data.comments) ? t.data.comments : [] });
+  } catch (err) { fail(res, err); }
+});
+
+router.post('/tasks/:id/comments', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const r = tasksRepo.addComment(id, (req.body || {}).text, await gitActor());
+    const title = (safeGetData(id) || {})[titleKeyOf()] || id;
+    const warning = await commitAwaited(() => git.commitTask(taskFile(id), `comentário em ${title}`));
+    schedulePush();
+    res.status(201).json(withWarning({ id, comments: r.comments }, warning));
+  } catch (err) { fail(res, err); }
+});
+
+router.delete('/tasks/:id/comments/:idx', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const r = tasksRepo.removeComment(id, req.params.idx);
+    const title = (safeGetData(id) || {})[titleKeyOf()] || id;
+    const warning = await commitAwaited(() => git.commitTask(taskFile(id), `remove comentário em ${title}`));
+    schedulePush();
+    res.json(withWarning({ id, comments: r.comments }, warning));
+  } catch (err) { fail(res, err); }
+});
+
 // ── Histórico e diff por tarefa ──────────────────────────────────────────────
 router.get('/tasks/:id/history', async (req, res) => {
   try {

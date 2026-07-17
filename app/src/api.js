@@ -170,6 +170,20 @@ export function getDiff(id, hash) {
   return request(`${BASE}/tasks/${encodeURIComponent(id)}/diff?hash=${encodeURIComponent(hash)}`)
 }
 
+// --- Comentários de uma tarefa ---
+export function getComments(id) {
+  return request(`${BASE}/tasks/${encodeURIComponent(id)}/comments`)
+}
+export function addComment(id, text) {
+  return request(`${BASE}/tasks/${encodeURIComponent(id)}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text })
+  })
+}
+export function removeComment(id, idx) {
+  return request(`${BASE}/tasks/${encodeURIComponent(id)}/comments/${idx}`, { method: 'DELETE' })
+}
+
 // --- Filtros do board ---
 // filters: [string] (nomes de propriedades do schema)
 export function saveFilters(filters) {
@@ -278,6 +292,9 @@ export default {
   clearNotifications,
   getHistory,
   getDiff,
+  getComments,
+  addComment,
+  removeComment,
   uploadAsset,
   listPlugins,
   installPlugin,

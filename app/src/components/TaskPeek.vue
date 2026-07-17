@@ -48,6 +48,18 @@
             </button>
           </div>
 
+          <!-- Comentários (ícone com contador) -->
+          <button
+            v-if="isEdit"
+            class="icon-btn relative h-7 w-7"
+            :class="{ '!bg-ink-600 !text-txt': commentsOpen }"
+            title="Comentários"
+            @click="toggleComments"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M4 5.5h12a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H8l-3.5 3v-3H4A1.5 1.5 0 0 1 2.5 12V7A1.5 1.5 0 0 1 4 5.5Z" stroke-linejoin="round" /></svg>
+            <span v-if="commentCount" class="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-[14px] place-items-center rounded-full bg-accent px-1 text-[9px] font-semibold leading-none text-ink-900">{{ commentCount > 9 ? '9+' : commentCount }}</span>
+          </button>
+
           <button
             v-if="isEdit"
             class="icon-btn h-7 w-7"
@@ -279,6 +291,16 @@
         <!-- salva sozinho (a cada mudança / ao fechar). Status no ícone do header;
              fechar é o X no topo. Sem barra inferior. -->
       </aside>
+        <CardComments
+          v-if="isEdit"
+          inline
+          :open="open && commentsOpen"
+          :task-id="task && task.id ? String(task.id) : ''"
+          :users="users"
+          @close="commentsOpen = false"
+          @count="(n) => (commentCount = n)"
+          @error="(m) => (errorMsg = m)"
+        />
         <CardHistory
           v-if="isEdit"
           inline
@@ -300,6 +322,7 @@ import DatePicker from './DatePicker.vue';
 import PropSelect from './PropSelect.vue';
 import StatusSelect from './StatusSelect.vue';
 import CardHistory from './CardHistory.vue';
+import CardComments from './CardComments.vue';
 import 'vue3-emoji-picker/css';
 import { compute as computeFormulas } from '../formula';
 import { displayValue, toDateTimeLocal, fromDateTimeLocal, isImageRef } from '../format';
@@ -313,7 +336,7 @@ const MODE_KEY = 'basalt.peekMode';
 
 export default {
   name: 'TaskPeek',
-  components: { Dropdown, DatePicker, PropSelect, StatusSelect, CardHistory, BodyEditor, EmojiPicker },
+  components: { Dropdown, DatePicker, PropSelect, StatusSelect, CardHistory, CardComments, BodyEditor, EmojiPicker },
   props: {
     open: { type: Boolean, default: false },
     config: { type: Object, required: true },
@@ -326,6 +349,8 @@ export default {
       saving: false,
       errorMsg: '',
       historyOpen: false,
+      commentsOpen: false,
+      commentCount: 0,
       bodyEdited: false, // usuário mexeu no corpo? evita o loadBody tardio clobberar o que foi digitado
       // auto-save (edição): grava+commita+push+pull sozinho, com debounce
       ready: false,        // trava o watcher durante o initModel
@@ -459,9 +484,9 @@ export default {
       if (this.mode === 'center') return 'relative h-[88vh] max-h-[92vh] max-w-[96vw] rounded-xl border border-ink-500';
       return 'absolute inset-0'; // full
     },
-    // panel encolhe quando o histórico está aberto p/ o par caber na tela (notebook)
+    // panel encolhe quando histórico OU comentários abrem p/ o par caber na tela
     panelClass() {
-      const h = this.historyOpen;
+      const h = this.historyOpen || this.commentsOpen;
       if (this.mode === 'side') return h ? 'w-[560px] max-w-[56vw] min-w-0' : 'w-[640px] max-w-[92vw] min-w-0';
       if (this.mode === 'center') return h ? 'w-[680px] max-w-[56vw] min-w-0' : 'w-[1040px] max-w-[92vw] min-w-0';
       return 'flex-1 min-w-0'; // full
@@ -474,10 +499,10 @@ export default {
   watch: {
     open(v) {
       if (v) { this.initModel(); }
-      else { this.historyOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
+      else { this.historyOpen = false; this.commentsOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
     },
-    // troca de tarefa fecha o histórico aberto (evita mostrar histórico antigo)
-    task() { this.historyOpen = false; },
+    // troca de tarefa fecha os painéis laterais (evita mostrar dado de outra tarefa)
+    task() { this.historyOpen = false; this.commentsOpen = false; },
     // auto-save: qualquer mudança no model dispara save com debounce (só edição)
     model: { handler() { this.onModelChange(); }, deep: true },
   },
@@ -507,6 +532,8 @@ export default {
       this.saving = false;
       this.bodyEdited = false;
       this.closeIconMenu();
+      this.commentCount = (this.task && Array.isArray(this.task.comments)) ? this.task.comments.length : 0;
+      this.commentsOpen = false;
       const m = { body: '' };
       this.inputFields.forEach((field) => {
         if (this.task && this.task[field.name] !== undefined && this.task[field.name] !== null) {
@@ -596,6 +623,11 @@ export default {
     },
     toggleHistory() {
       this.historyOpen = !this.historyOpen;
+      if (this.historyOpen) this.commentsOpen = false; // painéis laterais exclusivos
+    },
+    toggleComments() {
+      this.commentsOpen = !this.commentsOpen;
+      if (this.commentsOpen) this.historyOpen = false;
     },
     async requestClose() {
       if (this.saving) return;
