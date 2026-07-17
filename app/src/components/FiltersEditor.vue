@@ -26,7 +26,7 @@
         <button
           type="button"
           class="grid h-5 w-5 flex-shrink-0 place-items-center rounded border transition-colors"
-          :class="item.active ? 'border-accent bg-accent text-white' : 'border-ink-line bg-ink-700 text-transparent hover:border-ink-line'"
+          :class="item.active ? 'border-accent bg-accent text-ink-900' : 'border-ink-line bg-ink-700 text-transparent hover:border-ink-line'"
           @click="toggle(item)"
         >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" class="h-3.5 w-3.5"><path d="M5 10l3 3 7-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -46,7 +46,7 @@
       <span v-if="error" class="flex-1 truncate text-[12px] text-red-300" :title="error">{{ error }}</span>
       <span v-else class="flex-1 truncate text-[12px] text-faint">{{ activeCount }} filtro(s) selecionado(s)</span>
       <button
-        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
         :disabled="saving"
         @click="save"
       >{{ saving ? 'Salvando…' : 'Salvar filtros' }}</button>

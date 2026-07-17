@@ -4,7 +4,7 @@
     <div v-if="isElectron" class="flex items-center gap-2 border-b border-ink-500 px-2.5 py-2">
       <button
         type="button"
-        class="flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
+        class="flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110"
         @click="pickNative"
       >
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M3 6a1 1 0 0 1 1-1h3l1.5 1.5H16a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6Z" stroke-linejoin="round" /></svg>
@@ -84,7 +84,7 @@
         </p>
         <button
           type="button"
-          class="flex flex-shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+          class="flex flex-shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
           :disabled="!targetPath"
           @click="useFolder"
         >

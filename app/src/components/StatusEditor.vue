@@ -125,7 +125,7 @@
       <span v-if="error" class="flex-1 truncate text-[12px] text-red-300" :title="error">{{ error }}</span>
       <span v-else class="flex-1"></span>
       <button
-        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
         :disabled="saving"
         @click="save"
       >{{ saving ? 'Salvando…' : 'Salvar status' }}</button>

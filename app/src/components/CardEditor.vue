@@ -35,7 +35,7 @@
 
     <div class="mt-3 flex flex-shrink-0 justify-end gap-2 border-t border-ink-500 pt-3">
       <button
-        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+        class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
         :disabled="saving"
         @click="save"
       >{{ saving ? 'Salvando…' : 'Salvar' }}</button>

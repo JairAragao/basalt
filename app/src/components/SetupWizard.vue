@@ -18,7 +18,7 @@
             <span
               class="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full text-[10px] font-semibold transition-colors"
               :class="i < idx ? 'bg-green-500/20 text-green-400'
-                : i === idx ? 'bg-accent text-white'
+                : i === idx ? 'bg-accent text-ink-900'
                 : 'bg-ink-600 text-faint'"
             >
               <svg v-if="i < idx" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" class="h-3 w-3"><path d="M5 10l3 3 7-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -152,7 +152,7 @@
 
           <div class="flex items-center gap-2">
             <button
-              class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+              class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
               :disabled="savingMe || !myName.trim()"
               @click="registerMe"
             >{{ savingMe ? 'Salvando…' : (me && me.entry ? 'Atualizar meu nome' : 'Cadastrar-me') }}</button>
@@ -196,12 +196,12 @@
 
         <button
           v-if="step.id === 'done'"
-          class="rounded-md bg-accent px-4 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
+          class="rounded-md bg-accent px-4 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110"
           @click="$emit('dismiss')"
         >Ir pro board</button>
         <button
           v-else
-          class="rounded-md bg-accent px-4 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+          class="rounded-md bg-accent px-4 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
           :disabled="!canNext"
           @click="next"
         >{{ nextLabel }}</button>

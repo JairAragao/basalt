@@ -23,7 +23,7 @@ module.exports = {
         txt: '#e9e9e7',
         muted: '#9b9b9b',
         faint: '#6f6f6f',
-        accent: '#3b82f6',
+        accent: '#d9a01e',
       },
       fontFamily: {
         sans: [

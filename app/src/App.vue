@@ -135,7 +135,7 @@
         <div class="relative z-50">
           <button class="icon-btn relative h-8 w-8" title="Notificações" @click="toggleNotif">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8.5 16a1.5 1.5 0 0 0 3 0" stroke-linecap="round" /></svg>
-            <span v-if="notifications.length" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-white">{{ notifications.length > 9 ? '9+' : notifications.length }}</span>
+            <span v-if="notifications.length" class="absolute -right-0.5 -top-0.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold leading-none text-ink-900">{{ notifications.length > 9 ? '9+' : notifications.length }}</span>
           </button>
           <template v-if="notifOpen">
             <div class="fixed inset-0 z-40" @click="notifOpen = false"></div>
@@ -177,7 +177,7 @@
         <!-- Nova tarefa -->
         <button
           v-if="activeView === 'tasks'"
-          class="flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-40"
+          class="flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-40"
           @click="openCreate"
         >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M10 4v12M4 10h12" stroke-linecap="round" /></svg>
@@ -288,7 +288,7 @@
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" :disabled="syncing" @click="askDiverged = false">Deixar como está</button>
-          <button class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50" :disabled="syncing" @click="rebaseNow">Rebase agora</button>
+          <button class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50" :disabled="syncing" @click="rebaseNow">Rebase agora</button>
         </div>
       </div>
     </div>
@@ -328,7 +328,7 @@
           </div>
           <div class="flex items-center justify-end gap-2 border-t border-ink-500 px-5 py-3">
             <button class="rounded-md px-3.5 py-1.5 text-[13px] text-muted hover:bg-ink-700" @click="snoozeUpdate">Depois</button>
-            <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110" @click="installUpdate">Reiniciar agora</button>
+            <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110" @click="installUpdate">Reiniciar agora</button>
           </div>
         </div>
       </div>

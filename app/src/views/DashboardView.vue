@@ -33,7 +33,7 @@
         </div>
         <button
           type="button"
-          class="flex h-8 flex-shrink-0 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-white hover:brightness-110"
+          class="flex h-8 flex-shrink-0 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110"
           @click="$emit('open-settings')"
         >Abrir configurações</button>
       </div>

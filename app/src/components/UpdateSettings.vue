@@ -10,7 +10,7 @@
         <div class="flex-1"></div>
         <button
           v-if="isElectron && state === 'downloaded'"
-          class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-white hover:brightness-110"
+          class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110"
           @click="install"
         >Reiniciar para aplicar</button>
         <button

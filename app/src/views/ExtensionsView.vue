@@ -26,7 +26,7 @@
           <input v-model="refInput" class="field w-full" placeholder="main" @keydown.enter.prevent="install" />
         </label>
         <button
-          class="flex h-[34px] items-center gap-1.5 rounded-md bg-accent px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50"
+          class="flex h-[34px] items-center gap-1.5 rounded-md bg-accent px-3.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
           :disabled="installing || !repoInput.trim()"
           @click="install"
         >
@@ -133,7 +133,7 @@
         <p v-if="cfg.error" class="mt-2 text-[12px] text-red-300">{{ cfg.error }}</p>
         <div class="mt-4 flex justify-end gap-2">
           <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" @click="cfg.open = false">Cancelar</button>
-          <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50" :disabled="cfg.saving" @click="saveConfig">
+          <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50" :disabled="cfg.saving" @click="saveConfig">
             {{ cfg.saving ? 'Salvando…' : 'Salvar' }}
           </button>
         </div>
@@ -149,7 +149,7 @@
         </p>
         <div class="mt-4 flex justify-end gap-2">
           <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" @click="pendingRun = null">Cancelar</button>
-          <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white hover:brightness-110" @click="doRun">Executar</button>
+          <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110" @click="doRun">Executar</button>
         </div>
       </div>
     </div>
