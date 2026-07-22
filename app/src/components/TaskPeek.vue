@@ -71,6 +71,11 @@
           </button>
         </header>
 
+        <div v-if="errorMsg" class="flex flex-shrink-0 items-start gap-2 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="mt-0.5 h-4 w-4 flex-shrink-0"><circle cx="10" cy="10" r="7" /><path d="M10 6.5v4.5" stroke-linecap="round" /><circle cx="10" cy="14" r="0.7" fill="currentColor" stroke="none" /></svg>
+          <span class="min-w-0 flex-1">{{ errorMsg }}</span>
+        </div>
+
         <div class="flex-1 overflow-y-auto">
           <!-- capa full-bleed (estilo Notion) -->
           <div v-if="model.cover" class="group/cover relative h-40 w-full overflow-hidden bg-ink-700">
@@ -408,6 +413,15 @@ export default {
     // andamento gravaria o model da tarefa antiga no id da nova.
     currentId() { return this.activeTaskId || this.createdId; },
     titleEmpty() { return !String(this.model[this.titleKey] || '').trim(); },
+    hasDraftContent() {
+      if ((this.model.body || '').trim()) return true;
+      if (this.model.icon || this.model.cover) return true;
+      return this.inputFields.some((f) => {
+        if (f.name === this.titleKey) return false;
+        const v = this.model[f.name];
+        return v !== '' && v !== null && v !== undefined && v !== f.default;
+      });
+    },
     schema() { return this.config.schema || {}; },
     properties() { return this.schema.properties || {}; },
     derivedNames() { return this.schema.derived || []; },
@@ -513,8 +527,8 @@ export default {
   },
   watch: {
     open(v) {
-      if (v) { this.initModel(); }
-      else { this.historyOpen = false; this.commentsOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
+      if (v) { this.initModel(); document.addEventListener('keydown', this.onEscKey, true); }
+      else { this.historyOpen = false; this.commentsOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; document.removeEventListener('keydown', this.onEscKey, true); }
     },
     // troca de tarefa COM O PEEK ABERTO: flusha as pendências da tarefa antiga
     // (autosave usa activeTaskId — o id antigo) e re-inicializa o model pra nova.
@@ -682,6 +696,7 @@ export default {
         payload.body = this.model.body || '';
       } else if (this.bodyLoaded && (this.bodyEdited || (this.model.body || '') !== (base.body || ''))) {
         payload.body = this.model.body || '';
+        payload.bodyBase = base.body || ''; // server detecta edição paralela
       }
       return payload;
     },
@@ -708,6 +723,17 @@ export default {
       this.commentsOpen = !this.commentsOpen;
       if (this.commentsOpen) this.historyOpen = false;
     },
+    // Esc fecha o peek — mas só quando nenhum popover interno está aberto (o
+    // slash/menus tratam o próprio Esc). O editor de corpo (TipTap) engole o
+    // keydown quando focado, então Esc lá dentro não fecha por acidente.
+    onEscKey(e) {
+      if (e.key !== 'Escape') return;
+      if (this.propMenu.open || this.iconMenuOpen || this.historyOpen || this.commentsOpen) return;
+      const t = e.target;
+      if (t && t.closest && t.closest('.body-editor')) return;
+      e.preventDefault();
+      this.requestClose();
+    },
     async requestClose() {
       if (this.saving) return;
       this.cancelTimers();
@@ -716,13 +742,24 @@ export default {
       if (this._savePromise) {
         try { await this._savePromise; } catch (e) { /* segue pro flush */ }
       }
-      // 2) flush do que sobrou — vale pra EDIÇÃO e pra CRIAÇÃO (auto-criada via
-      //    createdId, ou nova com título digitado)
+      // Tarefa NOVA com conteúdo mas SEM título: título é obrigatório, então o
+      // autosave nunca cria. Fechar descartaria tudo em silêncio → 1º clique
+      // segura pedindo o título, 2º descarta conscientemente.
+      if (!this.currentId && !this.isEdit && this.hasDraftContent && this.titleEmpty) {
+        if (!this._closeTried) {
+          this._closeTried = true;
+          this.errorMsg = 'Dê um título pra salvar a tarefa. Fechar de novo descarta o que você escreveu.';
+          this.$nextTick(() => { const t = this.$refs.title; if (t) t.focus(); });
+          return;
+        }
+        this.$emit('close');
+        return;
+      }
       if (this.dirty && (this.isEdit || this.createdId || !this.titleEmpty)) {
         try { await this.autosave(); } catch (e) { /* erro já foi pro errorMsg */ }
       }
-      // 3) flush FALHOU (segue dirty)? 1º clique mantém aberto mostrando o erro;
-      //    2º clique fecha assim mesmo (escolha consciente do usuário).
+      // flush FALHOU (segue dirty)? 1º clique mantém aberto mostrando o erro;
+      // 2º clique fecha assim mesmo (escolha consciente do usuário).
       if (this.dirty && (this.isEdit || this.createdId) && !this._closeTried) {
         this._closeTried = true;
         if (!this.errorMsg) this.errorMsg = 'Não foi possível salvar — tente de novo ou feche novamente para descartar.';
@@ -785,6 +822,12 @@ export default {
           this.scheduleAutosave(); // houve edição durante o voo → salva de novo
         }
         this.flashSaved();
+        // conflito de corpo: o server preservou os dois no arquivo → recarrega o
+        // corpo mesclado pro usuário ver (e não sobrescrever de novo)
+        if (saved && saved.bodyConflict && id) {
+          this.bodyEdited = false;
+          await this.loadBody();
+        }
         if (saved && saved.warning) this.errorMsg = saved.warning;
         this.schedulePull(); // push E pull a cada mudança
       } catch (e) {
@@ -1075,6 +1118,7 @@ export default {
     // limpa listeners do popover de ícone caso o componente seja destruído aberto
     window.removeEventListener('scroll', this.onScrollClose, true);
     window.removeEventListener('resize', this.closeIconMenu, true);
+    document.removeEventListener('keydown', this.onEscKey, true);
     this.cancelTimers();
   },
 };
