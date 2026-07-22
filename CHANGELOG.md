@@ -3,6 +3,21 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.11.0] - 2026-07-20
+
+### Adicionado
+
+- Filtros da barra agora são locais (por computador); banner "salvar pra todos" aparece quando diferem dos compartilhados.
+- Busca digitável nos selects de filtro quando há muitas opções.
+- Nova aba "Histórico" em Configurações: todos os commits do vault, do mais novo ao mais antigo, paginado.
+- Dashboard configurável com builder de gráficos (número, barras, linha, pizza/rosca), medidas (contagem/soma/média/lead time) e agrupamentos escolhidos pelo usuário.
+- Dashboard em grade de 12 colunas com modo edição: arrastar para reordenar e puxar a borda para redimensionar; salvo em `config/dashboard.json` e versionado no git.
+
+### Corrigido
+
+- Botão "Nova tarefa" não quebra mais linha quando a sidebar está expandida.
+- Botão de limpar (✕) de cada notificação agora fica sempre visível.
+
 ## [0.10.0] - 2026-07-17
 
 ### Adicionado
