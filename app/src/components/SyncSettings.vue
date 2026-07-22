@@ -23,6 +23,31 @@
       </div>
     </section>
 
+    <!-- recuperação: commits não enviados + mudanças guardadas por conflito -->
+    <section v-if="recovery && (recovery.ahead > 0 || recovery.stashCount > 0)" class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+      <div class="mb-1 text-[13px] font-medium text-amber-200">Sincronização precisa de atenção</div>
+
+      <div v-if="recovery.ahead > 0" class="mt-2 flex items-center gap-3">
+        <span class="min-w-0 flex-1 text-[12px] leading-relaxed text-muted">
+          {{ recovery.ahead }} {{ recovery.ahead === 1 ? 'mudança sua ainda não foi enviada' : 'mudanças suas ainda não foram enviadas' }} ao servidor (elas estão salvas aqui).
+        </span>
+        <button class="flex-shrink-0 rounded-md bg-accent px-3 py-1.5 text-[12px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50" :disabled="busy" @click="pushNow">
+          {{ busy ? '…' : 'Enviar agora' }}
+        </button>
+      </div>
+
+      <div v-if="recovery.stashCount > 0" class="mt-3 flex items-center gap-3 border-t border-amber-500/20 pt-3">
+        <span class="min-w-0 flex-1 text-[12px] leading-relaxed text-muted">
+          {{ recovery.stashCount }} {{ recovery.stashCount === 1 ? 'mudança foi guardada' : 'mudanças foram guardadas' }} por um conflito de sincronização. Nada foi perdido — recupere para trazê-las de volta.
+        </span>
+        <button class="flex-shrink-0 rounded-md border border-amber-400/50 px-3 py-1.5 text-[12px] font-medium text-amber-200 hover:bg-amber-500/15 disabled:opacity-50" :disabled="busy" @click="recover">
+          {{ busy ? '…' : 'Recuperar' }}
+        </button>
+      </div>
+
+      <p v-if="recoveryMsg" class="mt-2 text-[12px]" :class="recoveryOk ? 'text-green-300' : 'text-red-300'">{{ recoveryMsg }}</p>
+    </section>
+
     <!-- saúde do git (GET /health/git) -->
     <section class="rounded-lg border border-ink-500 bg-ink-850 p-3">
       <div class="mb-2 flex items-center gap-2">
@@ -74,7 +99,7 @@
 // (prefs de APP em localStorage basalt.*) + painel do GET /health/git.
 // Salvar dispara `sync-prefs-changed` (window) — o App re-agenda o auto-pull ao vivo.
 import Dropdown from './Dropdown.vue';
-import { getHealthGit } from '../api';
+import { getHealthGit, getSyncRecovery, syncPushNow, syncRecover } from '../api';
 
 const intervalKey = 'basalt.pullIntervalMs';
 const strategyKey = 'basalt.pullStrategy';
@@ -98,6 +123,10 @@ export default {
       health: null,
       loading: false,
       error: '',
+      recovery: null,
+      busy: false,
+      recoveryMsg: '',
+      recoveryOk: false,
       intervalOptions: [
         { value: '0', label: 'Desligado' },
         { value: '30000', label: '30 segundos' },
@@ -124,8 +153,32 @@ export default {
   },
   created() {
     this.refresh();
+    this.refreshRecovery();
   },
   methods: {
+    async refreshRecovery() {
+      try { this.recovery = await getSyncRecovery(); } catch (e) { this.recovery = null; }
+    },
+    async pushNow() {
+      this.busy = true; this.recoveryMsg = '';
+      try {
+        const r = await syncPushNow();
+        this.recovery = { ahead: r.ahead, hasUpstream: r.hasUpstream, stashCount: r.stashCount };
+        this.recoveryOk = r.ok !== false;
+        this.recoveryMsg = this.recoveryOk ? 'Enviado.' : (r.error || 'Falha ao enviar.');
+      } catch (e) { this.recoveryOk = false; this.recoveryMsg = e.message || 'Falha ao enviar.'; }
+      finally { this.busy = false; }
+    },
+    async recover() {
+      this.busy = true; this.recoveryMsg = '';
+      try {
+        const r = await syncRecover();
+        this.recovery = { ahead: r.ahead, hasUpstream: r.hasUpstream, stashCount: r.stashCount };
+        this.recoveryOk = r.ok !== false;
+        this.recoveryMsg = this.recoveryOk ? 'Mudanças recuperadas.' : (r.error || 'Não deu pra recuperar automaticamente.');
+      } catch (e) { this.recoveryOk = false; this.recoveryMsg = e.message || 'Falha na recuperação.'; }
+      finally { this.busy = false; }
+    },
     loadInterval() {
       try {
         const v = localStorage.getItem(intervalKey);

@@ -122,6 +122,17 @@ export function getHealthGit() {
   return request(`${BASE}/health/git`)
 }
 
+// { ahead, hasUpstream, stashCount }
+export function getSyncRecovery() {
+  return request(`${BASE}/sync/recovery`)
+}
+export function syncPushNow() {
+  return request(`${BASE}/sync/push`, { method: 'POST', body: '{}' })
+}
+export function syncRecover() {
+  return request(`${BASE}/sync/recover`, { method: 'POST', body: '{}' })
+}
+
 // Pull sob demanda. strategy opcional: 'safe' (ff-only, default do servidor) |
 // 'rebase'. ok -> { ok:true, message?, newNotifications, notifications };
 // falha -> { ok:false, reason: 'diverged'|'no-remote'|'auth'|'timeout'|'other', detail, error }
