@@ -63,7 +63,7 @@
               </template>
 
               <!-- paleta de cor -->
-              <div v-if="colorFor === s.id" class="absolute right-1 z-50 mt-1 flex flex-wrap gap-1 rounded-md border border-ink-500 bg-ink-800 p-1.5 shadow-xl" @click.stop>
+              <div v-if="colorFor === s.id" class="st-palette absolute right-1 z-50 mt-1 flex flex-wrap gap-1 rounded-md border border-ink-500 bg-ink-800 p-1.5 shadow-xl" @click.stop>
                 <button
                   v-for="c in palette"
                   :key="c"
@@ -211,7 +211,13 @@ export default {
       this.persist();
     },
     onDoc(e) {
-      if (this.colorFor) { this.colorFor = null; return; }
+      if (this.colorFor) {
+        // fecha a paleta SÓ se o mousedown foi fora dela — antes, o próprio
+        // mousedown no swatch fechava a paleta antes do click completar e a
+        // cor NUNCA era aplicada.
+        if (!(e.target && e.target.closest && e.target.closest('.st-palette'))) this.colorFor = null;
+        return;
+      }
       if (this.$refs.root && !this.$refs.root.contains(e.target)) this.close();
     },
     onEsc(e) {

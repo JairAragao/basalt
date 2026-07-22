@@ -110,7 +110,7 @@
     </div>
 
     <!-- modal: configurar env -->
-    <div v-if="cfg.open" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="cfg.open = false">
+    <div v-if="cfg.open" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @mousedown.self="cfg.open = false">
       <div class="w-[460px] max-w-[92vw] rounded-xl border border-ink-500 bg-ink-800 p-5 shadow-2xl">
         <div class="text-[14px] font-semibold text-txt">Configurar — {{ cfg.plugin.title }}</div>
         <div class="mt-3 space-y-3">
@@ -141,7 +141,7 @@
     </div>
 
     <!-- modal: confirmar execução (código de terceiros) -->
-    <div v-if="pendingRun" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="pendingRun = null">
+    <div v-if="pendingRun" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @mousedown.self="pendingRun = null">
       <div class="w-[400px] rounded-xl border border-ink-500 bg-ink-800 p-5 shadow-2xl">
         <div class="text-[14px] font-semibold text-txt">Executar extensão</div>
         <p class="mt-2 text-[13px] leading-relaxed text-muted">
@@ -155,7 +155,7 @@
     </div>
 
     <!-- modal: log de execução -->
-    <div v-if="run.open" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="closeRun">
+    <div v-if="run.open" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @mousedown.self="closeRun">
       <div class="flex h-[70vh] w-[720px] max-w-[94vw] flex-col rounded-xl border border-ink-500 bg-ink-850 shadow-2xl">
         <div class="flex items-center gap-2 border-b border-ink-500 px-4 py-3">
           <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 text-accent"><path d="M6 4l10 6-10 6z" /></svg>
@@ -174,7 +174,7 @@
     </div>
 
     <!-- confirmar remoção -->
-    <div v-if="confirmRemove" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="confirmRemove = null">
+    <div v-if="confirmRemove" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @mousedown.self="confirmRemove = null">
       <div class="w-[380px] rounded-xl border border-ink-500 bg-ink-800 p-5 shadow-2xl">
         <div class="text-[14px] font-semibold text-txt">Remover extensão</div>
         <p class="mt-2 text-[13px] text-muted">Remover <strong class="text-txt">{{ confirmRemove.title }}</strong>? Os arquivos do plugin saem do vault.</p>
