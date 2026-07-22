@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const matter = require('gray-matter');
 
 const config = require('./config');
 const tasksRepo = require('./tasks-repo');
@@ -538,8 +539,12 @@ async function buildNotifications(before, after) {
   if (!commits.length) return [];
   const prefix = relTasksDir() + '/';
   const titleKey = titleKeyOf();
-  const seen = new Set();
   const out = [];
+  const seen = new Set();
+
+  // 1º toque (commits vêm do mais novo pro mais antigo) → autor/mensagem exibidos.
+  // Só o toque de OUTRA pessoa gera notificação (não notifico minhas mudanças).
+  const affected = new Map(); // id → { rel, c }
   for (const c of commits) {
     const mine =
       (me.gitEmail && c.authorEmail && c.authorEmail.toLowerCase() === String(me.gitEmail).toLowerCase()) ||
@@ -548,21 +553,48 @@ async function buildNotifications(before, after) {
     for (const f of c.files) {
       if (!f.startsWith(prefix) || !f.endsWith('.md')) continue;
       const id = taskIdFromRel(f);
-      if (!id || seen.has(id)) continue;
-      const data = safeGetData(id);
-      if (!data) continue; // tarefa apagada
-      if (!taskTargetsMe(data, me)) continue;
-      seen.add(id);
-      out.push({
-        id: `${c.hash}:${id}`,
-        taskId: id,
-        title: data[titleKey] || id,
-        author: c.authorName || c.authorEmail || 'alguém',
-        summary: c.message || 'mudança',
-        hash: c.shortHash || (c.hash || '').slice(0, 7),
-        at: c.date || null,
-      });
+      if (!id || affected.has(id)) continue;
+      affected.set(id, { rel: f, c });
     }
+  }
+
+  for (const [id, { rel, c }] of affected) {
+    if (seen.has(id)) continue;
+    const afterData = safeGetData(id); // estado atual (pós-pull); null = apagada
+    let beforeData = null;
+    try {
+      const raw = await git.showAt(before, rel); // estado ANTES do pull
+      if (raw) beforeData = matter(raw).data || null;
+    } catch { beforeData = null; }
+
+    const wasMine = taskTargetsMe(beforeData, me);
+    const isMine = taskTargetsMe(afterData, me);
+
+    let summary = null;
+    let title = null;
+    if (isMine) {
+      // continua/passou a ser minha e mudou → aviso normal
+      summary = c.message || 'mudança';
+      title = (afterData && afterData[titleKey]) || id;
+    } else if (wasMine && !afterData) {
+      summary = 'removeu uma tarefa sua';
+      title = (beforeData && beforeData[titleKey]) || id;
+    } else if (wasMine) {
+      summary = 'tirou você da tarefa';
+      title = (afterData && afterData[titleKey]) || (beforeData && beforeData[titleKey]) || id;
+    }
+    if (!summary) continue; // nunca foi minha → não interessa
+
+    seen.add(id);
+    out.push({
+      id: `${c.hash}:${id}`,
+      taskId: id,
+      title,
+      author: c.authorName || c.authorEmail || 'alguém',
+      summary,
+      hash: c.shortHash || (c.hash || '').slice(0, 7),
+      at: c.date || null,
+    });
   }
   return out;
 }
