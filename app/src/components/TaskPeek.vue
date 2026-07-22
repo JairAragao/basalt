@@ -372,6 +372,7 @@ export default {
       commentCount: 0,
       bodyEdited: false, // usuário mexeu no corpo? evita o loadBody tardio clobberar o que foi digitado
       bodyLoaded: false, // corpo veio do GET (ou create)? sem isso o body NÃO entra no payload
+      activeTaskId: null, // id da tarefa que o model REPRESENTA (snapshot do initModel)
       // auto-save (edição): grava+commita+push+pull sozinho, com debounce
       ready: false,        // trava o watcher durante o initModel
       dirty: false,        // há mudança pendente de salvar
@@ -411,8 +412,10 @@ export default {
   },
   computed: {
     isEdit() { return !!(this.task && this.task.id); },
-    // id "vivo": tarefa existente OU a recém auto-criada nesta sessão do dialog
-    currentId() { return (this.task && this.task.id) ? this.task.id : this.createdId; },
+    // id "vivo": o snapshot da ABERTURA (activeTaskId) ou a recém auto-criada.
+    // NÃO lê task.id direto: se a prop trocar com o peek aberto, um flush em
+    // andamento gravaria o model da tarefa antiga no id da nova.
+    currentId() { return this.activeTaskId || this.createdId; },
     titleEmpty() { return !String(this.model[this.titleKey] || '').trim(); },
     schema() { return this.config.schema || {}; },
     properties() { return this.schema.properties || {}; },
@@ -522,9 +525,20 @@ export default {
       if (v) { this.initModel(); }
       else { this.historyOpen = false; this.commentsOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
     },
-    // troca de tarefa fecha os painéis laterais (evita mostrar dado de outra tarefa)
-    task() {
+    // troca de tarefa COM O PEEK ABERTO: flusha as pendências da tarefa antiga
+    // (autosave usa activeTaskId — o id antigo) e re-inicializa o model pra nova.
+    // Sem isso, o peek seguia exibindo/salvando o model da tarefa A no id da B
+    // (ex.: clicar numa notificação de outra tarefa com o peek aberto).
+    async task(nv) {
       this.historyOpen = false; this.commentsOpen = false;
+      const newId = nv && nv.id ? String(nv.id) : null;
+      if (this.open && newId !== this.activeTaskId) {
+        this.cancelTimers();
+        if (this.dirty && this.currentId) {
+          try { await this.autosave(); } catch (e) { /* errorMsg já setado */ }
+        }
+        this.initModel();
+      }
       // reabre o histórico no commit pedido (abertura vinda do histórico global)
       if (this.openHistoryHash) this.$nextTick(() => { this.historyOpen = true; });
     },
@@ -561,6 +575,9 @@ export default {
       this.saving = false;
       this.bodyEdited = false;
       this.bodyLoaded = false; // corpo confiável? (GET ok OU create mode)
+      this.activeTaskId = (this.task && this.task.id) ? String(this.task.id) : null;
+      this._gen = 0; // geração de edição (detecta tecla durante save em voo)
+      this._closeTried = false;
       this.closeIconMenu();
       this.commentCount = (this.task && Array.isArray(this.task.comments)) ? this.task.comments.length : 0;
       this.commentsOpen = false;
@@ -666,12 +683,13 @@ export default {
           payload[k] = v;
         }
       }
-      // CORPO: só entra quando é confiável — carregado (GET ok / create) ou
-      // editado pelo usuário. GET falho deixava model.body='' e o autosave
-      // apagava o corpo inteiro no vault (commitado). Em update, só se mudou.
+      // CORPO: só entra quando o baseline é CONFIÁVEL (bodyLoaded = GET ok ou
+      // create). bodyEdited sozinho NÃO basta: com o GET falho o usuário estaria
+      // digitando sobre um editor vazio e o save sobrescreveria o corpo real da
+      // tarefa. Sem bodyLoaded, o corpo fica fora e o server preserva o dele.
       if (!isUpdate) {
         payload.body = this.model.body || '';
-      } else if (this.bodyEdited || (this.bodyLoaded && (this.model.body || '') !== (base.body || ''))) {
+      } else if (this.bodyLoaded && (this.bodyEdited || (this.model.body || '') !== (base.body || ''))) {
         payload.body = this.model.body || '';
       }
       return payload;
@@ -702,12 +720,22 @@ export default {
     async requestClose() {
       if (this.saving) return;
       this.cancelTimers();
-      // flush: grava pendências antes de fechar — vale pra EDIÇÃO e pra CRIAÇÃO
-      // (tarefa já auto-criada via createdId, ou nova com título digitado). Antes
-      // o gate era só isEdit e fechar o peek descartava o que foi digitado nos
-      // últimos 800ms de uma tarefa nova, sem aviso.
+      // 1) aguarda um autosave EM VOO terminar (antes, o guard de concorrência
+      //    reagendava um timer que o close matava → pendente perdido)
+      if (this._savePromise) {
+        try { await this._savePromise; } catch (e) { /* segue pro flush */ }
+      }
+      // 2) flush do que sobrou — vale pra EDIÇÃO e pra CRIAÇÃO (auto-criada via
+      //    createdId, ou nova com título digitado)
       if (this.dirty && (this.isEdit || this.createdId || !this.titleEmpty)) {
         try { await this.autosave(); } catch (e) { /* erro já foi pro errorMsg */ }
+      }
+      // 3) flush FALHOU (segue dirty)? 1º clique mantém aberto mostrando o erro;
+      //    2º clique fecha assim mesmo (escolha consciente do usuário).
+      if (this.dirty && (this.isEdit || this.createdId) && !this._closeTried) {
+        this._closeTried = true;
+        if (!this.errorMsg) this.errorMsg = 'Não foi possível salvar — tente de novo ou feche novamente para descartar.';
+        return;
       }
       this.$emit('close');
     },
@@ -715,6 +743,8 @@ export default {
     onModelChange() {
       if (!this.ready) return;
       this.dirty = true;
+      this._gen = (this._gen || 0) + 1; // cada edição avança a geração
+      this._closeTried = false;
       this.scheduleAutosave();
     },
     scheduleAutosave() {
@@ -734,15 +764,22 @@ export default {
       }
       this.errorMsg = '';
       this.autosaving = true;
+      // exposto pro requestClose aguardar o voo em vez de fechar por cima
+      this._savePromise = (async () => {
       try {
-        // snapshot do model NO MOMENTO do payload — o baseline pós-save vem daqui
-        // (mudanças digitadas durante o await ficam "diferentes" e vão no próximo)
+        // snapshot do model + GERAÇÃO no momento do payload. dirty só é zerado
+        // se nenhuma tecla entrou durante o await — senão as edições feitas
+        // durante o save em voo morriam no gate `if (!this.dirty)` do próximo.
         const snap = { ...this.model };
+        const genAtSave = this._gen;
         const payload = this.buildPayload();
         const id = this.currentId;
         let saved;
         if (id) {
-          if (!Object.keys(payload).length) { this.dirty = false; return; } // nada mudou de fato
+          if (!Object.keys(payload).length) {
+            if (this._gen === genAtSave) this.dirty = false;
+            return;
+          }
           saved = await updateTask(id, payload); // back commita + push
           this.$emit('autosaved', saved); // App atualiza o board sem fechar
         } else {
@@ -751,7 +788,11 @@ export default {
           this.$emit('created', saved);
         }
         this._base = snap; // o que foi salvo vira o novo baseline do diff
-        this.dirty = false;
+        if (this._gen === genAtSave) {
+          this.dirty = false;
+        } else {
+          this.scheduleAutosave(); // houve edição durante o voo → salva de novo
+        }
         this.flashSaved();
         if (saved && saved.warning) this.errorMsg = saved.warning;
         this.schedulePull(); // push E pull a cada mudança
@@ -759,7 +800,10 @@ export default {
         this.errorMsg = e.message;
       } finally {
         this.autosaving = false;
+        this._savePromise = null;
       }
+      })();
+      return this._savePromise;
     },
     flashSaved() {
       this.savedNote = true;
