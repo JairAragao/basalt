@@ -152,6 +152,7 @@
                       v-else-if="field.type === 'enum' || field.type === 'multiselect' || field.type === 'user'"
                       :value="model[field.name]"
                       :type="field.type"
+                      :multiple="field.multiple === true"
                       :options="optionsForSelect(field)"
                       :option-meta="field.optionMeta || {}"
                       :prop-key="field.name"
@@ -177,6 +178,20 @@
                       :value="model[field.name] || ''"
                       @input="(iso) => (model[field.name] = iso)"
                     />
+                    <!-- boolean: toggle Sim/Não (aceita boolean E 'true' string do YAML) -->
+                    <div v-else-if="field.type === 'boolean'" class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        role="switch"
+                        :aria-checked="boolTrue(model[field.name])"
+                        class="relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors"
+                        :class="boolTrue(model[field.name]) ? 'bg-accent' : 'bg-ink-600'"
+                        @click="model[field.name] = !boolTrue(model[field.name])"
+                      >
+                        <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="boolTrue(model[field.name]) ? 'translate-x-[18px]' : 'translate-x-0.5'"></span>
+                      </button>
+                      <span class="text-[12px] text-faint">{{ boolTrue(model[field.name]) ? 'Sim' : 'Não' }}</span>
+                    </div>
                     <input v-else v-model="model[field.name]" class="field" :placeholder="field.label || field.name" />
                   </div>
                 </div>
@@ -306,6 +321,7 @@
           inline
           :open="open && historyOpen"
           :task-id="task && task.id ? String(task.id) : ''"
+          :initial-hash="openHistoryHash"
           @close="historyOpen = false"
         />
       </div>
@@ -342,6 +358,9 @@ export default {
     config: { type: Object, required: true },
     task: { type: Object, default: null }, // null ou {status} → create; {id} → edit
     users: { type: Array, default: () => [] }, // roster (p/ campos tipo 'user')
+    // quando setado, abre o painel de histórico direto no diff deste commit
+    // (vindo do histórico global em Configurações)
+    openHistoryHash: { type: String, default: '' },
   },
   data() {
     return {
@@ -352,6 +371,7 @@ export default {
       commentsOpen: false,
       commentCount: 0,
       bodyEdited: false, // usuário mexeu no corpo? evita o loadBody tardio clobberar o que foi digitado
+      bodyLoaded: false, // corpo veio do GET (ou create)? sem isso o body NÃO entra no payload
       // auto-save (edição): grava+commita+push+pull sozinho, com debounce
       ready: false,        // trava o watcher durante o initModel
       dirty: false,        // há mudança pendente de salvar
@@ -373,6 +393,7 @@ export default {
         { value: 'multiselect', label: 'Seleção múltipla' },
         { value: 'user', label: 'Usuário' },
         { value: 'int', label: 'Número' },
+        { value: 'boolean', label: 'Sim/Não' },
         { value: 'datetime', label: 'Data' },
       ],
       // ícone (emoji|URL) + capa (URL) da tarefa — metadados de página
@@ -502,7 +523,15 @@ export default {
       else { this.historyOpen = false; this.commentsOpen = false; this.closeIconMenu(); this.closePropMenu(); this.cancelTimers(); this.ready = false; }
     },
     // troca de tarefa fecha os painéis laterais (evita mostrar dado de outra tarefa)
-    task() { this.historyOpen = false; this.commentsOpen = false; },
+    task() {
+      this.historyOpen = false; this.commentsOpen = false;
+      // reabre o histórico no commit pedido (abertura vinda do histórico global)
+      if (this.openHistoryHash) this.$nextTick(() => { this.historyOpen = true; });
+    },
+    // hash pedido mudou com o peek já aberto na mesma tarefa → abre o histórico
+    openHistoryHash(h) {
+      if (h && this.open && this.isEdit) { this.commentsOpen = false; this.$nextTick(() => { this.historyOpen = true; }); }
+    },
     // auto-save: qualquer mudança no model dispara save com debounce (só edição)
     model: { handler() { this.onModelChange(); }, deep: true },
   },
@@ -531,6 +560,7 @@ export default {
       this.errorMsg = '';
       this.saving = false;
       this.bodyEdited = false;
+      this.bodyLoaded = false; // corpo confiável? (GET ok OU create mode)
       this.closeIconMenu();
       this.commentCount = (this.task && Array.isArray(this.task.comments)) ? this.task.comments.length : 0;
       this.commentsOpen = false;
@@ -556,11 +586,15 @@ export default {
       this.localHidden = {};
       this.savedNote = false;
       this.cancelTimers();
+      // snapshot do que o usuário VIU ao abrir — buildPayload manda só o diff
+      // contra este baseline (update parcial; server faz merge).
+      this._base = { ...m };
       if (this.isEdit) {
         // só libera o watcher de auto-save DEPOIS de carregar o corpo (senão o
         // load do body dispararia um save imediato no-op).
         this.loadBody().finally(() => { this.$nextTick(() => { this.ready = true; }); });
       } else {
+        this.bodyLoaded = true; // create: o corpo nasce aqui, é autoritativo
         this.$nextTick(() => { this.ready = true; });
       }
       this.$nextTick(() => { this.autoGrow(); });
@@ -568,14 +602,19 @@ export default {
     async loadBody() {
       try {
         const full = await getTask(this.task.id);
-        if (!full) return;
+        if (!full) return; // sem resposta → bodyLoaded fica false (corpo não vai no payload)
         // O frontmatter (campos, icon, cover) já veio da lista em initModel — aqui
         // só falta o CORPO. NÃO reescreve campos (evitaria clobberar o que o usuário
         // digitou/esvaziou entre abrir e o GET voltar). E só seta o body se o usuário
         // ainda não o editou (o watcher do BodyEditor já protege a exibição com foco).
         if (!this.bodyEdited) this.model.body = full.body || '';
+        this.bodyLoaded = true;
+        if (this._base) this._base.body = full.body || '';
         this.$nextTick(() => { this.autoGrow(); });
       } catch (e) {
+        // GET falhou → bodyLoaded permanece false: o autosave NÃO inclui o corpo
+        // no payload (server preserva o existente). Antes, model.body='' seguia
+        // no payload e o próximo autosave APAGAVA (e commitava) o corpo inteiro.
         this.errorMsg = e.message;
       }
     },
@@ -593,17 +632,48 @@ export default {
       }
       return '';
     },
+    // boolean tolerante: true OU 'true' (YAML/legado) contam como Sim
+    boolTrue(v) { return v === true || v === 'true'; },
+    // normaliza um valor de campo p/ comparação/envio ('' e undefined viram null)
+    normFieldValue(field, v) {
+      if (field && field.type === 'int') return (v === '' || v === null || v === undefined) ? null : Number(v);
+      return (v === '' || v === undefined) ? null : v;
+    },
+    // UPDATE = payload PARCIAL: só campos que mudaram vs. o baseline (o que o
+    // usuário viu ao abrir); null explícito limpa no server (merge). Assim um
+    // autosave não reverte mais mudanças remotas em campos não tocados.
+    // CREATE = payload cheio (só valores preenchidos).
     buildPayload() {
       const payload = {};
+      const base = this._base || {};
+      const isUpdate = !!this.currentId;
       this.inputFields.forEach((field) => {
-        let v = this.model[field.name];
-        if (field.type === 'int') v = v === '' || v === null || v === undefined ? null : Number(v);
-        if (v !== '' && v !== null && v !== undefined) payload[field.name] = v;
+        const v = this.normFieldValue(field, this.model[field.name]);
+        if (isUpdate) {
+          const b = this.normFieldValue(field, base[field.name]);
+          if (v !== b) payload[field.name] = v; // null explícito = limpar
+        } else if (v !== null) {
+          payload[field.name] = v;
+        }
       });
-      // metadados de página: só envia quando há valor (omitir = limpar no update)
-      if (this.model.icon) payload.icon = this.model.icon;
-      if (this.model.cover) payload.cover = this.model.cover;
-      payload.body = this.model.body || '';
+      // metadados de página (icon/cover): mesmo diff; null explícito limpa
+      for (const k of ['icon', 'cover']) {
+        const v = this.model[k] || null;
+        if (isUpdate) {
+          const b = base[k] || null;
+          if (v !== b) payload[k] = v;
+        } else if (v) {
+          payload[k] = v;
+        }
+      }
+      // CORPO: só entra quando é confiável — carregado (GET ok / create) ou
+      // editado pelo usuário. GET falho deixava model.body='' e o autosave
+      // apagava o corpo inteiro no vault (commitado). Em update, só se mudou.
+      if (!isUpdate) {
+        payload.body = this.model.body || '';
+      } else if (this.bodyEdited || (this.bodyLoaded && (this.model.body || '') !== (base.body || ''))) {
+        payload.body = this.model.body || '';
+      }
       return payload;
     },
     async save() {
@@ -632,9 +702,11 @@ export default {
     async requestClose() {
       if (this.saving) return;
       this.cancelTimers();
-      // flush: grava pendências antes de fechar (edição). O corpo salva aqui se
-      // o usuário fechar antes do debounce ocioso disparar.
-      if (this.isEdit && this.dirty) {
+      // flush: grava pendências antes de fechar — vale pra EDIÇÃO e pra CRIAÇÃO
+      // (tarefa já auto-criada via createdId, ou nova com título digitado). Antes
+      // o gate era só isEdit e fechar o peek descartava o que foi digitado nos
+      // últimos 800ms de uma tarefa nova, sem aviso.
+      if (this.dirty && (this.isEdit || this.createdId || !this.titleEmpty)) {
         try { await this.autosave(); } catch (e) { /* erro já foi pro errorMsg */ }
       }
       this.$emit('close');
@@ -651,6 +723,9 @@ export default {
     },
     async autosave() {
       if (!this.dirty) return;
+      // guarda de concorrência: um autosave em voo + outro disparando podia
+      // gerar DOIS createTask (tarefa duplicada). Reagenda e sai.
+      if (this.autosaving) { this.scheduleAutosave(); return; }
       const err = this.validate();
       if (err) {
         // criação: não nag enquanto o título ainda nem foi digitado
@@ -660,10 +735,14 @@ export default {
       this.errorMsg = '';
       this.autosaving = true;
       try {
+        // snapshot do model NO MOMENTO do payload — o baseline pós-save vem daqui
+        // (mudanças digitadas durante o await ficam "diferentes" e vão no próximo)
+        const snap = { ...this.model };
         const payload = this.buildPayload();
         const id = this.currentId;
         let saved;
         if (id) {
+          if (!Object.keys(payload).length) { this.dirty = false; return; } // nada mudou de fato
           saved = await updateTask(id, payload); // back commita + push
           this.$emit('autosaved', saved); // App atualiza o board sem fechar
         } else {
@@ -671,6 +750,7 @@ export default {
           if (saved && saved.id) this.createdId = saved.id; // vira edição daqui pra frente
           this.$emit('created', saved);
         }
+        this._base = snap; // o que foi salvo vira o novo baseline do diff
         this.dirty = false;
         this.flashSaved();
         if (saved && saved.warning) this.errorMsg = saved.warning;
