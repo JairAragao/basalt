@@ -331,7 +331,12 @@ export default {
             key: new PluginKey('basaltSlash'),
             props: {
               handleKeyDown(view, event) {
-                // Quando o menu está aberto, capturamos navegação aqui.
+                // Enter dentro de célula de tabela: split de parágrafo gera célula
+                // multi-bloco, que o serializador GFM não representa — a tabela
+                // inteira degenerava em "[table]" no .md. Tab/setas seguem navegando.
+                if ((event.key === 'Enter') && self.editor && self.editor.isActive('table')) {
+                  return true;
+                }
                 if (!self.slash.open) return false;
                 if (event.key === 'ArrowDown') {
                   self.moveSlash(1);
@@ -873,13 +878,13 @@ export default {
     },
     turnInto(item) {
       if (!this.editor || !item) return;
-      const start = this.bh.start;
+      const { start, end } = this.bh;
       this.closeBlockMenu();
-      // clearNodes primeiro: sem ele, "transformar em" era no-op silencioso em
-      // listas (toggleHeading/setParagraph não atravessam bulletList/taskList).
-      // clearNodes desfaz lista/citação/heading → o alvo aplica limpo.
-      const chain = this.editor.chain().focus().setTextSelection(start + 1).clearNodes();
-      item.action(chain); // a action já chama .run()
+      // seleciona o bloco top-level INTEIRO antes do clearNodes — em lista com
+      // vários itens, selecionar só o 1º transformava só ele e partia a lista.
+      const to = Math.max(start + 1, end - 1);
+      const chain = this.editor.chain().focus().setTextSelection({ from: start + 1, to }).clearNodes();
+      item.action(chain);
       this.refreshMarks();
     },
     deleteBlock() {
