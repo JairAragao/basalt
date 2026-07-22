@@ -48,15 +48,22 @@ function asInteger(value) {
  * Campos em schema.derived são ignorados (responsabilidade do watcher).
  * Retorna { ok: boolean, errors: string[] } — mensagens em PT-BR.
  */
-function validateTask(data, schema) {
+function validateTask(data, schema, opts) {
   const errors = [];
   const input = data && typeof data === 'object' ? data : {};
   const properties = (schema && schema.properties) || {};
+  // opts.only (Set de chaves): valida SÓ esses campos (modo parcial do update)
+  const only = opts && opts.only instanceof Set ? opts.only : null;
 
   for (const [name, spec] of Object.entries(properties)) {
     const label = (spec && spec.label) || name;
     const value = input[name];
     const empty = isEmpty(value);
+
+    // Modo parcial (update): só valida os campos que o payload TOCOU. Sem isso,
+    // um valor órfão preservado do arquivo (opção/etapa deletada do schema, ou
+    // required antigo sem valor) bloqueava QUALQUER edição da tarefa.
+    if (only && !only.has(name)) continue;
 
     // Obrigatoriedade vale para qualquer tipo.
     if (spec && spec.required && empty) {

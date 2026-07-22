@@ -158,8 +158,13 @@ function update(id, data, body, actor) {
     else clean[k] = v;
   }
 
-  // valida o RESULTADO mesclado (o payload pode ser parcial)
-  const { ok, errors } = validateTask({ ...clean, id }, config.schema);
+  // Valida SÓ os campos tocados pelo payload (modo parcial). Validar o merge
+  // inteiro rejeitava a edição por causa de valor órfão preservado em campo
+  // NÃO tocado (opção/etapa deletada, required legado vazio) — e o autosave
+  // perdia o que o usuário digitou. Limpar um required segue barrado (o campo
+  // tocado é validado com o valor final do merge, ausente = vazio).
+  const touched = new Set(Object.keys(incoming));
+  const { ok, errors } = validateTask({ ...clean, id }, config.schema, { only: touched });
   if (!ok) throw new Error(`validação falhou: ${errors.join('; ')}`);
 
   // Preserva os derivados (fórmula) e o carimbo de cálculo (dono = watcher).

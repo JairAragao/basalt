@@ -188,23 +188,30 @@ async function commitAwaitedWrite(writeFn, commitFn) {
 // commits acumulados; uma falha vira _lastPushWarning (surfaciado na próxima resposta).
 let _pushPending = false;
 let _pushRunning = false;
+// troca de vault descarta push pendente do vault ANTIGO — antes o loop seguia
+// vivo e executava o push (e o auto-heal de rebase) contra o vault NOVO.
+let _pushVault = null;
+if (typeof config.onVaultChange === 'function') config.onVaultChange(() => { _pushPending = false; });
 function schedulePush() {
   _pushPending = true;
+  _pushVault = config.VAULT;
   if (_pushRunning) return;
   _pushRunning = true;
-  // FORA da gitChain (não bloqueia o commit da próxima request no nível da app).
-  // A segurança real vem de: (a) o push NÃO toca .git/index.lock, e (b) a factory
-  // do simple-git usa maxConcurrentProcesses:1 → não há 2 processos git ao mesmo
-  // tempo (push×commit×pull serializam de verdade no git). Coalescido (1 loop por
-  // vez); `finally` interno (não num .then) fecha a janela de race do coalescing.
+  // O loop roda fora da gitChain, mas CADA pushSync entra na fila (gitSerial):
+  // o push em si não toca o worktree, porém o auto-heal de non-fast-forward faz
+  // `pull --rebase --autostash` (e até `rebase --abort`) — isso REESCREVE o
+  // working tree e, fora da fila, intercalava com o write+commit de um save
+  // (a mesma race que commitAwaitedWrite fechou). Na fila, nunca há write de
+  // tarefa entre as fases do rebase.
   (async () => {
     try {
       while (_pushPending) {
         _pushPending = false;
+        if (config.VAULT !== _pushVault) break; // vault trocou → pendência morta
         // pushSync se auto-cura em divergência: ao ser rejeitado por non-fast-
         // forward, faz `pull --rebase --autostash` e re-tenta — assim os commits
         // locais nunca ficam presos à frente do origin travando a sincronização.
-        const r = await git.pushSync();
+        const r = await gitSerial(() => git.pushSync());
         _lastPushWarning = (r && r.ok === false) ? `push falhou: ${r.error}` : undefined;
         if (_lastPushWarning) console.warn('[git]', _lastPushWarning);
         // Se o push precisou integrar o remoto, surfaça os commits que chegaram
@@ -650,8 +657,10 @@ router.post('/users/register', async (req, res) => {
     }
 
     try { await git.setUserId(userId); } catch (e) { console.warn('[users] setUserId falhou:', e.message); }
-    config.writeUsers(roster);
-    const warning = await commitAwaited(() => git.commitPaths([config.usersFile()], `users: ${entry.nome}`));
+    const warning = await commitAwaitedWrite(
+      () => { config.writeUsers(roster); },
+      () => git.commitPaths([config.usersFile()], `users: ${entry.nome}`)
+    );
     schedulePush();
     res.json(withWarning({ userId, entry, users: config.users }, warning));
   } catch (err) { fail(res, err); }
@@ -666,8 +675,10 @@ router.put('/users/:id', async (req, res) => {
     const entry = roster.find((u) => u.id === targetId);
     if (!entry) return res.status(404).json({ error: 'usuário não encontrado no roster' });
     if (nome) entry.nome = nome;
-    config.writeUsers(roster);
-    const warning = await commitAwaited(() => git.commitPaths([config.usersFile()], `users: ${entry.nome}`));
+    const warning = await commitAwaitedWrite(
+      () => { config.writeUsers(roster); },
+      () => git.commitPaths([config.usersFile()], `users: ${entry.nome}`)
+    );
     schedulePush();
     res.json(withWarning({ entry, users: config.users }, warning));
   } catch (err) { fail(res, err); }
@@ -802,9 +813,10 @@ router.get('/dashboard', (req, res) => {
 router.put('/dashboard', async (req, res) => {
   try {
     const clean = sanitizeDashboard(req.body || {});
-    writeJsonAtomic(dashboardFile(), clean);
-    const warning = await commitAwaited(() =>
-      git.commitPaths([dashboardFile()], `dashboard: ${clean.charts.length} gráfico(s)`));
+    const warning = await commitAwaitedWrite(
+      () => { writeJsonAtomic(dashboardFile(), clean); },
+      () => git.commitPaths([dashboardFile()], `dashboard: ${clean.charts.length} gráfico(s)`)
+    );
     schedulePush();
     res.json(withWarning(clean, warning));
   } catch (err) { fail(res, err); }
@@ -846,20 +858,24 @@ router.put('/board/status', async (req, res) => {
       }
     }
 
-    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
-    board.statusGroups = statusGroups;
-    if (doneGroupId !== undefined) board.doneGroupId = doneGroupId;
-    writeJsonAtomic(boardFile(), board);
-
+    // escrita do board + migração de tarefas + commit DENTRO da fila git —
+    // mesma proteção do save de tarefa (pull --autostash não intercala).
     const rn = (Array.isArray(renames) ? renames : []).filter((r) => r && r.from && r.to && r.from !== r.to);
     let changed = [];
-    if (rn.length) {
-      const map = new Map(rn.map((r) => [r.from, r.to]));
-      changed = migrateTasks((data) => (map.has(data.status) ? { ...data, status: map.get(data.status) } : null));
-    }
-
-    config.reload();
-    const warning = await commitAwaited(() => git.commitPaths([boardFile(), ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`));
+    const warning = await commitAwaitedWrite(
+      () => {
+        const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
+        board.statusGroups = statusGroups;
+        if (doneGroupId !== undefined) board.doneGroupId = doneGroupId;
+        writeJsonAtomic(boardFile(), board);
+        if (rn.length) {
+          const map = new Map(rn.map((r) => [r.from, r.to]));
+          changed = migrateTasks((data) => (map.has(data.status) ? { ...data, status: map.get(data.status) } : null));
+        }
+        config.reload();
+      },
+      () => git.commitPaths([boardFile(), ...changed], `status: config atualizada${rn.length ? ` (${rn.length} renomeada(s))` : ''}`)
+    );
     schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -898,12 +914,15 @@ router.put('/board/filters', async (req, res) => {
       if (!clean.includes(key)) clean.push(key);
     }
 
-    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
-    board.filters = clean;
-    writeJsonAtomic(boardFile(), board);
-
-    config.reload();
-    const warning = await commitAwaited(() => git.commitPaths([boardFile()], `board: filtros atualizados (${clean.length})`));
+    const warning = await commitAwaitedWrite(
+      () => {
+        const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
+        board.filters = clean;
+        writeJsonAtomic(boardFile(), board);
+        config.reload();
+      },
+      () => git.commitPaths([boardFile()], `board: filtros atualizados (${clean.length})`)
+    );
     schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -931,14 +950,17 @@ router.put('/board/card', async (req, res) => {
     // subtitle/badge órfãos viram vazio (em vez de lançar erro).
     const cleanRef = (k) => (k != null && k !== '' && known(k) ? k : undefined);
 
-    const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
-    board.card = { ...(board.card || {}), fields: clean };
-    if (subtitle !== undefined) board.card.subtitle = cleanRef(subtitle);
-    if (badge !== undefined) board.card.badge = cleanRef(badge);
-    writeJsonAtomic(boardFile(), board);
-
-    config.reload();
-    const warning = await commitAwaited(() => git.commitPaths([boardFile()], 'board: campos do cartão atualizados'));
+    const warning = await commitAwaitedWrite(
+      () => {
+        const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
+        board.card = { ...(board.card || {}), fields: clean };
+        if (subtitle !== undefined) board.card.subtitle = cleanRef(subtitle);
+        if (badge !== undefined) board.card.badge = cleanRef(badge);
+        writeJsonAtomic(boardFile(), board);
+        config.reload();
+      },
+      () => git.commitPaths([boardFile()], 'board: campos do cartão atualizados')
+    );
     schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -979,12 +1001,24 @@ router.put('/schema/properties', async (req, res) => {
 
     // Options mistas no payload (string | {value,color}): sanitiza pro disco —
     // objeto SÓ pra opção com cor válida (#rrggbb), string crua pro resto.
-    // optionMeta ecoado pelo front é descartado (campo DERIVADO no reload).
+    // ANTES de descartar o optionMeta ecoado, re-hidrata a cor nas opções que
+    // vieram como string crua (payloads em formato de MEMÓRIA — ex.: quick-edit
+    // do peek manda options string[] + optionMeta separado; sem isso, salvar
+    // apagava a cor de TODAS as opções não-reenviadas como {value,color}).
     for (const spec of Object.values(properties)) {
       if (!spec || typeof spec !== 'object') continue;
+      const meta = spec.optionMeta && typeof spec.optionMeta === 'object' ? spec.optionMeta : null;
       delete spec.optionMeta;
       if ((spec.type === 'enum' || spec.type === 'multiselect') && spec.options !== undefined) {
-        spec.options = config.sanitizeOptionsForDisk(spec.options);
+        let opts = Array.isArray(spec.options) ? spec.options : [];
+        if (meta) {
+          opts = opts.map((o) => {
+            if (typeof o !== 'string') return o; // já veio {value,color}
+            const m = meta[o] || meta[String(o).trim()];
+            return m && m.color ? { value: o, color: m.color } : o;
+          });
+        }
+        spec.options = config.sanitizeOptionsForDisk(opts);
       }
     }
 
@@ -1024,6 +1058,8 @@ router.put('/schema/properties', async (req, res) => {
     // campo-título deixa de gerar id).
     if (schema.idFrom && renameMap.has(schema.idFrom)) schema.idFrom = renameMap.get(schema.idFrom);
 
+    // (escrita do schema/board/migração roda adiante, DENTRO da fila git)
+    const writeSchemaAndBoard = () => {
     schema.properties = properties;
     writeJsonAtomic(schemaFile(), schema);
 
@@ -1031,7 +1067,6 @@ router.put('/schema/properties', async (req, res) => {
     // título do card, subtitle, badge, campos exibidos, filtros e sort. Sem isso,
     // renomear a prop-título (ex.: "titulo" → "tarefa") faz o card perder o título
     // e o campo virar uma propriedade comum.
-    let boardChanged = false;
     if (renameMap.size) {
       const board = JSON.parse(fs.readFileSync(boardFile(), 'utf8'));
       const mapKey = (k) => (k && renameMap.has(k) ? renameMap.get(k) : k);
@@ -1051,6 +1086,8 @@ router.put('/schema/properties', async (req, res) => {
       if (board.sort && board.sort.by && renameMap.has(board.sort.by)) { board.sort.by = renameMap.get(board.sort.by); boardChanged = true; }
       if (boardChanged) writeJsonAtomic(boardFile(), board);
     }
+    };
+    let boardChanged = false;
 
     const newKeys = Object.keys(properties);
     const removed = oldKeys.filter((k) => !newKeys.includes(k) && !renameMap.has(k) && !derived.has(k));
@@ -1080,7 +1117,7 @@ router.put('/schema/properties', async (req, res) => {
       if (removedOpts.length) optRemovalsByProp.set(newKey, new Set(removedOpts));
     }
 
-    const changed = migrateTasks((data) => {
+    const migrateFn = () => migrateTasks((data) => {
       let dirty = false;
       // renomeia chave
       for (const [from, to] of renameMap) {
@@ -1128,11 +1165,22 @@ router.put('/schema/properties', async (req, res) => {
       return dirty ? data : null;
     });
 
-    config.reload();
-    const optNote = optRn.length ? `, ${optRn.length} opção(ões) migrada(s)` : '';
-    const commitList = [schemaFile(), ...changed];
-    if (boardChanged) commitList.push(boardFile());
-    const warning = await commitAwaited(() => git.commitPaths(commitList, `schema: propriedades atualizadas${optNote}`));
+    // escrita do schema+board + migração de TODAS as tarefas + reload DENTRO da
+    // fila git — um pull --autostash no meio revertia tudo com resposta 200.
+    let changed = [];
+    const warning = await commitAwaitedWrite(
+      () => {
+        writeSchemaAndBoard();
+        changed = migrateFn();
+        config.reload();
+      },
+      () => {
+        const optNote = optRn.length ? `, ${optRn.length} opção(ões) migrada(s)` : '';
+        const commitList = [schemaFile(), ...changed];
+        if (boardChanged) commitList.push(boardFile());
+        return git.commitPaths(commitList, `schema: propriedades atualizadas${optNote}`);
+      }
+    );
     schedulePush();
     res.json(withWarning({ schema: config.schema, board: config.board, gute: config.gute }, warning));
   } catch (err) { fail(res, err); }
@@ -1252,13 +1300,14 @@ router.post('/assets', async (req, res) => {
     fs.mkdirSync(dir, { recursive: true });
     const name = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
     const file = path.join(dir, name);
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, buf);       // escrita atômica (.tmp + rename), como nas tarefas
-    fs.renameSync(tmp, file);
-
-    // Versiona o asset (best-effort, serializado): se git falhar, o arquivo já
-    // existe e a imagem aparece localmente — só não viaja no push (best-effort).
-    const warning = await commitAwaited(() => git.commitPaths([file], `assets: ${name}`));
+    const warning = await commitAwaitedWrite(
+      () => {
+        const tmp = file + '.tmp';
+        fs.writeFileSync(tmp, buf);
+        fs.renameSync(tmp, file);
+      },
+      () => git.commitPaths([file], `assets: ${name}`)
+    );
     schedulePush();
     res.json(withWarning({ url: `/api/assets/${name}`, name }, warning));
   } catch (err) { fail(res, err); }

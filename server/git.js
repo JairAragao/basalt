@@ -32,9 +32,11 @@ function git() {
     // tempo nesta instância (o default é 5; comandos concorrentes colidem em
     // .git/index.lock). Assim a serialização é REAL no nível do git (não só da
     // gitChain da app), cobrindo push×commit×pull com segurança.
-    // timeout.block: aborta qualquer comando que fique ~8s sem output (push/pull/
-    // ls-remote em remote lento/inacessível) — nunca pendura a fila indefinidamente.
-    _git = simpleGit({ baseDir, maxConcurrentProcesses: 1, timeout: { block: 8000 } })
+    // timeout.block: aborta comando que fique SEM OUTPUT por esse tempo. 120s —
+    // o antigo 8s matava pull/push de pack grande em rede lenta e o vault
+    // atrasado nunca sincronizava. Prompt de senha não é risco (GIT_TERMINAL_
+    // PROMPT=0 falha rápido); o timeout só cobre travamento real.
+    _git = simpleGit({ baseDir, maxConcurrentProcesses: 1, timeout: { block: 120000 } })
       .env('GIT_TERMINAL_PROMPT', '0');
     _gitBaseDir = baseDir;
   }
