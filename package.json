@@ -17,7 +17,8 @@
     "electron:dev": "npm run build && electron .",
     "electron:pack": "npm run build && electron-builder --dir",
     "electron:build": "npm run build && electron-builder",
-    "release": "npm run build && electron-builder --publish always",
+    "release": "npm run electron:build && node scripts/publish-release.js",
+    "release:publish": "node scripts/publish-release.js",
     "test": "vitest run"
   },
   "dependencies": {
