@@ -35,18 +35,19 @@
       <button class="be-bubble__btn" :class="{ 'is-active': mark.strike }" title="Tachado" @mousedown.prevent @click="run('toggleStrike')"><s>S</s></button>
       <button class="be-bubble__btn be-bubble__btn--mono" :class="{ 'is-active': mark.code }" title="Código inline" @mousedown.prevent @click="run('toggleCode')">&lt;/&gt;</button>
       <span class="be-bubble__sep"></span>
-      <button class="be-bubble__btn" :class="{ 'is-active': mark.link }" title="Link" @mousedown.prevent @click="toggleLink"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 12a3 3 0 0 0 4 0l2-2a3 3 0 0 0-4-4l-1 1" stroke-linecap="round"/><path d="M12 8a3 3 0 0 0-4 0l-2 2a3 3 0 0 0 4 4l1-1" stroke-linecap="round"/></svg></button>
+      <button class="be-bubble__btn" :class="{ 'is-active': mark.link }" title="Link" @mousedown.prevent @click="toggleLink"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8.5 11.5l3-3" stroke-linecap="round"/><path d="M7 9l-2.2 2.2a2.7 2.7 0 0 0 3.9 3.9L11 12.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 11l2.2-2.2a2.7 2.7 0 0 0-3.9-3.9L9 7.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
 
-    <!-- barrinha de link (substitui o prompt do navegador) -->
+    <!-- barrinha de link (substitui o prompt do navegador).
+         SEM @mousedown.prevent no container: ele bloqueava o clique DENTRO do
+         input (não dava pra focar/editar a URL). O prevent fica só nos botões. -->
     <div
       v-show="linkEditor.open"
       ref="linkbar"
       class="be-linkbar"
       :style="{ left: linkEditor.x + 'px', top: linkEditor.y + 'px' }"
-      @mousedown.prevent
     >
-      <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" class="be-linkbar__icon"><path d="M8 12a3 3 0 0 0 4 0l2-2a3 3 0 0 0-4-4l-1 1" stroke-linecap="round"/><path d="M12 8a3 3 0 0 0-4 0l-2 2a3 3 0 0 0 4 4l1-1" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" class="be-linkbar__icon"><path d="M8.5 11.5l3-3" stroke-linecap="round"/><path d="M7 9l-2.2 2.2a2.7 2.7 0 0 0 3.9 3.9L11 12.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 11l2.2-2.2a2.7 2.7 0 0 0-3.9-3.9L9 7.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <input
         ref="linkInput"
         v-model="linkEditor.url"
@@ -139,13 +140,17 @@
 
 <script>
 import { Editor, Extension } from '@tiptap/core';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Image from '@tiptap/extension-image';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import { BubbleMenuPlugin } from '@tiptap/extension-bubble-menu';
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
@@ -219,6 +224,7 @@ const ICONS = {
   code: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 7l-3 3 3 3M13 7l3 3-3 3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   divider: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10h14" stroke-linecap="round"/></svg>',
   image: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="12" rx="2"/><circle cx="7.5" cy="8.5" r="1.5"/><path d="M4 14l4-4 3 3 2-2 3 3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  table: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M3 9h14M9 4v12M14 4v12" /></svg>',
 };
 
 function buildSlashItems() {
@@ -233,6 +239,7 @@ function buildSlashItems() {
     { id: 'quote', title: 'Citação', desc: 'Bloco de citação', icon: ICONS.quote, keywords: ['citacao', 'quote', 'blockquote'], action: (c) => c.toggleBlockquote().run() },
     { id: 'code', title: 'Código', desc: 'Bloco de código', icon: ICONS.code, keywords: ['codigo', 'code', 'codeblock'], action: (c) => c.toggleCodeBlock().run() },
     { id: 'divider', title: 'Divisor', desc: 'Linha separadora', icon: ICONS.divider, keywords: ['divisor', 'divider', 'hr', 'linha', 'separador'], action: (c) => c.setHorizontalRule().run() },
+    { id: 'table', title: 'Tabela', desc: 'Tabela 3×3 com cabeçalho', icon: ICONS.table, keywords: ['tabela', 'table', 'grade', 'grid'], action: (c) => c.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
     // Imagem: tratada à parte em applySlash (abre file picker → upload → insere URL).
     { id: 'image', title: 'Imagem', desc: 'Enviar do computador', icon: ICONS.image, keywords: ['imagem', 'image', 'img', 'foto', 'picture', 'figura', 'anexo'], action: null },
   ];
@@ -282,9 +289,10 @@ export default {
     };
   },
   computed: {
-    // itens de "transformar em" = blocos do slash, menos os atoms (divisor/imagem não são alvos)
+    // itens de "transformar em" = blocos do slash, menos atoms/estruturas
+    // (divisor/imagem/tabela não são alvos de transformação)
     turnIntoItems() {
-      return this.slashItems.filter((i) => i.id !== 'divider' && i.id !== 'image');
+      return this.slashItems.filter((i) => i.id !== 'divider' && i.id !== 'image' && i.id !== 'table');
     },
     filteredSlashItems() {
       const q = norm(this.slash.query);
@@ -379,9 +387,19 @@ export default {
           HTMLAttributes: { rel: 'noopener noreferrer nofollow' },
           // só http(s)/mailto viram link — bloqueia javascript:/data: (XSS latente)
           validate: (href) => /^(https?:\/\/|mailto:)/i.test(href),
+          // autolink SÓ com esquema explícito ou www. — sem isso, "CHANGELOG.md"
+          // virava link (".md" é TLD da Moldávia) e era commitado como link falso.
+          shouldAutoLink: (url) => /^(https?:\/\/|mailto:|www\.)/i.test(url),
         }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        // Tabelas GFM: sem elas o schema não tinha nós de tabela — corpo vindo
+        // do Notion com tabela era ACHATADO em texto no round-trip e o autosave
+        // commitava o corpo degenerado. tiptap-markdown serializa `| a | b |`.
+        Table.configure({ resizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
         // Imagens: src = URL (/api/assets/...). Nada de base64 inline (incha o .md);
         // o paste/drop/"/" sobe o arquivo pro vault e insere a URL servível.
         // MarkdownImage garante a serialização `![](src)` no .md (ver acima).
@@ -390,7 +408,10 @@ export default {
           html: false,
           tightLists: true,
           bulletListMarker: '-',
-          linkify: true,
+          // linkify DESLIGADO no parse: reescrevia texto puro em link no load
+          // ("CHANGELOG.md" → [CHANGELOG.md](http://changelog.md)) e o autosave
+          // commitava a reescrita. Link/autolink (acima) cobre URLs digitadas.
+          linkify: false,
           transformPastedText: true,
           transformCopiedText: true,
         }),
@@ -404,9 +425,11 @@ export default {
         // Ctrl+V / arrastar imagem → sobe pro vault e insere a URL.
         handlePaste: (view, event) => self.handleImagePaste(event),
         handleDrop: (view, event) => self.handleImageDrop(event),
-        // Clicar À DIREITA de uma linha põe o caret no fim dela (não pula p/ a
-        // linha de baixo). Abaixo de todo o conteúdo é tratado por onSurfaceClick.
-        handleClick: (view, pos, event) => self.onEditorClick(view, pos, event),
+        // SEM handleClick custom: o bias forçado (TextSelection.near -1) era um
+        // no-op no wrap (near devolve a MESMA pos) e mispositionava cliques
+        // normais → caret/Enter agindo "um caractere ao lado". O posicionamento
+        // nativo do ProseMirror é mais correto. Clique abaixo do conteúdo segue
+        // no onSurfaceClick.
         // Clique sobre uma imagem → abre expandida (lightbox), não seleciona o nó.
         handleClickOn: (view, pos, node, nodePos, event) => {
           if (node && node.type && node.type.name === 'image') {
@@ -421,6 +444,16 @@ export default {
         // o corpo vazio — era um dos jeitos de "sumir todo o texto").
         let md;
         try { md = this.editor.storage.markdown.getMarkdown(); } catch (e) { this.refreshSlash(); return; }
+        // Rede anti-perda: serialização devolveu VAZIO mas o documento TEM
+        // conteúdo → serialização degenerada; não emite (o autosave commitaria a
+        // exclusão de tudo). Vazio real (doc de fato limpo) segue emitindo.
+        const docText = this.editor.state.doc.textContent || '';
+        const docHasContent = docText.trim() !== '' || this.editor.state.doc.childCount > 1;
+        if ((!md || !md.trim()) && docHasContent) {
+          console.warn('[BodyEditor] serialização vazia com doc não-vazio — emit suprimido');
+          this.refreshSlash();
+          return;
+        }
         this.$emit('input', md);
         this.refreshSlash();
       },
@@ -496,13 +529,32 @@ export default {
         return '';
       }
     },
+    // A seleção pode ter colapsado entre mostrar a bubble e o clique no botão
+    // (blur do editor, portal do tippy). Se colapsou, restaura a última seleção
+    // NÃO-vazia conhecida antes de rodar o comando — senão o toggle roda "em
+    // nada" e parece que o botão não funciona.
+    restoreSelectionIfCollapsed() {
+      if (!this.editor) return;
+      const sel = this.editor.state.selection;
+      const last = this._lastSel;
+      if (!sel.empty || !last) return;
+      const size = this.editor.state.doc.content.size;
+      if (last.from >= 0 && last.to <= size && last.from < last.to) {
+        this.editor.commands.setTextSelection(last);
+      }
+    },
     run(cmd) {
       if (!this.editor) return;
+      this.restoreSelectionIfCollapsed();
       this.editor.chain().focus()[cmd]().run();
       this.refreshMarks();
     },
     toggleLink() {
       if (!this.editor) return;
+      // guarda a seleção alvo AGORA — o clique no input da barrinha tira o foco
+      // do editor e o applyLink precisa reaplicar exatamente este range.
+      const { from, to } = this.editor.state.selection;
+      this._linkSel = { from, to };
       const prev = this.editor.getAttributes('link').href || '';
       // posiciona a barrinha logo acima da bubble (que está na seleção)
       const r = this.$refs.bubble.getBoundingClientRect();
@@ -511,8 +563,15 @@ export default {
     },
     applyLink() {
       if (!this.editor) return;
-      const url = (this.linkEditor.url || '').trim();
-      const chain = this.editor.chain().focus().extendMarkRange('link');
+      let url = (this.linkEditor.url || '').trim();
+      // sem esquema → assume https (evita o validate do Link rejeitar em silêncio)
+      if (url && !/^(https?:\/\/|mailto:)/i.test(url)) url = 'https://' + url;
+      // restaura o range selecionado quando a barrinha abriu (o foco foi pro input)
+      const sel = this._linkSel;
+      const size = this.editor.state.doc.content.size;
+      const chain = this.editor.chain().focus();
+      if (sel && sel.from >= 0 && sel.to <= size) chain.setTextSelection(sel);
+      chain.extendMarkRange('link');
       if (!url) chain.unsetLink().run();
       else chain.setLink({ href: url }).run();
       this.closeLink();
@@ -520,7 +579,11 @@ export default {
     },
     removeLink() {
       if (!this.editor) return;
-      this.editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      const sel = this._linkSel;
+      const size = this.editor.state.doc.content.size;
+      const chain = this.editor.chain().focus();
+      if (sel && sel.from >= 0 && sel.to <= size) chain.setTextSelection(sel);
+      chain.extendMarkRange('link').unsetLink().run();
       this.closeLink();
       this.refreshMarks();
     },
@@ -530,6 +593,10 @@ export default {
     refreshMarks() {
       if (!this.editor) return;
       const e = this.editor;
+      // memoriza a última seleção não-vazia (não-reativo) — os botões da bubble
+      // usam pra restaurar se a seleção colapsar antes do clique completar.
+      const sel = e.state.selection;
+      if (!sel.empty) this._lastSel = { from: sel.from, to: sel.to };
       this.mark = {
         bold: e.isActive('bold'),
         italic: e.isActive('italic'),
@@ -808,7 +875,10 @@ export default {
       if (!this.editor || !item) return;
       const start = this.bh.start;
       this.closeBlockMenu();
-      const chain = this.editor.chain().focus().setTextSelection(start + 1);
+      // clearNodes primeiro: sem ele, "transformar em" era no-op silencioso em
+      // listas (toggleHeading/setParagraph não atravessam bulletList/taskList).
+      // clearNodes desfaz lista/citação/heading → o alvo aplica limpo.
+      const chain = this.editor.chain().focus().setTextSelection(start + 1).clearNodes();
       item.action(chain); // a action já chama .run()
       this.refreshMarks();
     },
@@ -827,30 +897,6 @@ export default {
       try { node = this.editor.state.doc.nodeAt(start); } catch (_) { node = null; }
       if (!node) return;
       this.editor.chain().focus().insertContentAt(end, node.toJSON()).run();
-    },
-
-    // ---- clique na área vazia (estilo Notion) ----
-    // Resolve dois incômodos:
-    //  (3) clicar ABAIXO de todo o conteúdo cria/foca um parágrafo vazio no fim —
-    //      essencial quando o último bloco é um code block (senão fica preso nele);
-    //  (2) clicar À DIREITA de uma linha já escrita põe o caret no fim daquela
-    //      linha visual (em vez de não mover ou pular pra próxima).
-    onEditorClick(view, pos, event) {
-      // Clique À DIREITA do glifo em `pos`. No fim de uma linha que sofreu wrap,
-      // o `pos` do PM é ambíguo (= início da próxima linha) e o default associa
-      // pra FRENTE → o caret salta pro começo da linha de baixo. Forçamos a
-      // associação pra TRÁS (bias -1) → o caret fica no FIM da linha clicada.
-      // (clique abaixo de todo o conteúdo é tratado por onSurfaceClick.)
-      try {
-        const coords = view.coordsAtPos(pos);
-        if (event.clientX > coords.right + 1) {
-          const sel = TextSelection.near(view.state.doc.resolve(pos), -1);
-          view.dispatch(view.state.tr.setSelection(sel).scrollIntoView());
-          view.focus();
-          return true;
-        }
-      } catch (_) { /* posição inválida → deixa o default agir */ }
-      return false;
     },
 
     // ---- imagem via "/" (abre o seletor de arquivo) ----
@@ -1098,6 +1144,37 @@ export default {
    separada por vírgula descartava o prefixo do 1º seletor de cada grupo,
    virando um `.hljs-keyword` global de baixa especificidade que PERDIA pro
    `code { color: inherit }` — e o código ficava sem cor. */
+
+/* tabelas (GFM) */
+.body-editor__surface :deep(.ProseMirror table) {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+  table-layout: fixed;
+  overflow: hidden;
+  font-size: 0.95em;
+}
+.body-editor__surface :deep(.ProseMirror th),
+.body-editor__surface :deep(.ProseMirror td) {
+  border: 1px solid #373737;
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+  min-width: 3em;
+  position: relative;
+}
+.body-editor__surface :deep(.ProseMirror th) {
+  background: #252525;
+  font-weight: 600;
+  text-align: left;
+  color: #e9e9e7;
+}
+.body-editor__surface :deep(.ProseMirror .selectedCell::after) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(217, 160, 30, 0.12);
+  pointer-events: none;
+}
 
 /* blockquote */
 .body-editor__surface :deep(.ProseMirror blockquote) {
