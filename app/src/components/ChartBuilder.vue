@@ -169,7 +169,7 @@ export default {
     },
     dimOptions() {
       const out = Object.keys(this.props)
-        .filter((k) => ['enum', 'multiselect', 'user'].includes(this.props[k].type))
+        .filter((k) => k !== 'status' && ['enum', 'multiselect', 'user', 'boolean'].includes(this.props[k].type))
         .map((k) => ({ value: k, label: this.props[k].label || k }));
       if (this.props.status) out.unshift({ value: 'status', label: this.props.status.label || 'Status' });
       return out;
@@ -246,6 +246,9 @@ export default {
       this.draft.measure = { ...this.draft.measure, agg: v };
       if (!['sum', 'avg'].includes(v)) this.draft.measure.prop = null;
       else if (!this.draft.measure.prop && this.numericOptions.length) this.draft.measure.prop = this.numericOptions[0].value;
+      // leadtime = criação→conclusão: com o seletor de base oculto, uma base
+      // 'open' presa deixava o KPI eternamente em "—"
+      if (v === 'leadtime') this.draft.basis = 'completed';
     },
     apply() {
       // normaliza limit vazio → null

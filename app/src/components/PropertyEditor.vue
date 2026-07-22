@@ -243,6 +243,7 @@ export default {
         { value: 'user', label: 'Usuário' },
         { value: 'int', label: 'Número' },
         { value: 'boolean', label: 'Sim/Não' },
+        { value: 'datetime', label: 'Data' },
         { value: 'formula', label: 'Fórmula' },
       ],
       operators: ['+', '-', '*', '/', '(', ')'],

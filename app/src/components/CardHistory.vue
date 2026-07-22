@@ -204,11 +204,12 @@ export default {
         this.loading = false;
       }
     },
-    // abre direto o diff do commit `initialHash`, se ele existir na lista
+    // abre direto o diff do commit `initialHash` — UMA vez por hash: reabrir o
+    // painel manualmente depois volta na lista, não no diff antigo
     applyInitialHash() {
-      if (!this.initialHash) return;
+      if (!this.initialHash || this._consumedHash === this.initialHash) return;
       const c = this.entries.find((e) => e.hash === this.initialHash || e.shortHash === this.initialHash);
-      if (c) this.openDiff(c);
+      if (c) { this._consumedHash = this.initialHash; this.openDiff(c); }
     },
     async openDiff(commit) {
       this.selected = commit;

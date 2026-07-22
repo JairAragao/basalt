@@ -47,9 +47,9 @@ export function matchesTask(task, state, schema) {
       if (k == null) return false;
       if (from && k < from) return false;
       if (to && k > to) return false;
-    } else if (prop.type === 'multiselect' || (prop.type === 'user' && prop.multiple)) {
-      // multiselect nativo OU user múltiplo: valor da tarefa é lista ';' — o
-      // filtro casa se o valor escolhido está contido nela
+    } else if (prop.type === 'multiselect' || prop.type === 'user') {
+      // user SEMPRE por contenção na lista ';' — cobre valor multi legado
+      // depois da prop voltar a single (e single "u1" vira lista de 1)
       if (empty(f.v)) continue;
       const list = String(v == null ? '' : v).split(';').map((s) => s.trim()).filter(Boolean);
       if (!list.includes(f.v)) return false;

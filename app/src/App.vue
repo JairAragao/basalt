@@ -256,6 +256,7 @@
         :config="config"
         :tasks="tasks"
         :users="users"
+        :vault-path="activeVault"
         @open-settings="settingsOpen = true"
       />
       <!-- extensões (plugins puxados do GitHub) -->
@@ -766,7 +767,8 @@ export default {
         this.filters = f;
         this.filterDrafts = {};
         const s = this.config.board && this.config.board.sort;
-        if (s && s.by) this.sort = { by: s.by, dir: s.dir || 'desc' };
+        this.sort = (s && s.by) ? { by: s.by, dir: s.dir || 'desc' } : { by: 'created_at', dir: 'desc' };
+        this.pullError = null; // estado do vault anterior não vaza pro novo
         // roster + notificações (best-effort — não bloqueiam o board)
         try { this.users = (await getUsers()) || []; } catch (e) { this.users = []; }
         try { this.notifications = (await getNotifications()) || []; } catch (e) { this.notifications = []; }
@@ -985,9 +987,10 @@ export default {
       this.handlePullResult(res); // pull pós-save também nunca é silencioso
       await this.reload();
     },
-    // kebab da propriedade alterou o schema (label/tipo/oculto): recarrega config + tarefas
+    // kebab da propriedade alterou o schema (label/tipo/oculto): atualiza config
+    // + tarefas SEM resetar filtros ativos e sort da topbar (loadActive zerava).
     async onConfigChanged() {
-      await this.loadActive();
+      await Promise.all([this.refreshConfigIfChanged(), this.reload()]);
     },
     // ── notificações (UI) ──
     toggleNotif() { this.notifOpen = !this.notifOpen; },

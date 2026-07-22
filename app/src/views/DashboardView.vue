@@ -120,11 +120,10 @@ const rangeKey = 'basalt.dashRange';
 const rangeModes = ['7', '30', '90', '365', 'all', 'custom'];
 const accentColor = PALETTE.find((p) => p.name === 'Âmbar').value;
 
-// ids simples e estáveis o suficiente pra key do v-for local (o servidor
-// re-atribui/valida no PUT). Sem Math.random (proibido no engine? não — só no
-// workflow). Usa contador + timestamp base do mount.
+// id local com componente temporal — contador puro colidia com ids já salvos
+// após reload (remover/editar atingia o gráfico errado).
 let _seq = 0;
-function localId() { _seq += 1; return `c_${_seq}_${_seq * 7 + 3}`; }
+function localId() { _seq += 1; return `c_${Date.now().toString(36)}_${_seq}`; }
 
 export default {
   name: 'DashboardView',
@@ -133,6 +132,7 @@ export default {
     config: { type: Object, required: true },
     tasks: { type: Array, default: () => [] },
     users: { type: Array, default: () => [] },
+    vaultPath: { type: String, default: '' },
   },
   emits: ['open-settings'],
   data() {
@@ -195,13 +195,16 @@ export default {
     },
   },
   watch: {
-    // troca de vault (App substitui config) → DESCARTA edição em andamento e
-    // recarrega o dashboard do vault novo. Sem isso, "Salvar" no modo edição
-    // gravava os gráficos do vault antigo por cima do dashboard do vault novo.
-    config() {
+    // troca de VAULT descarta edição (senão "Salvar" gravava os gráficos do
+    // vault antigo por cima do novo). Mudança de config SEM troca de vault
+    // (auto-pull, rename de opção) NÃO pode matar a edição em andamento.
+    vaultPath() {
       this.editing = false;
       this.builderOpen = false;
       this.loadDashboard();
+    },
+    config() {
+      if (!this.editing) this.loadDashboard();
     },
   },
   created() {
@@ -231,9 +234,26 @@ export default {
       const seqFor = c.dim ? { [c.dim]: this.seqFor(c.dim) } : {};
       const res = computeChart(c, { ...this.ctx, seqFor });
       if ((c.type === 'bar' || c.type === 'pie') && Array.isArray(res.rows)) {
-        res.rows = res.rows.map((r) => ({ ...r, color: this.colorForRow(c, r.key) }));
+        res.rows = res.rows.map((r) => ({
+          ...r,
+          label: this.labelForRow(c, r.key, r.label),
+          color: this.colorForRow(c, r.key),
+        }));
       }
       return res;
+    },
+    // id de usuário → nome do roster; boolean → Sim/Não (senão sai id/true cru)
+    labelForRow(c, key, fallback) {
+      const prop = (this.schema.properties || {})[c.dim] || {};
+      if (prop.type === 'user') {
+        const u = this.users.find((x) => x.id === key);
+        if (u) return u.nome || u.id;
+      }
+      if (prop.type === 'boolean') {
+        if (key === 'true') return 'Sim';
+        if (key === 'false') return 'Não';
+      }
+      return fallback;
     },
     colorForRow(c, key) {
       if (key === '(sem valor)' || key === '(removido)' || key === '(total)') return DEFAULT_COLOR;
