@@ -3,7 +3,7 @@
     <!-- gatilho: valor + X de limpar (quando clearable e há valor) + chevron -->
     <div class="field flex min-h-[34px] cursor-pointer items-center gap-1.5 !py-0 !pl-0 !pr-2" :class="{ 'border-accent': open }">
       <button type="button" class="flex min-h-[32px] min-w-0 flex-1 flex-wrap items-center gap-1 py-1 pl-2.5 text-left" @click="toggle">
-        <template v-if="type === 'multiselect'">
+        <template v-if="isMulti">
           <span v-if="!selectedValues.length" class="text-faint">{{ placeholder }}</span>
           <span v-for="v in selectedValues" :key="v" class="pill" :style="chipStyle(v)">{{ labelOf(v) }}</span>
         </template>
@@ -26,9 +26,9 @@
 
     <transition name="dd">
       <div v-if="open" class="absolute z-50 mt-1 w-full min-w-[13rem] rounded-lg border border-ink-line bg-ink-700 p-1 shadow-xl">
-        <!-- buscar / criar (só enum/multiselect) -->
+        <!-- buscar (todos) / criar (só enum/multiselect) -->
         <input
-          v-if="editable"
+          v-if="editable || type === 'user'"
           ref="search"
           v-model="query"
           class="field mb-1 !py-1 text-[12px]"
@@ -96,6 +96,8 @@ export default {
   props: {
     value: { default: '' },
     type: { type: String, default: 'enum' }, // enum | multiselect | user
+    // user com multiple:true no schema → seleção múltipla (valor "id1;id2")
+    multiple: { type: Boolean, default: false },
     options: { type: Array, default: () => [] }, // strings (enum/multi) ou {value,label} (user)
     optionMeta: { type: Object, default: () => ({}) }, // { [valor]: { color } } do schema
     propKey: { type: String, default: '' }, // chave da prop (contagem de uso no OptionMenu)
@@ -112,6 +114,8 @@ export default {
   },
   computed: {
     editable() { return this.type === 'enum' || this.type === 'multiselect'; },
+    // seleção múltipla: multiselect nativo OU user com multiple
+    isMulti() { return this.type === 'multiselect' || this.multiple; },
     normOptions() {
       return (this.options || []).map((o) =>
         o && typeof o === 'object' ? { value: o.value, label: o.label != null ? o.label : o.value } : { value: o, label: String(o) }
@@ -142,7 +146,7 @@ export default {
       return { backgroundColor: c + '26', color: c };
     },
     isSel(v) {
-      return this.type === 'multiselect' ? this.selectedValues.includes(v) : v === this.value;
+      return this.isMulti ? this.selectedValues.includes(v) : v === this.value;
     },
     toggle() {
       this.open = !this.open;
@@ -156,20 +160,20 @@ export default {
       } else { this.unbind(); }
     },
     pick(v) {
-      if (this.type === 'multiselect') {
+      if (this.isMulti) {
         const set = this.selectedValues;
         const i = set.indexOf(v);
         if (i === -1) set.push(v); else set.splice(i, 1);
         this.$emit('input', set.join(';'));
-        // multiselect: mantém aberto p/ escolher vários
+        // multi: mantém aberto p/ escolher vários
       } else {
         this.$emit('input', v);
         this.close();
       }
     },
-    // X do trigger: single → null; multiselect → limpa o array todo
+    // X do trigger: single → null; multi → limpa o array todo
     clear() {
-      this.$emit('input', this.type === 'multiselect' ? '' : null);
+      this.$emit('input', this.isMulti ? '' : null);
     },
     onEnter() {
       if (this.canCreate) { this.create(); return; }

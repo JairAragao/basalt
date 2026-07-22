@@ -20,8 +20,20 @@
 
     <transition name="dd">
       <div v-if="open" class="absolute z-50 mt-1 max-h-64 w-full min-w-[11rem] overflow-auto rounded-lg border border-ink-line bg-ink-700 p-1 shadow-xl">
+        <!-- busca: aparece quando há muitas opções (some no caso trivial) -->
+        <div v-if="showSearch" class="sticky top-0 z-10 mb-1 bg-ink-700 px-0.5 pb-1 pt-0.5">
+          <input
+            ref="search"
+            v-model="query"
+            type="text"
+            class="field h-7 !py-1 text-[12px]"
+            placeholder="Buscar…"
+            @keydown.enter.prevent="pickFirst"
+            @keydown.esc.prevent.stop="close"
+          />
+        </div>
         <button
-          v-for="opt in normalized"
+          v-for="opt in filtered"
           :key="String(opt.value)"
           type="button"
           class="dd-opt"
@@ -32,7 +44,7 @@
           <span class="flex-1 truncate">{{ opt.label }}</span>
           <svg v-if="isSelected(opt)" viewBox="0 0 20 20" class="h-3.5 w-3.5 flex-shrink-0 text-txt" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 10l3 3 7-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
-        <div v-if="!normalized.length" class="px-2 py-1.5 text-[12px] text-faint">sem opções</div>
+        <div v-if="!filtered.length" class="px-2 py-1.5 text-[12px] text-faint">{{ normalized.length ? 'nada encontrado' : 'sem opções' }}</div>
       </div>
     </transition>
   </div>
@@ -46,9 +58,11 @@ export default {
     options: { type: Array, default: () => [] },
     placeholder: { type: String, default: 'Selecionar' },
     clearable: { type: Boolean, default: false },
+    // limiar acima do qual a caixa de busca aparece (0 = sempre; Infinity = nunca)
+    searchThreshold: { type: Number, default: 8 },
   },
   data() {
-    return { open: false };
+    return { open: false, query: '' };
   },
   computed: {
     normalized() {
@@ -58,6 +72,15 @@ export default {
           : { value: o, label: String(o) }
       );
     },
+    // busca digitável: só surge quando a lista é grande o bastante pra atrapalhar
+    showSearch() {
+      return this.normalized.length >= this.searchThreshold;
+    },
+    filtered() {
+      const q = this.norm(this.query);
+      if (!q) return this.normalized;
+      return this.normalized.filter((o) => this.norm(o.label).includes(q));
+    },
     selected() {
       return this.normalized.find((o) => o.value === this.value) || null;
     },
@@ -66,16 +89,26 @@ export default {
     },
   },
   methods: {
+    // NFD sem diacríticos + lowercase (mesma normalização do filtering.js)
+    norm(s) {
+      return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    },
     toggle() {
       this.open = !this.open;
       if (this.open) {
+        this.query = '';
         this.$nextTick(() => {
           document.addEventListener('mousedown', this.onDoc);
           document.addEventListener('keydown', this.onEsc);
+          if (this.showSearch && this.$refs.search) this.$refs.search.focus();
         });
       } else {
         this.unbind();
       }
+    },
+    // Enter na busca escolhe a 1ª opção visível (atalho de teclado)
+    pickFirst() {
+      if (this.filtered.length) this.pick(this.filtered[0].value);
     },
     pick(v) {
       this.$emit('input', v);

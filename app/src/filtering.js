@@ -47,10 +47,19 @@ export function matchesTask(task, state, schema) {
       if (k == null) return false;
       if (from && k < from) return false;
       if (to && k > to) return false;
-    } else if (prop.type === 'multiselect') {
+    } else if (prop.type === 'multiselect' || (prop.type === 'user' && prop.multiple)) {
+      // multiselect nativo OU user múltiplo: valor da tarefa é lista ';' — o
+      // filtro casa se o valor escolhido está contido nela
       if (empty(f.v)) continue;
       const list = String(v == null ? '' : v).split(';').map((s) => s.trim()).filter(Boolean);
       if (!list.includes(f.v)) return false;
+    } else if (prop.type === 'boolean') {
+      // f.v é boolean (true/false); ausente/'' = sem filtro. Valor da tarefa
+      // ausente/qualquer-coisa conta como false (só true estrito é "Sim").
+      if (f.v === null || f.v === undefined || f.v === '') continue;
+      const want = f.v === true || f.v === 'true';
+      const has = v === true || v === 'true';
+      if (has !== want) return false;
     } else {
       // enum / user / demais: igualdade direta
       if (empty(f.v)) continue;

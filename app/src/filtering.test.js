@@ -109,3 +109,18 @@ describe('matchesTask — prop órfã no estado (self-heal)', () => {
     expect(matchesTask(task, { tipo: null }, schema)).toBe(true);
   });
 });
+
+describe('matchesTask — boolean', () => {
+  const sc = { properties: { ativo: { type: 'boolean', label: 'Ativo' } } };
+  it('Sim casa só com true; Não casa com false/ausente', () => {
+    expect(matchesTask({ ativo: true }, { ativo: { v: true } }, sc)).toBe(true);
+    expect(matchesTask({ ativo: false }, { ativo: { v: true } }, sc)).toBe(false);
+    expect(matchesTask({ ativo: false }, { ativo: { v: false } }, sc)).toBe(true);
+    expect(matchesTask({}, { ativo: { v: false } }, sc)).toBe(true); // ausente = Não
+    expect(matchesTask({ ativo: true }, { ativo: { v: false } }, sc)).toBe(false);
+  });
+  it('filtro nulo/ausente = sem filtro', () => {
+    expect(matchesTask({ ativo: true }, { ativo: null }, sc)).toBe(true);
+    expect(matchesTask({ ativo: false }, { ativo: null }, sc)).toBe(true);
+  });
+});

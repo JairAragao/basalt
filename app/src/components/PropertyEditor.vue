@@ -88,6 +88,19 @@
             </div>
           </div>
 
+          <!-- múltiplos (user) -->
+          <label v-else-if="prop.type === 'user'" class="flex cursor-pointer items-center gap-2 text-[12px] text-faint">
+            <button
+              type="button"
+              class="grid h-4.5 w-4.5 h-[18px] w-[18px] flex-shrink-0 place-items-center rounded border transition-colors"
+              :class="prop.multiple ? 'border-accent bg-accent text-ink-900' : 'border-ink-line bg-ink-700 text-transparent'"
+              @click="prop.multiple = !prop.multiple"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" class="h-3 w-3"><path d="M5 10l3 3 7-7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            Permitir múltiplos usuários (gravados separados por “;”)
+          </label>
+
           <!-- min/max (int) -->
           <div v-else-if="prop.type === 'int'" class="flex items-center gap-3">
             <label class="flex items-center gap-1.5 text-[12px] text-faint">
@@ -198,7 +211,7 @@ const nextUid = () => `p${++UID}`;
 let OUID = 0;
 const nextOptUid = () => `o${++OUID}`;
 
-const TYPE_LABELS = { string: 'Texto', enum: 'Seleção', multiselect: 'Seleção múltipla', user: 'Usuário', int: 'Número', formula: 'Fórmula' };
+const TYPE_LABELS = { string: 'Texto', enum: 'Seleção', multiselect: 'Seleção múltipla', user: 'Usuário', int: 'Número', boolean: 'Sim/Não', datetime: 'Data', formula: 'Fórmula' };
 
 function slugify(label) {
   return (label || '')
@@ -229,6 +242,7 @@ export default {
         { value: 'multiselect', label: 'Seleção múltipla' },
         { value: 'user', label: 'Usuário' },
         { value: 'int', label: 'Número' },
+        { value: 'boolean', label: 'Sim/Não' },
         { value: 'formula', label: 'Fórmula' },
       ],
       operators: ['+', '-', '*', '/', '(', ')'],
@@ -274,6 +288,7 @@ export default {
           required: !!spec.required,
           system: !!spec.system,
           hidden: !!spec.hidden,
+          multiple: !!spec.multiple, // user: seleção múltipla
           default: spec.default,
         };
       });
@@ -300,6 +315,7 @@ export default {
         required: false,
         system: false,
         hidden: false,
+        multiple: false,
         default: undefined,
       });
     },
@@ -431,6 +447,7 @@ export default {
           spec.expression = (p.expression || '').trim();
           if (p.round !== undefined && p.round !== null && p.round !== '') spec.round = Number(p.round);
         }
+        if (p.type === 'user' && p.multiple) spec.multiple = true;
         // fórmula é derivada (read-only): nunca marca required
         if (p.required && p.type !== 'formula') spec.required = true;
         if (p.system) spec.system = true;

@@ -4,6 +4,8 @@
       <p class="mb-2 px-1 text-[12px] leading-relaxed text-faint">
         Escolha quais propriedades aparecem como filtro na barra superior.
         Arraste para reordenar — a ordem aqui é a ordem na topbar.
+        A seleção é <span class="text-muted">só sua (por computador)</span>; depois de aplicar,
+        a barra oferece “salvar pra todos”.
       </p>
 
       <div
@@ -47,22 +49,20 @@
       <span v-else class="flex-1 truncate text-[12px] text-faint">{{ activeCount }} filtro(s) selecionado(s)</span>
       <button
         class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50"
-        :disabled="saving"
         @click="save"
-      >{{ saving ? 'Salvando…' : 'Salvar filtros' }}</button>
+      >Aplicar filtros</button>
     </div>
   </div>
 </template>
 
 <script>
-import { saveFilters } from '../api';
-
 const TYPE_LABELS = {
   string: 'Texto',
   enum: 'Lista',
   multiselect: 'Seleção múltipla',
   user: 'Usuário',
   int: 'Número',
+  boolean: 'Sim/Não',
   datetime: 'Data',
   formula: 'Fórmula',
 };
@@ -71,11 +71,13 @@ export default {
   name: 'FiltersEditor',
   props: {
     config: { type: Object, required: true },
+    // lista efetiva de filtros (override local ?? compartilhada). null → cai no board.
+    currentFilters: { type: Array, default: null },
   },
+  emits: ['apply-local'],
   data() {
     return {
       items: [],
-      saving: false,
       error: '',
       dragFrom: null,
     };
@@ -89,7 +91,9 @@ export default {
   methods: {
     load() {
       const props = (this.config.schema && this.config.schema.properties) || {};
-      const current = (this.config.board && this.config.board.filters) || [];
+      const current = this.currentFilters != null
+        ? this.currentFilters
+        : ((this.config.board && this.config.board.filters) || []);
       // primeiro, na ordem dos filtros já configurados; depois o resto do schema.
       const ordered = [];
       const seen = new Set();
@@ -123,11 +127,9 @@ export default {
     save() {
       this.error = '';
       const filters = this.items.filter((i) => i.active).map((i) => i.name);
-      this.saving = true;
-      saveFilters(filters)
-        .then((updated) => { this.$emit('saved', updated); })
-        .catch((e) => { this.error = e.message || 'Falha ao salvar.'; })
-        .finally(() => { this.saving = false; });
+      // aplica LOCAL (por máquina). O App decide se vira override e mostra o
+      // banner "salvar pra todos" quando difere do compartilhado.
+      this.$emit('apply-local', filters);
     },
   },
 };

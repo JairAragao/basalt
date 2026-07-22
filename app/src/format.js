@@ -15,6 +15,11 @@ export function formatDateTime(value) {
 // Valor de exibição conforme o tipo da propriedade (datetime → bonito).
 // Genérico: qualquer outro tipo passa direto.
 export function displayValue(prop, value) {
+  if (prop && prop.type === 'boolean') {
+    if (value === true || value === 'true') return 'Sim';
+    if (value === false || value === 'false') return 'Não';
+    return value == null || value === '' ? value : String(value);
+  }
   if (value == null || value === '') return value;
   if (prop && prop.type === 'datetime') return formatDateTime(value);
   return value;

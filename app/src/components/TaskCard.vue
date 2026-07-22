@@ -85,8 +85,11 @@ export default {
         return String(v).split(';').map((s) => s.trim()).filter(Boolean).join(', ');
       }
       if (prop && prop.type === 'user') {
-        const u = this.usersList.find((x) => x.id === v);
-        return u ? (u.nome || u.id) : v;
+        // user múltiplo: "id1;id2" → "Nome1, Nome2"
+        return String(v).split(';').map((s) => s.trim()).filter(Boolean).map((id) => {
+          const u = this.usersList.find((x) => x.id === id);
+          return u ? (u.nome || u.id) : id;
+        }).join(', ');
       }
       return displayValue(prop, v);
     },

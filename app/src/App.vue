@@ -80,6 +80,7 @@
             :options="f.options"
             :placeholder="f.label + ': todos'"
             clearable
+            :search-threshold="4"
             class="w-44"
             @input="(v) => setFilter(f.name, v)"
           />
@@ -157,7 +158,7 @@
                     <div class="truncate text-[12px] text-muted">{{ n.summary }}</div>
                     <div class="mt-0.5 text-[11px] text-faint">por {{ n.author }}</div>
                   </div>
-                  <button class="icon-btn h-6 w-6 flex-shrink-0 opacity-0 group-hover/n:opacity-100" title="Dispensar" @click.stop="clearOneNotif(n.id)">
+                  <button class="icon-btn h-6 w-6 flex-shrink-0 opacity-50 transition-opacity hover:!opacity-100 group-hover/n:opacity-80" title="Dispensar" @click.stop="clearOneNotif(n.id)">
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
                   </button>
                 </div>
@@ -177,7 +178,7 @@
         <!-- Nova tarefa -->
         <button
           v-if="activeView === 'tasks'"
-          class="flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-40"
+          class="flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-40"
           @click="openCreate"
         >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M10 4v12M4 10h12" stroke-linecap="round" /></svg>
@@ -185,6 +186,24 @@
         </button>
       </template>
     </header>
+
+    <!-- Banner: filtros locais divergem dos compartilhados (estilo Notion) -->
+    <div
+      v-if="config && !loadError && !configuring && activeView === 'tasks' && filtersDiverged"
+      class="flex flex-shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-4 py-1.5 text-[12px] text-muted"
+    >
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 flex-shrink-0 text-accent"><path d="M4 6h12M6 10h8M8 14h4" stroke-linecap="round" /></svg>
+      <span class="min-w-0 flex-1 truncate">Seus filtros da barra são só neste computador.</span>
+      <button
+        class="flex-shrink-0 rounded px-2 py-0.5 text-faint transition-colors hover:text-txt"
+        @click="revertLocalFilters"
+      >Reverter</button>
+      <button
+        class="flex-shrink-0 rounded-md bg-accent px-2.5 py-0.5 font-medium text-ink-900 transition hover:brightness-110 disabled:opacity-50"
+        :disabled="committingFilters"
+        @click="commitFiltersForAll"
+      >{{ committingFilters ? 'Salvando…' : 'Salvar pra todos' }}</button>
+    </div>
 
     <!-- Conteúdo -->
     <main class="relative flex-1 overflow-hidden">
@@ -257,13 +276,14 @@
       :config="config"
       :task="editingTask"
       :users="users"
+      :open-history-hash="peekHistoryHash"
       @saved="onSaved"
       @autosaved="onAutosaved"
       @created="onCreated"
       @synced="onSynced"
       @config-changed="onConfigChanged"
       @delete="confirmDelete"
-      @close="peekOpen = false"
+      @close="closePeek"
     />
 
     <!-- Configurações -->
@@ -273,7 +293,11 @@
       :last-pull-at="lastPullAt"
       :initial-tab="settingsInitialTab"
       :version="version"
+      :current-filters="filterNames"
+      :tasks="tasks"
       @saved="onConfigSaved"
+      @apply-local-filters="applyLocalFilters"
+      @open-task="openTaskAtCommit"
       @close="settingsOpen = false"
     />
 
@@ -294,7 +318,7 @@
     </div>
 
     <!-- Confirmação de exclusão -->
-    <div v-if="deleteTarget" class="fixed inset-0 z-40 grid place-items-center bg-black/50" @click.self="deleteTarget = null">
+    <div v-if="deleteTarget" class="fixed inset-0 z-40 grid place-items-center bg-black/50" @mousedown.self="deleteTarget = null">
       <div class="w-[380px] rounded-lg border border-ink-500 bg-ink-800 p-5 shadow-xl">
         <div class="text-sm font-medium">Excluir tarefa</div>
         <div class="mt-2 text-[13px] text-muted">
@@ -311,7 +335,7 @@
 
     <!-- Modal de atualização (estilizado, tema do app). Só quando PRONTA e não adiada. -->
     <transition name="toast">
-      <div v-if="update.showModal && update.state === 'downloaded'" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @click.self="snoozeUpdate">
+      <div v-if="update.showModal && update.state === 'downloaded'" class="fixed inset-0 z-50 grid place-items-center bg-black/50" @mousedown.self="snoozeUpdate">
         <div class="w-[440px] max-w-[92vw] overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
           <div class="flex items-center gap-3 border-b border-ink-500 bg-ink-850 px-5 py-4">
             <span class="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg bg-accent/15 text-accent">
@@ -357,7 +381,7 @@ import Dropdown from './components/Dropdown.vue';
 import DateRangePicker from './components/DateRangePicker.vue';
 import TitleBar from './components/TitleBar.vue';
 import Sidebar from './components/Sidebar.vue';
-import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications } from './api';
+import { getConfig, listTasks, deleteTask, getHealthGit, syncPull, listVaults, switchVault, removeVault, getUsers, getNotifications, clearNotifications, saveFilters } from './api';
 import { matchesTask } from './filtering';
 import { colorFor } from './palette';
 
@@ -371,6 +395,10 @@ const tasksViewKey = 'basalt.tasksView'; // 'kanban' | 'table' — visualizaçã
 const viewKey = 'basalt.viewByVault'; // { "<vaultPath exato da API /vaults>": 'tasks'|'dashboard' }
 const pullIntervalKey = 'basalt.pullIntervalMs'; // '0'|'30000'|'60000'|'300000'|'900000'
 const pullStrategyKey = 'basalt.pullStrategy'; // 'rebase' (default) | 'safe' | 'ask'
+// Override LOCAL (por máquina) da lista de filtros da topbar: { "<vaultPath>": string[] }.
+// null/ausente = usa a lista compartilhada (board.filters, versionada). Divergência
+// dispara o banner "salvar pra todos" (commit via saveFilters).
+const filtersByVaultKey = 'basalt.filtersByVault';
 
 // rótulos pt-BR dos reasons de falha do POST /sync/pull
 const PULL_REASON_LABELS = {
@@ -399,6 +427,8 @@ export default {
       tasks: [],
       filters: {}, // { [prop]: F|null } — F tipado por prop.type (ver filtering.js)
       filterDrafts: {}, // texto cru dos filtros string (o commit em filters tem debounce)
+      localFilters: null, // override local da lista de filtros (null = usa a compartilhada)
+      committingFilters: false, // "salvar pra todos" em voo
       loading: false,
       loadError: '',
       view: this.loadView(), // 'kanban' | 'table' (persistido em basalt.tasksView)
@@ -409,6 +439,7 @@ export default {
       settingsOpen: false,
       peekOpen: false,
       editingTask: null,
+      peekHistoryHash: '', // abrir o peek já com o histórico no diff deste commit (vem do histórico global)
       deleteTarget: null,
       deleting: false,
       syncing: false,
@@ -438,8 +469,21 @@ export default {
     derivedNames() {
       return (this.config && this.config.schema && this.config.schema.derived) || [];
     },
-    filterNames() {
+    // lista compartilhada (versionada em board.filters)
+    sharedFilterNames() {
       return (this.config && this.config.board && this.config.board.filters) || [];
+    },
+    // lista efetiva: override local (por máquina) tem precedência sobre a compartilhada
+    filterNames() {
+      return this.localFilters != null ? this.localFilters : this.sharedFilterNames;
+    },
+    // banner "salvar pra todos": só quando o local existe E difere do compartilhado
+    filtersDiverged() {
+      if (this.localFilters == null) return false;
+      const a = this.localFilters;
+      const b = this.sharedFilterNames;
+      if (a.length !== b.length) return true;
+      return a.some((n, i) => n !== b[i]);
     },
     // Filtros da topbar: o widget segue o tipo da prop. Só os tipos de select
     // precisam de options (user resolve id → nome do roster).
@@ -458,10 +502,18 @@ export default {
             return { value: val, label: String(val), color: colorFor(val, meta) };
           });
         } else if (type === 'user') {
-          options = this.distinctValues(name).map((id) => {
+          // user múltiplo guarda "id1;id2" — explode em ids individuais
+          const ids = new Set();
+          this.distinctValues(name).forEach((raw) => {
+            String(raw).split(';').map((s) => s.trim()).filter(Boolean).forEach((id) => ids.add(id));
+          });
+          options = [...ids].sort().map((id) => {
             const u = this.users.find((x) => x.id === id);
             return { value: id, label: u ? (u.nome || u.id) : id };
           });
+        } else if (type === 'boolean') {
+          // filtro booleano: select Sim/Não (limpar = todos)
+          options = [{ value: true, label: 'Sim' }, { value: false, label: 'Não' }];
         } else if (type !== 'string' && type !== 'int' && type !== 'datetime') {
           options = this.distinctValues(name); // formula etc.: valores únicos
         }
@@ -597,6 +649,75 @@ export default {
       const to = (r && r.to) || '';
       this.filters = { ...this.filters, [name]: (from || to) ? { from, to } : null };
     },
+    // ── override local da lista de filtros (por vault, em localStorage) ──
+    readFiltersMap() {
+      try { return JSON.parse(localStorage.getItem(filtersByVaultKey) || '{}') || {}; } catch (e) { return {}; }
+    },
+    writeFiltersMap(map) {
+      try { localStorage.setItem(filtersByVaultKey, JSON.stringify(map)); } catch (e) { /* ignore */ }
+    },
+    // lê o override do vault ativo → this.localFilters (null se não houver)
+    loadLocalFilters() {
+      const map = this.readFiltersMap();
+      const v = this.activeVault && map[this.activeVault];
+      this.localFilters = Array.isArray(v) ? v.slice() : null;
+    },
+    // FiltersEditor aplicou uma seleção → vira override local. Se igual à
+    // compartilhada, não cria override (evita banner preso).
+    applyLocalFilters(list) {
+      const next = Array.isArray(list) ? list.slice() : [];
+      const shared = this.sharedFilterNames;
+      const same = next.length === shared.length && next.every((n, i) => n === shared[i]);
+      const map = this.readFiltersMap();
+      if (same) {
+        this.localFilters = null;
+        if (this.activeVault) { delete map[this.activeVault]; this.writeFiltersMap(map); }
+      } else {
+        this.localFilters = next;
+        if (this.activeVault) { map[this.activeVault] = next; this.writeFiltersMap(map); }
+      }
+      this.syncFilterState();
+      this.settingsOpen = false;
+    },
+    // volta a usar a lista compartilhada (descarta o override local)
+    revertLocalFilters() {
+      const map = this.readFiltersMap();
+      if (this.activeVault) { delete map[this.activeVault]; this.writeFiltersMap(map); }
+      this.localFilters = null;
+      this.syncFilterState();
+    },
+    // promove o override local a compartilhado: commita board.filters pra todos
+    async commitFiltersForAll() {
+      if (this.committingFilters || this.localFilters == null) return;
+      this.committingFilters = true;
+      try {
+        const updated = await saveFilters(this.localFilters.slice());
+        // sucesso → o local vira o novo compartilhado; limpa o override
+        const map = this.readFiltersMap();
+        if (this.activeVault) { delete map[this.activeVault]; this.writeFiltersMap(map); }
+        this.localFilters = null;
+        if (updated && updated.board) this.config = { ...this.config, board: updated.board };
+        this.notify('Filtros salvos para todos.');
+        if (updated && updated.warning) this.notify(updated.warning, 'error');
+      } catch (e) {
+        this.notify(e.message || 'Falha ao salvar filtros.', 'error');
+      } finally {
+        this.committingFilters = false;
+      }
+    },
+    // garante que this.filters tenha chave por filtro efetivo (mantém valores,
+    // descarta os removidos) — chamado quando a lista de filtros muda em runtime.
+    syncFilterState() {
+      const names = this.filterNames;
+      const f = {};
+      const drafts = {};
+      names.forEach((name) => {
+        f[name] = Object.prototype.hasOwnProperty.call(this.filters, name) ? this.filters[name] : null;
+        if (this.filterDrafts[name] != null) drafts[name] = this.filterDrafts[name];
+      });
+      this.filters = f;
+      this.filterDrafts = drafts;
+    },
     setSortBy(by) {
       if (!by) return;
       this.sort = { ...this.sort, by };
@@ -639,6 +760,7 @@ export default {
         const [cfg, tasks] = await Promise.all([getConfig(), listTasks()]);
         this.config = cfg || { schema: {}, board: {}, gute: {} };
         this.tasks = Array.isArray(tasks) ? tasks : [];
+        this.loadLocalFilters(); // antes de semear filters (define filterNames efetivo)
         const f = {};
         this.filterNames.forEach((name) => { f[name] = null; });
         this.filters = f;
@@ -813,6 +935,20 @@ export default {
       if (Array.isArray(res.notifications)) this.notifications = res.notifications;
       const fresh = (res.newNotifications || []).length;
       if (fresh) this.notify(`${fresh} ${fresh === 1 ? 'nova notificação' : 'novas notificações'}`);
+      // o pull pode ter trazido config nova (board/schema/users de um colega) —
+      // refetch barato (leitura local) e SÓ substitui se mudou de fato (senão o
+      // watcher do Dashboard resetaria o modo edição a cada auto-pull).
+      this.refreshConfigIfChanged();
+    },
+    async refreshConfigIfChanged() {
+      try {
+        const cfg = await getConfig();
+        if (!cfg) return;
+        if (JSON.stringify(cfg) !== JSON.stringify(this.config)) {
+          this.config = cfg;
+          this.syncFilterState(); // filtros efetivos podem ter mudado (board.filters novo)
+        }
+      } catch (e) { /* best-effort */ }
     },
     // ── auto-pull periódico (traz mudanças de outros + dispara notificações) ──
     startAutoPull() {
@@ -880,11 +1016,28 @@ export default {
       }
     },
     openCreate() {
+      this.peekHistoryHash = '';
       this.editingTask = null;
       this.peekOpen = true;
     },
     openEdit(task) {
+      this.peekHistoryHash = '';
       this.editingTask = task;
+      this.peekOpen = true;
+    },
+    closePeek() {
+      this.peekOpen = false;
+      this.peekHistoryHash = ''; // limpa p/ o próximo open normal não reabrir histórico
+    },
+    // clique num commit do histórico global → abre a tarefa no diff daquele commit
+    openTaskAtCommit(payload) {
+      const taskId = payload && payload.taskId;
+      const hash = (payload && payload.hash) || '';
+      const t = this.tasks.find((x) => x.id === taskId);
+      if (!t) { this.notify('Tarefa não encontrada (pode ter sido removida).', 'error'); return; }
+      this.settingsOpen = false;
+      this.editingTask = t;
+      this.peekHistoryHash = hash;
       this.peekOpen = true;
     },
     onSaved(saved) {
