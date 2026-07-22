@@ -124,3 +124,16 @@ describe('matchesTask — boolean', () => {
     expect(matchesTask({ ativo: false }, { ativo: null }, sc)).toBe(true);
   });
 });
+
+describe('matchesTask — filtro multi (user múltiplo / multiselect)', () => {
+  const sc = { properties: { resp: { type: 'user', label: 'Resp', multiple: true } } };
+  it('casa se QUALQUER selecionado está na lista da tarefa (OR)', () => {
+    expect(matchesTask({ resp: 'u1;u2' }, { resp: { v: 'u2' } }, sc)).toBe(true);
+    expect(matchesTask({ resp: 'u1;u2' }, { resp: { v: 'u3;u2' } }, sc)).toBe(true);
+    expect(matchesTask({ resp: 'u1' }, { resp: { v: 'u2;u3' } }, sc)).toBe(false);
+  });
+  it('filtro vazio = sem filtro', () => {
+    expect(matchesTask({ resp: 'u1' }, { resp: null }, sc)).toBe(true);
+    expect(matchesTask({ resp: 'u1' }, { resp: { v: '' } }, sc)).toBe(true);
+  });
+});

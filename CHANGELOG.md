@@ -3,6 +3,17 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.12.1] - 2026-07-22
+
+### Adicionado
+
+- Filtro de propriedade multi (usuário com múltiplos responsáveis / seleção múltipla) agora permite escolher vários valores e casa com qualquer um deles.
+
+### Corrigido
+
+- A versão exibida no app passa a vir sempre da última citada no changelog (fonte única).
+- Abrir uma tarefa a partir do histórico global mantém as Configurações abertas atrás: fechar a tarefa volta para o histórico sem reabrir as Configurações.
+
 ## [0.12.0] - 2026-07-22
 
 ### Adicionado

@@ -48,11 +48,13 @@ export function matchesTask(task, state, schema) {
       if (from && k < from) return false;
       if (to && k > to) return false;
     } else if (prop.type === 'multiselect' || prop.type === 'user') {
-      // user SEMPRE por contenção na lista ';' — cobre valor multi legado
-      // depois da prop voltar a single (e single "u1" vira lista de 1)
+      // multiselect / user: o valor da tarefa é lista ';'; o filtro pode ter 1+
+      // valores selecionados (também ';'). Casa se QUALQUER selecionado estiver
+      // na lista da tarefa (OR). Cobre single e multi.
       if (empty(f.v)) continue;
       const list = String(v == null ? '' : v).split(';').map((s) => s.trim()).filter(Boolean);
-      if (!list.includes(f.v)) return false;
+      const wanted = String(f.v).split(';').map((s) => s.trim()).filter(Boolean);
+      if (!wanted.some((w) => list.includes(w))) return false;
     } else if (prop.type === 'boolean') {
       // f.v é boolean (true/false); ausente/'' = sem filtro. Valor da tarefa
       // ausente/qualquer-coisa conta como false (só true estrito é "Sim").

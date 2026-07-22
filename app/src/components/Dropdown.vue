@@ -2,8 +2,13 @@
   <div class="relative" ref="root">
     <div class="field flex cursor-pointer items-center gap-1.5 !py-0 !pl-0 !pr-2" :class="{ 'border-accent': open }">
       <button type="button" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 text-left" @click="toggle">
-        <span v-if="selected && selected.color" class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: selected.color }"></span>
-        <span class="truncate" :class="{ 'text-faint': !selected }">{{ selected ? selected.label : placeholder }}</span>
+        <template v-if="multiple">
+          <span class="truncate" :class="{ 'text-faint': !selectedValues.length }">{{ selectedValues.length ? multiLabel : placeholder }}</span>
+        </template>
+        <template v-else>
+          <span v-if="selected && selected.color" class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: selected.color }"></span>
+          <span class="truncate" :class="{ 'text-faint': !selected }">{{ selected ? selected.label : placeholder }}</span>
+        </template>
       </button>
       <button
         v-if="showClear"
@@ -56,6 +61,8 @@ export default {
     options: { type: Array, default: () => [] },
     placeholder: { type: String, default: 'Selecionar' },
     clearable: { type: Boolean, default: false },
+    // seleção múltipla: value é string ";"-joined; clicar alterna e mantém aberto
+    multiple: { type: Boolean, default: false },
     // limiar acima do qual a caixa de busca aparece (0 = sempre; Infinity = nunca)
     searchThreshold: { type: Number, default: 8 },
   },
@@ -82,7 +89,17 @@ export default {
     selected() {
       return this.normalized.find((o) => o.value === this.value) || null;
     },
+    selectedValues() {
+      if (!this.multiple) return [];
+      return String(this.value == null ? '' : this.value).split(';').map((s) => s.trim()).filter(Boolean);
+    },
+    multiLabel() {
+      const vals = this.selectedValues;
+      if (vals.length === 1) { const o = this.normalized.find((x) => String(x.value) === vals[0]); return o ? o.label : vals[0]; }
+      return `${vals.length} selecionados`;
+    },
     showClear() {
+      if (this.multiple) return this.clearable && this.selectedValues.length > 0;
       return this.clearable && this.value !== null && this.value !== undefined && this.value !== '';
     },
   },
@@ -109,14 +126,23 @@ export default {
       if (this.filtered.length) this.pick(this.filtered[0].value);
     },
     pick(v) {
+      if (this.multiple) {
+        const set = this.selectedValues.slice();
+        const sv = String(v);
+        const i = set.indexOf(sv);
+        if (i === -1) set.push(sv); else set.splice(i, 1);
+        this.$emit('input', set.join(';')); // mantém aberto p/ escolher vários
+        return;
+      }
       this.$emit('input', v);
       this.close();
     },
-    // X do trigger: mesma API do antigo "— limpar —" (emite null), sem abrir a lista
+    // X do trigger: single → null; multi → limpa a lista toda
     clear() {
-      this.$emit('input', null);
+      this.$emit('input', this.multiple ? '' : null);
     },
     isSelected(o) {
+      if (this.multiple) return this.selectedValues.includes(String(o.value));
       return o.value === this.value;
     },
     onDoc(e) {

@@ -71,13 +71,15 @@
             @change="(r) => setDateRange(f.name, r)"
           />
 
-          <!-- enum/multiselect/user/demais: select (X de limpar no trigger) -->
+          <!-- enum/multiselect/user/demais: select (X de limpar no trigger).
+               campos multi (multiselect / user múltiplo) → seleção múltipla -->
           <Dropdown
             v-else
-            :value="filters[f.name] ? filters[f.name].v : null"
+            :value="filters[f.name] ? filters[f.name].v : (f.multi ? '' : null)"
             :options="f.options"
             :placeholder="f.label + ': todos'"
             clearable
+            :multiple="f.multi"
             :search-threshold="4"
             class="w-44"
             @input="(v) => setFilter(f.name, v)"
@@ -269,6 +271,7 @@
       :task="editingTask"
       :users="users"
       :open-history-hash="peekHistoryHash"
+      :above-settings="settingsOpen"
       @saved="onSaved"
       @autosaved="onAutosaved"
       @created="onCreated"
@@ -506,7 +509,9 @@ export default {
         } else if (type !== 'string' && type !== 'int' && type !== 'datetime') {
           options = this.distinctValues(name); // formula etc.: valores únicos
         }
-        return { name, label: prop.label || name, type, options };
+        // filtro multi (chips): multiselect nativo OU user com multiple
+        const multi = type === 'multiselect' || (type === 'user' && prop.multiple === true);
+        return { name, label: prop.label || name, type, options, multi };
       });
     },
     // Ordenável por qualquer propriedade do schema (genérico — sem chaves fixas;
@@ -1027,13 +1032,14 @@ export default {
       this.peekOpen = false;
       this.peekHistoryHash = ''; // limpa p/ o próximo open normal não reabrir histórico
     },
-    // clique num commit do histórico global → abre a tarefa no diff daquele commit
+    // clique num commit do histórico global → abre a tarefa no diff daquele commit.
+    // Mantém Configurações ABERTO atrás (peek sobe pra z-45): fechar o peek volta
+    // pro histórico sem ter que reabrir as Configurações.
     openTaskAtCommit(payload) {
       const taskId = payload && payload.taskId;
       const hash = (payload && payload.hash) || '';
       const t = this.tasks.find((x) => x.id === taskId);
       if (!t) { this.notify('Tarefa não encontrada (pode ter sido removida).', 'error'); return; }
-      this.settingsOpen = false;
       this.editingTask = t;
       this.peekHistoryHash = hash;
       this.peekOpen = true;

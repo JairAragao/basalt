@@ -1,7 +1,7 @@
 <template>
   <div>
   <transition :name="'peek-' + mode">
-    <div v-if="open" class="no-drag-region fixed inset-0 z-30" :class="wrapperClass">
+    <div v-if="open" class="no-drag-region fixed inset-0" :class="[wrapperClass, aboveSettings ? 'z-[45]' : 'z-30']">
       <div class="absolute inset-0 bg-black/40" @click="requestClose"></div>
 
       <!-- par grudado: dialog + histórico (se aberto) à DIREITA -->
@@ -358,6 +358,9 @@ export default {
     // quando setado, abre o painel de histórico direto no diff deste commit
     // (vindo do histórico global em Configurações)
     openHistoryHash: { type: String, default: '' },
+    // eleva o peek ACIMA do modal de Configurações (que fica aberto atrás) —
+    // fechar o peek volta pra tela de Configurações de onde a tarefa foi aberta
+    aboveSettings: { type: Boolean, default: false },
   },
   data() {
     return {
