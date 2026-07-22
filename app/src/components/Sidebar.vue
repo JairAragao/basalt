@@ -36,61 +36,20 @@
       <span v-if="open" class="truncate">Dashboard</span>
     </button>
 
+    <!-- Tarefas: Kanban e Tabela são itens de topo (não mais submenu) -->
     <button
+      v-for="opt in viewOptions"
+      :key="opt.id"
       type="button"
       class="side-item"
-      :class="active === 'tasks' ? 'bg-ink-600 text-txt' : 'text-faint hover:bg-ink-700 hover:text-muted'"
-      :title="open ? null : 'Tarefas'"
-      :aria-current="active === 'tasks' ? 'page' : null"
-      @click="$emit('navigate', 'tasks')"
+      :class="active === 'tasks' && view === opt.id ? 'bg-ink-600 text-txt' : 'text-faint hover:bg-ink-700 hover:text-muted'"
+      :title="open ? null : opt.navLabel"
+      :aria-current="active === 'tasks' && view === opt.id ? 'page' : null"
+      @click="$emit('set-view', opt.id)"
     >
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 flex-shrink-0"><rect x="3" y="4" width="4" height="12" rx="1" /><rect x="8.5" y="4" width="4" height="8" rx="1" /><rect x="14" y="4" width="4" height="10" rx="1" /></svg>
-      <span v-if="open" class="truncate">Tarefas</span>
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 flex-shrink-0" v-html="opt.svg"></svg>
+      <span v-if="open" class="truncate">{{ opt.navLabel }}</span>
     </button>
-
-    <!-- submenu de Tarefas: alterna visualização Kanban / Lista -->
-    <transition name="submenu">
-      <div v-if="active === 'tasks'" class="overflow-hidden">
-        <!-- expandido: linha-guia vertical + indentação (hierarquia clara) -->
-        <div v-if="open" class="relative ml-[1.6rem] mt-0.5 flex flex-col gap-0.5 border-l border-ink-500 pl-2.5">
-          <button
-            v-for="opt in viewOptions"
-            :key="opt.id"
-            type="button"
-            class="side-subitem relative"
-            :class="view === opt.id ? 'text-txt' : 'text-faint hover:bg-ink-700/60 hover:text-muted'"
-            @click="$emit('set-view', opt.id)"
-          >
-            <!-- barra accent sobre a linha-guia quando ativo -->
-            <span
-              v-if="view === opt.id"
-              class="absolute -left-[calc(0.625rem+1px)] top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
-            ></span>
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5 flex-shrink-0" v-html="opt.svg"></svg>
-            <span class="truncate">{{ opt.label }}</span>
-          </button>
-        </div>
-
-        <!-- recolhido: ícones menores, recuados, com barra accent no ativo -->
-        <div v-else class="mt-0.5 flex flex-col items-center gap-0.5">
-          <button
-            v-for="opt in viewOptions"
-            :key="opt.id"
-            type="button"
-            class="relative flex h-7 w-7 items-center justify-center rounded-md transition-colors"
-            :class="view === opt.id ? 'bg-ink-700 text-accent' : 'text-faint hover:bg-ink-700 hover:text-muted'"
-            :title="opt.label"
-            @click="$emit('set-view', opt.id)"
-          >
-            <span
-              v-if="view === opt.id"
-              class="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
-            ></span>
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5" v-html="opt.svg"></svg>
-          </button>
-        </div>
-      </div>
-    </transition>
 
     <button
       type="button"
@@ -161,8 +120,8 @@ export default {
     return {
       open: this.loadOpen(),
       viewOptions: [
-        { id: 'kanban', label: 'Kanban', svg: '<rect x="3" y="4" width="4" height="12" rx="1" /><rect x="8.5" y="4" width="4" height="8" rx="1" /><rect x="14" y="4" width="4" height="10" rx="1" />' },
-        { id: 'table', label: 'Lista', svg: '<rect x="3" y="4" width="14" height="12" rx="1" /><path d="M3 8h14M3 12h14M9 4v12" />' },
+        { id: 'kanban', label: 'Kanban', navLabel: 'Tarefas em Kanban', svg: '<rect x="3" y="4" width="4" height="12" rx="1" /><rect x="8.5" y="4" width="4" height="8" rx="1" /><rect x="14" y="4" width="4" height="10" rx="1" />' },
+        { id: 'table', label: 'Tabela', navLabel: 'Tarefas em Tabela', svg: '<rect x="3" y="4" width="14" height="12" rx="1" /><path d="M3 8h14M3 12h14M9 4v12" />' },
       ],
     };
   },
