@@ -170,6 +170,12 @@ export function getDiff(id, hash) {
   return request(`${BASE}/tasks/${encodeURIComponent(id)}/diff?hash=${encodeURIComponent(hash)}`)
 }
 
+// --- Histórico git global (todos os commits, todo arquivo) — paginado ---
+// { commits:[{hash,shortHash,date,authorName,authorEmail,message,filesCount}], hasMore, skip, limit }
+export function getGlobalHistory(skip = 0, limit = 50) {
+  return request(`${BASE}/history?skip=${skip}&limit=${limit}`)
+}
+
 // --- Comentários de uma tarefa ---
 export function getComments(id) {
   return request(`${BASE}/tasks/${encodeURIComponent(id)}/comments`)
@@ -196,6 +202,15 @@ export function saveFilters(filters) {
 // Config do cartão — o que aparece na face (fields) + subtitle/badge.
 export function saveCard(card) {
   return request(`${BASE}/board/card`, { method: 'PUT', body: JSON.stringify(card) })
+}
+
+// --- Dashboard (gráficos, config/dashboard.json no vault) ---
+// { charts:[{id,type,title,w,measure,basis,dim?,sort?,dir?,limit?,orientation?,dateProp?,bucket?}] }
+export function getDashboard() {
+  return request(`${BASE}/dashboard`)
+}
+export function saveDashboard(charts) {
+  return request(`${BASE}/dashboard`, { method: 'PUT', body: JSON.stringify({ charts }) })
 }
 
 // Config de status (grupos/etapas) — leitura e escrita (migra tarefas em rename).
@@ -270,6 +285,8 @@ export default {
   saveProperties,
   saveFilters,
   saveCard,
+  getDashboard,
+  saveDashboard,
   listTasks,
   getTask,
   createTask,
@@ -292,6 +309,7 @@ export default {
   clearNotifications,
   getHistory,
   getDiff,
+  getGlobalHistory,
   getComments,
   addComment,
   removeComment,

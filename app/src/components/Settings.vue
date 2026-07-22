@@ -1,5 +1,5 @@
 <template>
-  <div class="fixed inset-0 z-40 grid place-items-center bg-black/40" @click.self="$emit('close')">
+  <div class="fixed inset-0 z-40 grid place-items-center bg-black/40" @mousedown.self="$emit('close')">
     <div class="flex h-[86vh] w-[760px] max-w-[94vw] flex-col overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
       <!-- header -->
       <header class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 px-4">
@@ -31,7 +31,8 @@
         <FiltersEditor
           v-else-if="tab === 'filters'"
           :config="config"
-          @saved="(c) => $emit('saved', c)"
+          :current-filters="currentFilters"
+          @apply-local="(f) => $emit('apply-local-filters', f)"
         />
         <CardEditor
           v-else-if="tab === 'card'"
@@ -41,6 +42,11 @@
         <SyncSettings
           v-else-if="tab === 'sync'"
           :last-pull-at="lastPullAt"
+        />
+        <GitHistory
+          v-else-if="tab === 'history'"
+          :tasks="tasks"
+          @open-task="(p) => $emit('open-task', p)"
         />
         <UpdateSettings
           v-else-if="tab === 'updates'"
@@ -63,18 +69,22 @@ import FiltersEditor from './FiltersEditor.vue';
 import CardEditor from './CardEditor.vue';
 import SyncSettings from './SyncSettings.vue';
 import UpdateSettings from './UpdateSettings.vue';
+import GitHistory from './GitHistory.vue';
 
 export default {
   name: 'Settings',
-  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor, SyncSettings, UpdateSettings },
+  components: { StatusEditor, PropertyEditor, FiltersEditor, CardEditor, SyncSettings, UpdateSettings, GitHistory },
   props: {
     config: { type: Object, required: true },
     lastPullAt: { type: Number, default: null }, // timestamp do último pull OK (App)
     initialTab: { type: String, default: 'status' },
     version: { type: String, default: '' },
+    currentFilters: { type: Array, default: null }, // lista efetiva de filtros (local ?? shared)
+    tasks: { type: Array, default: () => [] }, // p/ o histórico global resolver título das tarefas
   },
+  emits: ['saved', 'apply-local-filters', 'open-task', 'close'],
   data() {
-    const ids = ['status', 'properties', 'filters', 'card', 'sync', 'updates'];
+    const ids = ['status', 'properties', 'filters', 'card', 'sync', 'history', 'updates'];
     return {
       tab: ids.includes(this.initialTab) ? this.initialTab : 'status',
       tabs: [
@@ -83,6 +93,7 @@ export default {
         { id: 'filters', label: 'Filtros' },
         { id: 'card', label: 'Cartão' },
         { id: 'sync', label: 'Sync' },
+        { id: 'history', label: 'Histórico' },
         { id: 'updates', label: 'Atualizações' },
       ],
     };

@@ -133,6 +133,8 @@ export default {
     offsetRight: { type: Number, default: 0 },
     // inline: renderiza como item flex grudado ao dialog (em vez de painel fixo)
     inline: { type: Boolean, default: false },
+    // hash a abrir direto no diff quando o painel abre (ex.: vindo do histórico global)
+    initialHash: { type: String, default: '' },
   },
   data() {
     return {
@@ -178,6 +180,8 @@ export default {
   watch: {
     open(v) { if (v) this.load(); },
     taskId() { if (this.open) this.load(); },
+    // hash pedido mudou com o painel já aberto (mesma tarefa) → abre o diff dele
+    initialHash(h) { if (this.open && h) this.applyInitialHash(); },
   },
   created() {
     if (this.open) this.load();
@@ -193,11 +197,18 @@ export default {
       try {
         const list = await getHistory(this.taskId);
         this.entries = Array.isArray(list) ? list : [];
+        this.applyInitialHash();
       } catch (e) {
         this.error = e.message || 'Falha ao carregar histórico.';
       } finally {
         this.loading = false;
       }
+    },
+    // abre direto o diff do commit `initialHash`, se ele existir na lista
+    applyInitialHash() {
+      if (!this.initialHash) return;
+      const c = this.entries.find((e) => e.hash === this.initialHash || e.shortHash === this.initialHash);
+      if (c) this.openDiff(c);
     },
     async openDiff(commit) {
       this.selected = commit;
