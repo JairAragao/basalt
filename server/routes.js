@@ -393,15 +393,17 @@ router.put('/tasks/:id', async (req, res) => {
     const taskBody = payload.body !== undefined ? payload.body : data.body;
     const cleanData = { ...data };
     delete cleanData.body;
+    delete cleanData.bodyBase;
 
     // Tarefa ANTES (frontmatter pro diff; corpo pra detectar edição de conteúdo).
     const beforeTask = safeGetTask(id);
     const before = beforeTask ? beforeTask.data : null;
     const actor = await gitActor();
-    let after;
+    const bodyBase = typeof payload.bodyBase === 'string' ? payload.bodyBase : undefined;
+    let after; let bodyConflict = false;
     const warning = await commitAwaitedWrite(
       () => {
-        tasksRepo.update(id, cleanData, taskBody, actor);
+        ({ bodyConflict } = tasksRepo.update(id, cleanData, taskBody, actor, { bodyBase }));
         after = safeGetData(id) || { ...cleanData, id };
       },
       () => {
@@ -413,7 +415,10 @@ router.put('/tasks/:id', async (req, res) => {
     );
     schedulePush();
     await gcOrphanAssets(before, after); // limpa capa/ícone trocados/removidos
-    res.json(withWarning({ id }, warning));
+    const conflictWarn = bodyConflict
+      ? 'Esta tarefa foi editada em paralelo. Sua versão do texto foi preservada no fim do corpo (bloco marcado) — mescle e apague o aviso.'
+      : null;
+    res.json(withWarning({ id, bodyConflict }, warning || conflictWarn));
   } catch (err) { fail(res, err); }
 });
 
@@ -608,6 +613,28 @@ router.get('/health/git', async (req, res) => {
   try {
     const h = await git.healthGit();
     res.json(h);
+  } catch (err) { fail(res, err); }
+});
+
+// Estado pra UI de recuperação: commits não enviados + mudanças guardadas.
+router.get('/sync/recovery', async (req, res) => {
+  try { res.json(await git.syncState()); } catch (err) { fail(res, err); }
+});
+
+// Reenviar commits locais (retry manual do push). Devolve o estado atualizado.
+router.post('/sync/push', async (req, res) => {
+  try {
+    const r = await gitSerial(() => git.pushSync());
+    res.json({ ...(r || {}), ...(await git.syncState()) });
+  } catch (err) { fail(res, err); }
+});
+
+// Recuperar a mudança guardada mais recente (stash pop + commit).
+router.post('/sync/recover', async (req, res) => {
+  try {
+    const r = await gitSerial(() => git.recoverStash());
+    if (r && r.ok) schedulePush();
+    res.json({ ...(r || {}), ...(await git.syncState()) });
   } catch (err) { fail(res, err); }
 });
 
