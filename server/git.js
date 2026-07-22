@@ -188,9 +188,14 @@ async function pull() {
 function classifyPullReason(msg) {
   const m = String(msg || '').toLowerCase();
   if (/nenhum remote|origin ausente|no remote|does not appear to be a git repository/.test(m)) return 'no-remote';
+  // Conflito/divergência DEFINITIVO vem antes de auth: uma mensagem de conflito
+  // de rebase pode carregar, em runners diferentes (git do CI), uma substring que
+  // casaria com o auth (ex.: "terminal prompts disabled" durante o fetch). O
+  // sinal de conflito é inequívoco e deve vencer.
+  if (/conflict|conflito|could not apply|not possible to fast-forward|cannot fast-forward|needs merge|unmerged|automatic merge failed|patch failed/.test(m)) return 'diverged';
   if (/timeout|timed out/.test(m)) return 'timeout';
   if (/authentication|could not read username|could not read password|permission denied|publickey|access denied|terminal prompts disabled|http basic|401|403/.test(m)) return 'auth';
-  if (/not possible to fast-forward|cannot fast-forward|divergent|diverged|conflict|conflito|needs merge|could not apply|unmerged|rebase/.test(m)) return 'diverged';
+  if (/divergent|diverged|rebase/.test(m)) return 'diverged';
   return 'other';
 }
 
