@@ -30,6 +30,56 @@ function boardFile() {
 function schemaFile() {
   return path.join(config.CONFIG_DIR, 'schema.json');
 }
+function dashboardFile() {
+  return path.join(config.CONFIG_DIR, 'dashboard.json');
+}
+
+// Sanitiza a config do dashboard (estrutural). Semântica (props órfãs etc.) é
+// self-healed pelo motor de agregação no front. Whitelist de campos → sem lixo.
+const CHART_TYPES = new Set(['kpi', 'bar', 'line', 'pie']);
+const CHART_AGGS = new Set(['count', 'sum', 'avg', 'leadtime']);
+const CHART_BASES = new Set(['all', 'created', 'completed', 'open']);
+const CHART_BUCKETS = new Set(['day', 'week', 'month']);
+const CHART_SORTS = new Set(['value', 'label', 'sequence']);
+function sanitizeDashboard(raw) {
+  const rawCharts = raw && Array.isArray(raw.charts) ? raw.charts : [];
+  const charts = [];
+  const seen = new Set();
+  rawCharts.forEach((c, i) => {
+    if (!c || typeof c !== 'object') return;
+    const type = CHART_TYPES.has(c.type) ? c.type : 'bar';
+    let id = typeof c.id === 'string' && c.id.trim() ? c.id.trim() : `c${i}_${crypto.randomBytes(3).toString('hex')}`;
+    if (seen.has(id)) id = `${id}_${i}`;
+    seen.add(id);
+    const w = Math.min(12, Math.max(1, parseInt(c.w, 10) || (type === 'kpi' ? 3 : 6)));
+    const measure = c.measure && typeof c.measure === 'object' ? c.measure : {};
+    const out = {
+      id,
+      type,
+      title: typeof c.title === 'string' ? c.title.slice(0, 120) : '',
+      w,
+      measure: {
+        agg: CHART_AGGS.has(measure.agg) ? measure.agg : 'count',
+        prop: typeof measure.prop === 'string' ? measure.prop : null,
+      },
+      basis: CHART_BASES.has(c.basis) ? c.basis : 'all',
+    };
+    if (type === 'bar' || type === 'pie') {
+      out.dim = typeof c.dim === 'string' ? c.dim : null;
+      out.sort = CHART_SORTS.has(c.sort) ? c.sort : 'value';
+      out.dir = c.dir === 'asc' ? 'asc' : 'desc';
+      out.limit = Number.isInteger(c.limit) && c.limit > 0 ? c.limit : null;
+      if (type === 'bar') out.orientation = c.orientation === 'vertical' ? 'vertical' : 'horizontal';
+    }
+    if (type === 'line') {
+      out.dateProp = typeof c.dateProp === 'string' ? c.dateProp : 'created_at';
+      out.bucket = CHART_BUCKETS.has(c.bucket) ? c.bucket : 'day';
+      out.basis = out.dateProp === 'completed_at' ? 'completed' : 'created';
+    }
+    charts.push(out);
+  });
+  return { charts };
+}
 
 function statusFor(err) {
   const m = err.message || '';
@@ -111,6 +161,25 @@ async function commitAwaited(commitFn) {
     commitWarning = `não versionado: ${(e && e.message) || e}`;
   }
   const pushWarning = takePushWarning(); // sempre lê+limpa (não fica pendurado)
+  return commitWarning || pushWarning;
+}
+
+// Como commitAwaited, mas roda TAMBÉM a ESCRITA do arquivo dentro da fila git.
+// Sem isso, um `pull --rebase --autostash` em andamento podia intercalar entre o
+// write (fora da fila) e o commit (na fila): o save era varrido pro autostash e,
+// em conflito, revertido via reset --hard — com a rota respondendo 200 "Salvo".
+// Erro do writeFn PROPAGA (vira 400/500 na rota); erro de commit vira warning.
+async function commitAwaitedWrite(writeFn, commitFn) {
+  let commitWarning;
+  await gitSerial(async () => {
+    await writeFn();
+    try {
+      await commitFn();
+    } catch (e) {
+      commitWarning = `não versionado: ${(e && e.message) || e}`;
+    }
+  });
+  const pushWarning = takePushWarning();
   return commitWarning || pushWarning;
 }
 
@@ -293,12 +362,17 @@ router.post('/tasks', async (req, res) => {
     const taskBody = body !== undefined ? body : data.body;
     const cleanData = { ...data };
     delete cleanData.body;
-    const { id } = tasksRepo.create(cleanData, taskBody, await gitActor());
-    // Lê o que ficou gravado para a mensagem refletir o id/titulo finais.
-    const after = safeGetData(id) || { ...cleanData, id };
-    const msg = describeChanges(null, after, 'create', id, titleKeyOf());
-    const file = taskFile(id);
-    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    const actor = await gitActor();
+    let id;
+    const warning = await commitAwaitedWrite(
+      () => { ({ id } = tasksRepo.create(cleanData, taskBody, actor)); },
+      () => {
+        // Lê o que ficou gravado para a mensagem refletir o id/titulo finais.
+        const after = safeGetData(id) || { ...cleanData, id };
+        const msg = describeChanges(null, after, 'create', id, titleKeyOf());
+        return git.commitTask(taskFile(id), msg);
+      }
+    );
     schedulePush();
     res.status(201).json(withWarning({ id }, warning));
   } catch (err) { fail(res, err); }
@@ -316,14 +390,20 @@ router.put('/tasks/:id', async (req, res) => {
     // Tarefa ANTES (frontmatter pro diff; corpo pra detectar edição de conteúdo).
     const beforeTask = safeGetTask(id);
     const before = beforeTask ? beforeTask.data : null;
-    tasksRepo.update(id, cleanData, taskBody, await gitActor());
-    const after = safeGetData(id) || { ...cleanData, id };
-
-    const bodyChanged = !!beforeTask && taskBody !== undefined
-      && String(taskBody).trim() !== String(beforeTask.body || '').trim();
-    const msg = describeChanges(before, after, 'update', id, titleKeyOf(), { bodyChanged });
-    const file = taskFile(id);
-    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    const actor = await gitActor();
+    let after;
+    const warning = await commitAwaitedWrite(
+      () => {
+        tasksRepo.update(id, cleanData, taskBody, actor);
+        after = safeGetData(id) || { ...cleanData, id };
+      },
+      () => {
+        const bodyChanged = !!beforeTask && taskBody !== undefined
+          && String(taskBody).trim() !== String(beforeTask.body || '').trim();
+        const msg = describeChanges(before, after, 'update', id, titleKeyOf(), { bodyChanged });
+        return git.commitTask(taskFile(id), msg);
+      }
+    );
     schedulePush();
     await gcOrphanAssets(before, after); // limpa capa/ícone trocados/removidos
     res.json(withWarning({ id }, warning));
@@ -337,12 +417,19 @@ router.patch('/tasks/:id/move', async (req, res) => {
     if (!novoStatus) return res.status(400).json({ error: 'status é obrigatório' });
     const current = tasksRepo.get(id);
     const before = current.data;
-    tasksRepo.update(id, { ...current.data, status: novoStatus }, current.body, await gitActor());
-    const after = safeGetData(id) || { ...current.data, status: novoStatus };
-
-    const msg = describeChanges(before, after, 'move', id, titleKeyOf());
-    const file = taskFile(id);
-    const warning = await commitAwaited(() => git.commitTask(file, msg));
+    const actor = await gitActor();
+    let after;
+    const warning = await commitAwaitedWrite(
+      () => {
+        // merge parcial: só o status muda (update preserva o resto)
+        tasksRepo.update(id, { status: novoStatus }, undefined, actor);
+        after = safeGetData(id) || { ...current.data, status: novoStatus };
+      },
+      () => {
+        const msg = describeChanges(before, after, 'move', id, titleKeyOf());
+        return git.commitTask(taskFile(id), msg);
+      }
+    );
     schedulePush();
     res.json(withWarning({ id, status: novoStatus }, warning));
   } catch (err) { fail(res, err); }
@@ -354,9 +441,10 @@ router.delete('/tasks/:id', async (req, res) => {
     const file = taskFile(id);
     // Frontmatter ANTES de remover (para citar o título na mensagem).
     const before = safeGetData(id);
-    tasksRepo.remove(id);
-    const msg = describeChanges(before, null, 'delete', id, titleKeyOf());
-    const warning = await commitAwaited(() => git.removeAndCommit(file, msg));
+    const warning = await commitAwaitedWrite(
+      () => { tasksRepo.remove(id); },
+      () => git.removeAndCommit(file, describeChanges(before, null, 'delete', id, titleKeyOf()))
+    );
     schedulePush();
     await gcOrphanAssets(before, null); // tarefa apagada → limpa capa/ícone órfãos
     res.json(withWarning({ id }, warning));
@@ -405,12 +493,16 @@ function userFieldKeys() {
 function taskTargetsMe(data, me) {
   if (!data || !me) return false;
   for (const k of userFieldKeys()) {
-    const v = data[k];
-    if (v == null || v === '') continue;
-    if (me.userId && v === me.userId) return true;
-    if (me.entry) {
-      if (v === me.entry.nome) return true;
-      if ((me.entry.gitNames || []).includes(v)) return true;
+    const raw = data[k];
+    if (raw == null || raw === '') continue;
+    // user múltiplo guarda "id1;id2" — testa cada id da lista
+    const values = String(raw).split(';').map((s) => s.trim()).filter(Boolean);
+    for (const v of values) {
+      if (me.userId && v === me.userId) return true;
+      if (me.entry) {
+        if (v === me.entry.nome) return true;
+        if ((me.entry.gitNames || []).includes(v)) return true;
+      }
     }
   }
   return false;
@@ -480,6 +572,10 @@ router.post('/sync/pull', async (req, res) => {
     });
     let newNotifications = [];
     if (r.result && r.result.ok && r.before && r.after && r.before !== r.after) {
+      // O pull pode ter trazido board.json/schema.json/users.json novos (ex.: um
+      // colega deu "salvar pra todos" nos filtros). Sem reload, a config viva
+      // ficava velha até reiniciar — a mudança remota nunca aparecia.
+      try { config.reload(); } catch (e) { console.warn('[config] reload pós-pull falhou:', e.message); }
       try {
         newNotifications = await buildNotifications(r.before, r.after);
         if (newNotifications.length) config.addNotifications(newNotifications);
@@ -601,9 +697,15 @@ router.get('/tasks/:id/comments', (req, res) => {
 router.post('/tasks/:id/comments', async (req, res) => {
   try {
     const id = req.params.id;
-    const r = tasksRepo.addComment(id, (req.body || {}).text, await gitActor());
-    const title = (safeGetData(id) || {})[titleKeyOf()] || id;
-    const warning = await commitAwaited(() => git.commitTask(taskFile(id), `comentário em ${title}`));
+    const actor = await gitActor();
+    let r;
+    const warning = await commitAwaitedWrite(
+      () => { r = tasksRepo.addComment(id, (req.body || {}).text, actor); },
+      () => {
+        const title = (safeGetData(id) || {})[titleKeyOf()] || id;
+        return git.commitTask(taskFile(id), `comentário em ${title}`);
+      }
+    );
     schedulePush();
     res.status(201).json(withWarning({ id, comments: r.comments }, warning));
   } catch (err) { fail(res, err); }
@@ -612,9 +714,14 @@ router.post('/tasks/:id/comments', async (req, res) => {
 router.delete('/tasks/:id/comments/:idx', async (req, res) => {
   try {
     const id = req.params.id;
-    const r = tasksRepo.removeComment(id, req.params.idx);
-    const title = (safeGetData(id) || {})[titleKeyOf()] || id;
-    const warning = await commitAwaited(() => git.commitTask(taskFile(id), `remove comentário em ${title}`));
+    let r;
+    const warning = await commitAwaitedWrite(
+      () => { r = tasksRepo.removeComment(id, req.params.idx); },
+      () => {
+        const title = (safeGetData(id) || {})[titleKeyOf()] || id;
+        return git.commitTask(taskFile(id), `remove comentário em ${title}`);
+      }
+    );
     schedulePush();
     res.json(withWarning({ id, comments: r.comments }, warning));
   } catch (err) { fail(res, err); }
@@ -663,6 +770,43 @@ router.get('/tasks/:id/diff', async (req, res) => {
       after,
       diff,
     });
+  } catch (err) { fail(res, err); }
+});
+
+// ── Histórico git global (todos os commits, todo arquivo) — paginado ─────────
+// GET /history?skip=0&limit=50 -> { commits:[{hash,shortHash,date,authorName,
+// authorEmail,message,filesCount}], hasMore, skip, limit }
+router.get('/history', async (req, res) => {
+  try {
+    const skip = Math.max(0, parseInt(req.query.skip, 10) || 0);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { commits, hasMore } = await git.logAll({ skip, limit });
+    res.json({ commits, hasMore, skip, limit });
+  } catch (err) { fail(res, err); }
+});
+
+// ── Dashboard (config/dashboard.json no vault — gráficos do usuário) ──────────
+// GET /dashboard -> { charts:[...] } (default {charts:[]} se o arquivo não existe;
+// NÃO cria o arquivo — só é escrito no primeiro PUT).
+router.get('/dashboard', (req, res) => {
+  try {
+    let data = { charts: [] };
+    try {
+      data = JSON.parse(fs.readFileSync(dashboardFile(), 'utf8'));
+    } catch { /* ausente/ilegível → default vazio */ }
+    res.json(sanitizeDashboard(data));
+  } catch (err) { fail(res, err); }
+});
+
+// PUT /dashboard { charts:[...] } -> grava, commita e devolve a versão saneada.
+router.put('/dashboard', async (req, res) => {
+  try {
+    const clean = sanitizeDashboard(req.body || {});
+    writeJsonAtomic(dashboardFile(), clean);
+    const warning = await commitAwaited(() =>
+      git.commitPaths([dashboardFile()], `dashboard: ${clean.charts.length} gráfico(s)`));
+    schedulePush();
+    res.json(withWarning(clean, warning));
   } catch (err) { fail(res, err); }
 });
 

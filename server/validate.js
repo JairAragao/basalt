@@ -104,6 +104,11 @@ function validateTask(data, schema) {
       // valor = id do usuário no roster (config/users.json). Guardado como string;
       // a pertinência ao roster NÃO é validada aqui (roster muda; ser leniente
       // evita travar uma tarefa quando alguém é removido do roster).
+    } else if (type === 'boolean') {
+      // aceita boolean nativo ou 'true'/'false' (frontmatter/JSON). Guardado como boolean.
+      if (value !== true && value !== false && value !== 'true' && value !== 'false') {
+        errors.push(`o campo "${label}" deve ser Sim ou Não`);
+      }
     }
     // Tipos desconhecidos são tolerados (não geram erro) — schema é a fonte.
   }

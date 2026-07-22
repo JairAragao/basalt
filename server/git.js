@@ -486,6 +486,50 @@ async function logHistory(relPath) {
   });
 }
 
+// logAll({ skip, limit }) -> histórico repo-wide (todos os commits, todo arquivo),
+// mais novo→antigo, paginado. Retorna { commits:[{hash,shortHash,date,authorName,
+// authorEmail,message,filesCount}], hasMore }. Pede limit+1 pra saber se há
+// próxima página sem um count separado. Nunca lança → vazio em erro.
+async function logAll({ skip = 0, limit = 50 } = {}) {
+  const off = Math.max(0, Number(skip) || 0);
+  const lim = Math.min(500, Math.max(1, Number(limit) || 50));
+  const MARK = '\x1eCMT\x1f';
+  const FMT = `${MARK}%H%x1f%h%x1f%aI%x1f%an%x1f%ae%x1f%s`;
+  let out;
+  try {
+    out = await git().raw([
+      'log', `--format=${FMT}`, '--name-only',
+      `--skip=${off}`, `--max-count=${lim + 1}`, 'HEAD',
+    ]);
+  } catch (err) {
+    if (/does not have any commits|bad revision|unknown revision/i.test(err.message)) {
+      return { commits: [], hasMore: false };
+    }
+    return { commits: [], hasMore: false };
+  }
+  const parts = String(out || '').split(MARK).filter((s) => s && s.trim());
+  const commits = [];
+  for (const p of parts) {
+    const nl = p.indexOf('\n');
+    const headLine = nl === -1 ? p : p.slice(0, nl);
+    const rest = nl === -1 ? '' : p.slice(nl + 1);
+    const [hash, shortHash, date, authorName, authorEmail, message] = headLine.split('\x1f');
+    const files = rest.split('\n').map((l) => l.trim()).filter(Boolean);
+    commits.push({
+      hash: (hash || '').trim(),
+      shortHash: (shortHash || '').trim(),
+      date: (date || '').trim(),
+      authorName: (authorName || '').trim(),
+      authorEmail: (authorEmail || '').trim(),
+      message: (message || '').trim(),
+      filesCount: files.length,
+      files: files.slice(0, 100), // paths relativos (posix) — front distingue tarefa × config
+    });
+  }
+  const hasMore = commits.length > lim;
+  return { commits: commits.slice(0, lim), hasMore };
+}
+
 // showAt(ref, relPath) -> conteúdo do arquivo em `ref` (ex.: "H", "H^").
 // Se o caminho não existir naquele ref (ex.: sem pai), retorna "".
 async function showAt(ref, relPath) {
@@ -564,6 +608,7 @@ module.exports = {
   setUserId,
   currentHead,
   commitsInRange,
+  logAll,
   logHistory,
   showAt,
   diffFile,

@@ -132,15 +132,36 @@ function create(data, body, actor) {
 function update(id, data, body, actor) {
   const full = resolveTaskPath(id);
   if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
-  const input = { ...data, id };
-
-  const { ok, errors } = validateTask(input, config.schema);
-  if (!ok) throw new Error(`validação falhou: ${errors.join('; ')}`);
 
   const existing = matter.read(full);
   const ex = existing.data || {};
-  const clean = stripManaged(input);
-  delete clean.id;
+
+  // ── MERGE parcial (não mais full-replace) ─────────────────────────────────
+  // Chave AUSENTE no payload = preserva o valor existente; presente = aplica;
+  // null ou '' explícito = limpa (remove a chave). Antes o PUT substituía o
+  // frontmatter inteiro: um autosave com snapshot velho revertia silenciosamente
+  // mudanças remotas nos campos que o usuário nem tocou.
+  const props = (config.schema && config.schema.properties) || {};
+  const PAGE_META = new Set(['icon', 'cover']);
+  const incoming = stripManaged({ ...data });
+  delete incoming.id;
+
+  const clean = {};
+  for (const k of Object.keys(props)) {
+    if (k in ex) clean[k] = ex[k];
+  }
+  for (const k of PAGE_META) {
+    if (k in ex) clean[k] = ex[k];
+  }
+  for (const [k, v] of Object.entries(incoming)) {
+    if (v === null || v === '') delete clean[k];
+    else clean[k] = v;
+  }
+
+  // valida o RESULTADO mesclado (o payload pode ser parcial)
+  const { ok, errors } = validateTask({ ...clean, id }, config.schema);
+  if (!ok) throw new Error(`validação falhou: ${errors.join('; ')}`);
+
   // Preserva os derivados (fórmula) e o carimbo de cálculo (dono = watcher).
   const derivedKeys = (config.schema && Array.isArray(config.schema.derived)) ? config.schema.derived : [];
   for (const k of derivedKeys) {
@@ -148,13 +169,10 @@ function update(id, data, body, actor) {
   }
   if ('computed_at' in ex) clean.computed_at = ex.computed_at;
 
-  // Preserva chaves ESTRANGEIRAS do frontmatter — adicionadas à mão, fora do schema
-  // e fora das geridas pela UI. O update não pode destruir dado que não conhece.
-  // Exclui: props do schema (omitir = limpar), icon/cover (metadados geridos pela
-  // UI, limpos por omissão) e derivados/auto/computed_at (tratados acima).
-  const props = (config.schema && config.schema.properties) || {};
+  // Preserva chaves ESTRANGEIRAS do frontmatter — adicionadas à mão, fora do
+  // schema e fora das geridas pela UI. O update não pode destruir dado que não
+  // conhece (ex.: comments).
   const autoSet = new Set(autoKeys());
-  const PAGE_META = new Set(['icon', 'cover']);
   for (const k of Object.keys(ex)) {
     if (k === 'id' || k in clean) continue;
     if (k in props || derivedKeys.includes(k) || k === 'computed_at' || autoSet.has(k) || PAGE_META.has(k)) continue;
