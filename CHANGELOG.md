@@ -3,6 +3,34 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.12.0] - 2026-07-22
+
+### Adicionado
+
+- Histórico git global em Configurações: todos os commits do vault, paginado; clicar num commit de tarefa abre a tarefa no comparativo antes/depois daquele commit.
+- Tipo de propriedade Sim/Não (booleano) e propriedade de usuário com múltiplos responsáveis; ambos com filtro próprio.
+- Suporte a tabelas no editor de corpo (round-trip com markdown).
+- Dashboard configurável: builder de gráficos (número, barras, linha, pizza) com grade de 12 colunas, arrastar para reordenar e redimensionar; salvo no vault.
+- Excluir etapa de status que tem tarefas agora pede para onde mover os cards (migra tudo numa transação).
+- Painel de recuperação de sincronização (aba Sync): reenviar mudanças não enviadas e recuperar mudanças guardadas por conflito, em linguagem simples.
+- Notificação quando um colega remove uma tarefa sua ou tira você da responsabilidade.
+- Busca digitável nos seletores (filtros, status).
+
+### Corrigido
+
+- Editor de corpo: formatação (negrito/itálico/link) voltou a funcionar; o link não apaga mais o conteúdo do cartão; cursor/Enter posicionam certo.
+- Fim de vários caminhos de perda de dados no auto-save (corpo apagado por falha de carregamento, edição durante o salvamento, fechar tarefa nova sem título, reverter mudança do colega); erros de save agora aparecem visíveis.
+- Edição simultânea da mesma tarefa preserva o texto dos dois lados (não sobrescreve mais em silêncio).
+- Cards com status órfão voltam a aparecer no kanban (coluna “Sem status”).
+- Confirmação em dois cliques para remover aba de vault, excluir etapa e excluir comentário.
+- Dashboard não corta mais os dados dos gráficos; falha ao carregar não sobrescreve o dashboard real.
+
+### Desempenho / Interno
+
+- Índice em memória das tarefas (não relê o vault inteiro a cada operação) — muito mais rápido em vaults grandes.
+- API só atende requisições locais (guarda de Host).
+- Escrita e commit na mesma fila git (um pull automático não reverte mais um save).
+
 ## [0.11.0] - 2026-07-20
 
 ### Adicionado
