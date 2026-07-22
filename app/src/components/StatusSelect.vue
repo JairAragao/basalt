@@ -57,7 +57,14 @@
                 <button type="button" class="icon-btn h-6 w-6 flex-shrink-0 opacity-0 group-hover/st:opacity-100" title="Mover ↓" @click.stop="moveStage(gi, si, 1)">
                   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M10 5v10M6 11l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
                 </button>
-                <button type="button" class="icon-btn h-6 w-6 flex-shrink-0 opacity-0 hover:!text-red-300 group-hover/st:opacity-100" title="Excluir etapa" :disabled="g.stages.length <= 1" @click.stop="deleteStage(gi, si)">
+                <button
+                  type="button"
+                  class="icon-btn h-6 w-6 flex-shrink-0 opacity-0 hover:!text-red-300 group-hover/st:opacity-100"
+                  :class="{ '!bg-red-500/20 !text-red-300 !opacity-100': confirmingDelete === gi + ':' + si }"
+                  :title="confirmingDelete === gi + ':' + si ? 'Clique de novo para excluir' : 'Excluir etapa'"
+                  :disabled="g.stages.length <= 1"
+                  @click.stop="deleteStage(gi, si)"
+                >
                   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
                 </button>
               </template>
@@ -111,6 +118,7 @@ export default {
       editing: null, // { gi, si }
       editVal: '',
       colorFor: null, // stage id com paleta aberta
+      confirmingDelete: null, // "gi:si" armado pro 2º clique de exclusão
       newStage: { label: '' },
       palette: PALETTE,
     };
@@ -176,6 +184,16 @@ export default {
     },
     deleteStage(gi, si) {
       if (this.groupsLocal[gi].stages.length <= 1) return; // grupo não pode ficar vazio
+      // 2 cliques: excluir etapa (possivelmente em uso por tarefas) é destrutivo
+      const key = `${gi}:${si}`;
+      if (this.confirmingDelete !== key) {
+        this.confirmingDelete = key;
+        clearTimeout(this._confirmTimer);
+        this._confirmTimer = setTimeout(() => { this.confirmingDelete = null; }, 3000);
+        return;
+      }
+      clearTimeout(this._confirmTimer);
+      this.confirmingDelete = null;
       this.groupsLocal[gi].stages.splice(si, 1);
       this.persist();
     },
