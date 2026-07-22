@@ -15,15 +15,23 @@
 
     <transition name="dd">
       <div v-if="open" class="absolute z-50 mt-1 w-72 rounded-lg border border-ink-line bg-ink-700 p-1 shadow-xl">
+        <input
+          v-if="showSearch"
+          v-model="query"
+          type="text"
+          class="field mb-1 !py-1 text-[12px]"
+          placeholder="Buscar etapa…"
+          @click.stop
+        />
         <div class="max-h-80 overflow-auto">
           <template v-for="(g, gi) in groupsLocal" :key="g.id || gi">
-            <!-- separador da etapa macro -->
-            <div class="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+            <!-- separador da etapa macro (some quando o filtro esconde o grupo) -->
+            <div v-show="groupHasMatch(g)" class="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
               <span class="truncate">{{ g.label }}</span>
               <span class="h-px flex-1 bg-ink-500"></span>
             </div>
 
-            <div v-for="(s, si) in g.stages" :key="s.id" class="group/st flex items-center gap-0.5">
+            <div v-show="matchesQuery(s)" v-for="(s, si) in g.stages" :key="s.id" class="group/st flex items-center gap-0.5">
               <template v-if="editing && editing.gi === gi && editing.si === si">
                 <span class="ml-1 h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: s.color }"></span>
                 <input
@@ -82,6 +90,9 @@
             </div>
           </template>
         </div>
+        <div v-if="deleteBlocked" class="mx-1 mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-300">
+          “{{ deleteBlocked }}” tem tarefas. Exclua em Configurações &gt; Status pra escolher pra onde movê-las.
+        </div>
         <!-- adicionar etapa por grupo -->
         <div class="mt-1 border-t border-ink-500 pt-1">
           <input
@@ -105,6 +116,7 @@ const PALETTE = ['#9b9b9b', '#7d828c', '#4b4b4b', '#d9a01e', '#d9730d', '#4a8fe0
 
 export default {
   name: 'StatusSelect',
+  inject: { injectedTasks: { from: 'basaltTasks', default: null } },
   props: {
     value: { default: '' },
     config: { type: Object, required: true },
@@ -117,12 +129,17 @@ export default {
       editing: null, // { gi, si }
       editVal: '',
       colorFor: null, // stage id com paleta aberta
+      query: '', // filtro de etapas (aparece quando há muitas)
       confirmingDelete: null, // "gi:si" armado pro 2º clique de exclusão
+      deleteBlocked: null, // stage id cuja exclusão foi bloqueada (em uso)
       newStage: { label: '' },
       palette: PALETTE,
     };
   },
   computed: {
+    tasksList() { const i = this.injectedTasks; return (i && i.value) ? i.value : []; },
+    stageCount() { return this.groupsLocal.reduce((n, g) => n + g.stages.length, 0); },
+    showSearch() { return this.stageCount >= 8; },
     groups() { return (this.config.board && this.config.board.statusGroups) || []; },
     currentColor() {
       const cols = (this.config.board && this.config.board.columns) || [];
@@ -175,6 +192,16 @@ export default {
       this.persist([{ from, to }]);
     },
     cancelEdit() { this.editing = null; this.editVal = ''; },
+    stageInUse(id) {
+      const key = (this.config.board && this.config.board.groupBy) || 'status';
+      return this.tasksList.some((t) => t && t[key] === id);
+    },
+    matchesQuery(s) {
+      const q = this.query.trim().toLowerCase();
+      if (!q) return true;
+      return String(s.label || s.id || '').toLowerCase().includes(q);
+    },
+    groupHasMatch(g) { return (g.stages || []).some((s) => this.matchesQuery(s)); },
     toggleColor(id) { this.colorFor = this.colorFor === id ? null : id; },
     setColor(gi, si, c) {
       this.groupsLocal[gi].stages[si].color = c;
@@ -183,7 +210,16 @@ export default {
     },
     deleteStage(gi, si) {
       if (this.groupsLocal[gi].stages.length <= 1) return; // grupo não pode ficar vazio
-      // 2 cliques: excluir etapa (possivelmente em uso por tarefas) é destrutivo
+      const stage = this.groupsLocal[gi].stages[si];
+      // etapa em uso: excluir aqui deixaria os cards órfãos. A migração pro
+      // destino vive no editor completo (Configurações > Status) — redireciona.
+      if (this.stageInUse(stage.id)) {
+        this.confirmingDelete = null;
+        this.deleteBlocked = stage.id;
+        clearTimeout(this._blockTimer);
+        this._blockTimer = setTimeout(() => { this.deleteBlocked = null; }, 4000);
+        return;
+      }
       const key = `${gi}:${si}`;
       if (this.confirmingDelete !== key) {
         this.confirmingDelete = key;

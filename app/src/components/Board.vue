@@ -140,6 +140,7 @@
               </div>
 
               <button
+                v-if="grp.id !== '__fallback'"
                 class="mt-1 flex flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-500 px-2 py-2 text-[12px] text-faint transition-colors hover:border-accent hover:bg-ink-800/50 hover:text-muted"
                 @click="$emit('open', { status: col.id })"
               >
@@ -323,6 +324,24 @@ export default {
       });
       Object.keys(buckets).forEach((colId) => { buckets[colId] = this.sortColumn(buckets[colId]); });
       this.grouped = buckets;
+      this.ensureFallback();
+    },
+    // Coluna sintética "Sem status" no fim do board SÓ quando há tarefas órfãs
+    // (status que sumiu do schema, ex.: etapa excluída sem migração). Antes, esses
+    // cards caíam num bucket que nunca renderizava e sumiam do kanban.
+    ensureFallback() {
+      const fbId = this.fallbackColumn.id;
+      const has = (this.grouped[fbId] || []).length > 0;
+      const idx = this.layout.findIndex((g) => g.id === '__fallback');
+      if (has && idx === -1) {
+        this.layout.push({
+          id: '__fallback',
+          label: '',
+          columns: [{ id: fbId, label: this.fallbackColumn.label, color: this.fallbackColumn.color }],
+        });
+      } else if (!has && idx !== -1) {
+        this.layout.splice(idx, 1);
+      }
     },
     sortColumn(list) {
       const { by, dir } = this.sortCfg;
@@ -342,6 +361,9 @@ export default {
     async onChange(evt, targetColId) {
       if (!evt.added) return;
       const task = evt.added.element;
+      // não deixa soltar card na coluna "Sem status" (fallback de órfãos) — ela
+      // só existe pra RESGATAR cards, não pra receber status inválido
+      if (targetColId === this.fallbackColumn.id) { this.regroup(); return; }
       const previousStatus = task[this.groupByKey];
       // o draggable mutou só a SLICE renderizada — atualiza o estado canônico
       // (grouped) na mão pra contagem/sentinela refletirem o conjunto completo.
