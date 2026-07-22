@@ -310,15 +310,73 @@ async function commitPaths(paths, message) {
   const list = (paths || []).filter(Boolean);
   if (!list.length) return;
   await ensureIdentity();
+  // `add` em CHUNKS: uma migração de schema pode tocar centenas de tarefas e
+  // passar tudo de uma vez estoura o limite de linha de comando (~8k no cmd.exe
+  // do Windows). O commit usa pathspec com um único `.` (o `add` já stageou só
+  // o escopo certo) — evita a mesma explosão no `commit -- <paths>`.
+  const CHUNK = 200;
   try {
-    await git().raw(['add', ...list]);
-    await git().raw(['commit', '-m', message, '--', ...list]);
+    for (let i = 0; i < list.length; i += CHUNK) {
+      await git().raw(['add', ...list.slice(i, i + CHUNK)]);
+    }
+    await git().raw(['commit', '-m', message]);
   } catch (err) {
     if (/nothing to commit/i.test(err.message)) {
       console.warn('[git] nada a commitar para', message);
       return;
     }
     throw err;
+  }
+}
+
+// syncState(): estado simples pra UI de recuperação — commits locais ainda não
+// enviados (ahead) e nº de "mudanças guardadas" (stashes de conflito de pull).
+// NUNCA lança.
+async function syncState() {
+  let ahead = 0;
+  let hasUpstream = false;
+  try {
+    const up = (await git().raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])).trim();
+    hasUpstream = !!up;
+    if (up) ahead = parseInt((await git().raw(['rev-list', '--count', '@{u}..HEAD'])).trim(), 10) || 0;
+  } catch { hasUpstream = false; }
+  let stashCount = 0;
+  try {
+    const raw = (await git().raw(['stash', 'list'])).trim();
+    stashCount = raw ? raw.split('\n').filter(Boolean).length : 0;
+  } catch { stashCount = 0; }
+  return { ahead, hasUpstream, stashCount };
+}
+
+// recoverStash(): traz de volta a MAIS RECENTE "mudança guardada" (git stash pop).
+// Se o pop conflitar, restaura o working tree (nada é perdido — o stash CONTINUA
+// na lista) e devolve { ok:false, conflict:true }. Sucesso → commita as mudanças
+// recuperadas (add -A escopo recuperação). NUNCA lança.
+async function recoverStash() {
+  try {
+    const list = (await git().raw(['stash', 'list'])).trim();
+    if (!list) return { ok: true, message: 'nada a recuperar' };
+    try {
+      await git().raw(['stash', 'pop']);
+    } catch (popErr) {
+      const unmerged = (await git().raw(['ls-files', '-u'])).trim();
+      if (unmerged) {
+        await git().raw(['checkout', '--', '.']); // desfaz o pop conflitante
+        try { await git().raw(['reset']); } catch { /* noop */ }
+        return { ok: false, conflict: true, error: 'a recuperação conflitou com o estado atual — suas mudanças continuam guardadas (peça ajuda pra resolver)' };
+      }
+      return { ok: false, error: oneLine(popErr.message) };
+    }
+    try {
+      await ensureIdentity();
+      await git().raw(['add', '-A']);
+      await git().raw(['commit', '-m', 'recupera mudanças guardadas']);
+    } catch (e) {
+      if (!/nothing to commit/i.test(e.message)) return { ok: true, warning: oneLine(e.message) };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: oneLine(err.message) };
   }
 }
 
@@ -609,6 +667,8 @@ module.exports = {
   setUserId,
   currentHead,
   commitsInRange,
+  syncState,
+  recoverStash,
   logAll,
   logHistory,
   showAt,

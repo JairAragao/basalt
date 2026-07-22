@@ -101,12 +101,14 @@ function startWatcher({ TASKS_DIR, schema }) {
   };
 
   const onChange = (file) => {
+    tasksRepo.invalidateCache(idFromFile(file)); // mudança externa (pull) → reindexa
     try {
       recompute(file, deps);
     } catch (err) {
       console.warn('[watcher] recompute falhou para', file, '-', err.message);
     }
   };
+  const onUnlink = (file) => tasksRepo.invalidateCache(idFromFile(file));
 
   let watcher = null;
   function watch(dir) {
@@ -115,7 +117,7 @@ function startWatcher({ TASKS_DIR, schema }) {
       ignoreInitial: false,
       awaitWriteFinish: { stabilityThreshold: 200 },
     });
-    watcher.on('add', onChange).on('change', onChange);
+    watcher.on('add', onChange).on('change', onChange).on('unlink', onUnlink);
     console.log('[watcher] observando', glob);
     return watcher;
   }

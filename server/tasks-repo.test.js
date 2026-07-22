@@ -209,3 +209,39 @@ describe('tasks-repo — atomicidade e preservação', () => {
     expect(data.chave_manual).toBe('não destrua');
   });
 });
+
+describe('tasks-repo — conflito de corpo (edição simultânea)', () => {
+  it('bodyBase igual ao disco → grava normal', () => {
+    tasksRepo.create({ id: 'b1', titulo: 'B1', status: 'backlog' }, 'v1', 'Jair');
+    const r = tasksRepo.update('b1', { titulo: 'B1' }, 'v2', 'Jair', { bodyBase: 'v1' });
+    expect(r.bodyConflict).toBe(false);
+    expect(tasksRepo.get('b1').body.trim()).toBe('v2');
+  });
+
+  it('disco mudou vs bodyBase → preserva os dois (lossless)', () => {
+    tasksRepo.create({ id: 'b2', titulo: 'B2', status: 'backlog' }, 'remoto', 'Ana');
+    const r = tasksRepo.update('b2', { titulo: 'B2' }, 'meu texto', 'Jair', { bodyBase: 'original' });
+    expect(r.bodyConflict).toBe(true);
+    const body = tasksRepo.get('b2').body;
+    expect(body).toContain('remoto');
+    expect(body).toContain('meu texto');
+  });
+
+  it('sem bodyBase → comportamento antigo (grava o body)', () => {
+    tasksRepo.create({ id: 'b3', titulo: 'B3', status: 'backlog' }, 'x', 'Jair');
+    const r = tasksRepo.update('b3', { titulo: 'B3' }, 'y', 'Jair');
+    expect(r.bodyConflict).toBe(false);
+    expect(tasksRepo.get('b3').body.trim()).toBe('y');
+  });
+});
+
+describe('tasks-repo — cache de list por mtime', () => {
+  it('list reflete create/update/remove', () => {
+    tasksRepo.create({ id: 'k1', titulo: 'K1', status: 'backlog' }, '', 'Jair');
+    expect(tasksRepo.list().some((t) => t.id === 'k1')).toBe(true);
+    tasksRepo.update('k1', { titulo: 'K1 novo' }, undefined, 'Jair');
+    expect(tasksRepo.list().find((t) => t.id === 'k1').titulo).toBe('K1 novo');
+    tasksRepo.remove('k1');
+    expect(tasksRepo.list().some((t) => t.id === 'k1')).toBe(false);
+  });
+});

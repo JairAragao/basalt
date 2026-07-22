@@ -68,29 +68,61 @@ function ATOMIC_writeTask(id, data, body) {
   const content = matter.stringify(body == null ? '' : body, ordered, { sortKeys: false });
   fs.writeFileSync(tmp, content, 'utf8');
   fs.renameSync(tmp, full);
+  _fmCache.delete(`${config.TASKS_DIR}\x1f${id}.md`); // força re-parse (mtime pode colidir no mesmo ms)
   return full;
 }
 
+// Cache de frontmatter por (dir, arquivo) indexado pelo mtime — mesmo padrão do
+// metadataCache do Obsidian. Sem ele, list() re-parseava o vault INTEIRO a cada
+// GET /tasks (autosave, drag, pull, troca de aba): ~900 readFileSync+YAML
+// síncronos por request travavam o event loop. Agora só arquivos com mtime novo
+// são re-lidos; o resto vem do cache. Invalidado pelo chokidar e pelas escritas.
+const _fmCache = new Map(); // key `${TASKS_DIR}\x1f${file}` → { mtimeMs, data }
+
 function list() {
-  let files;
+  const dir = config.TASKS_DIR;
+  let entries;
   try {
-    files = fs.readdirSync(config.TASKS_DIR);
+    entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     return [];
   }
   const tasks = [];
-  for (const f of files) {
+  const alive = new Set();
+  for (const ent of entries) {
+    const f = ent.name;
     if (!f.endsWith('.md') || f.startsWith('.')) continue;
     const id = f.slice(0, -3);
     if (!ID_RE.test(id)) continue;
+    const full = path.join(dir, f);
+    const key = `${dir}\x1f${f}`;
+    alive.add(key);
+    let mtimeMs;
+    try { mtimeMs = fs.statSync(full).mtimeMs; } catch { continue; }
+    const cached = _fmCache.get(key);
+    if (cached && cached.mtimeMs === mtimeMs) {
+      tasks.push({ ...cached.data, id });
+      continue;
+    }
     try {
-      const parsed = matter.read(path.join(config.TASKS_DIR, f));
+      const parsed = matter.read(full);
+      _fmCache.set(key, { mtimeMs, data: parsed.data });
       tasks.push({ ...parsed.data, id });
     } catch {
-      /* arquivo corrompido ignorado na listagem */
+      _fmCache.delete(key);
     }
   }
+  for (const key of _fmCache.keys()) {
+    if (key.startsWith(`${dir}\x1f`) && !alive.has(key)) _fmCache.delete(key);
+  }
   return tasks;
+}
+
+// Invalida a entrada de cache de um arquivo (chamado pelo watcher em unlink/change
+// externo — as escritas do próprio repo já reindexam via mtime na próxima list).
+function invalidateCache(fileOrId) {
+  const f = String(fileOrId).endsWith('.md') ? fileOrId : `${fileOrId}.md`;
+  _fmCache.delete(`${config.TASKS_DIR}\x1f${f}`);
 }
 
 function get(id) {
@@ -129,7 +161,7 @@ function create(data, body, actor) {
   return { id };
 }
 
-function update(id, data, body, actor) {
+function update(id, data, body, actor, opts) {
   const full = resolveTaskPath(id);
   if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
 
@@ -208,15 +240,34 @@ function update(id, data, body, actor) {
     if ('completed_by' in ex) clean.completed_by = ex.completed_by;
   }
 
-  const finalBody = body === undefined ? existing.content : body;
+  // Corpo: LOSSLESS em edição simultânea. Se o cliente enviou o corpo que ele
+  // VIU ao abrir (opts.bodyBase) e o corpo EM DISCO já é outro (um colega editou
+  // e chegou via pull), gravar `body` cru apagaria a edição alheia. Nesse caso
+  // preserva o de disco e anexa a versão do cliente sob um marcador — ninguém
+  // perde conteúdo; o usuário mescla e apaga o bloco depois.
+  let bodyConflict = false;
+  let finalBody;
+  if (body === undefined) {
+    finalBody = existing.content;
+  } else {
+    const onDisk = existing.content || '';
+    const base = opts && typeof opts.bodyBase === 'string' ? opts.bodyBase : undefined;
+    if (base !== undefined && onDisk.trim() !== base.trim() && onDisk.trim() !== String(body).trim()) {
+      finalBody = `${onDisk}\n\n---\n\n> ⚠️ Editado em paralelo — mescle o que precisar e apague este aviso:\n\n${body}`;
+      bodyConflict = true;
+    } else {
+      finalBody = body;
+    }
+  }
   ATOMIC_writeTask(id, clean, finalBody);
-  return { id };
+  return { id, bodyConflict };
 }
 
 function remove(id) {
   const full = resolveTaskPath(id);
   if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
   fs.unlinkSync(full);
+  _fmCache.delete(`${config.TASKS_DIR}\x1f${id}.md`);
   return { id };
 }
 
@@ -252,4 +303,4 @@ function removeComment(id, index) {
   return { id, comments: list };
 }
 
-module.exports = { list, get, create, update, remove, addComment, removeComment, ATOMIC_writeTask, resolveTaskPath };
+module.exports = { list, get, create, update, remove, addComment, removeComment, ATOMIC_writeTask, resolveTaskPath, invalidateCache };
