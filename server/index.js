@@ -14,6 +14,18 @@ const app = express();
 // base64 em JSON; o default do express (100kb) estoura e devolve 413.
 app.use(express.json({ limit: '20mb' }));
 
+// Guarda de Host: a API só atende requests cujo Host é loopback. Fecha DNS
+// rebinding — um site malicioso resolvendo um domínio pra 127.0.0.1 mandaria o
+// Host do domínio dele, que aqui é rejeitado (o app local sempre usa localhost).
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i;
+app.use('/api', (req, res, next) => {
+  const host = String(req.headers.host || '');
+  if (host && !LOCAL_HOST.test(host)) {
+    return res.status(403).json({ error: 'acesso negado: host não-local' });
+  }
+  next();
+});
+
 app.use('/api', routes);
 
 // Em produção, serve o build do frontend (Vite) se existir.
