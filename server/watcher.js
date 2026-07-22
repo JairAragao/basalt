@@ -12,7 +12,6 @@ const formula = require('./formula');
 
 const STAMP_FIELD = 'computed_at';
 
-// Extrai o id (nome do arquivo sem .md) de um path.
 function idFromFile(file) {
   return path.basename(file, '.md');
 }
@@ -72,7 +71,6 @@ function recompute(file, deps) {
   }
   if (!changed) return false;
 
-  // Atualiza os campos fórmula + carimbo de cálculo.
   for (const k of formulaKeys) data[k] = computed[k];
   data[stampField] = new Date().toISOString();
 

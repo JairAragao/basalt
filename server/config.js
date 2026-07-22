@@ -473,7 +473,6 @@ configObj.setVault = function setVault(p) {
   }
   const vault = path.resolve(p.trim());
 
-  // Se o path existe e NÃO é diretório → erro.
   if (fs.existsSync(vault) && !safeIsDir(vault)) {
     throw new Error(`vault inválido: "${vault}" existe e não é uma pasta`);
   }

@@ -1,6 +1,5 @@
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-    <!-- cabeçalho + barra de instalação -->
     <div class="flex-shrink-0 border-b border-ink-500 bg-ink-850 px-6 py-4">
       <div class="flex items-center gap-2">
         <h1 class="text-[15px] font-semibold text-txt">Extensões</h1>
@@ -42,7 +41,6 @@
       </p>
     </div>
 
-    <!-- lista -->
     <div class="flex-1 overflow-y-auto p-6">
       <div v-if="loading && !plugins.length" class="grid h-40 place-items-center text-[13px] text-muted">Carregando…</div>
 

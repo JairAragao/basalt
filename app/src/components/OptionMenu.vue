@@ -9,7 +9,6 @@
       :style="{ left: pos.x + 'px', top: pos.y + 'px' }"
       @mousedown.stop
     >
-      <!-- renomear (Enter salva) -->
       <input
         ref="name"
         v-model="name"

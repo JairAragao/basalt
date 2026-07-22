@@ -7,7 +7,6 @@
       <!-- par grudado: dialog + histórico (se aberto) à DIREITA -->
       <div class="flex items-stretch overflow-hidden shadow-2xl" :class="unitClass">
         <aside class="peek-panel relative flex min-w-0 flex-col overflow-hidden bg-ink-800" :class="panelClass">
-        <!-- toolbar -->
         <header class="flex h-11 flex-shrink-0 items-center gap-1 border-b border-ink-500 px-3">
           <!-- excluir à ESQUERDA (no lugar antes ocupado pelo fechar) -->
           <button v-if="isEdit" class="icon-btn h-7 w-7 hover:!text-red-300" title="Excluir" @click="$emit('delete', task)">
@@ -39,11 +38,8 @@
               :title="m.label"
               @click="setMode(m.id)"
             >
-              <!-- side peek -->
               <svg v-if="m.id === 'side'" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><rect x="3" y="4" width="14" height="12" rx="2" /><line x1="12" y1="4" x2="12" y2="16" /></svg>
-              <!-- center peek -->
               <svg v-else-if="m.id === 'center'" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><rect x="5" y="5.5" width="10" height="9" rx="2" /></svg>
-              <!-- fullscreen -->
               <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
           </div>
@@ -70,13 +66,11 @@
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><circle cx="10" cy="10" r="7" /><path d="M10 6v4l2.5 1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </button>
 
-          <!-- fechar à DIREITA -->
           <button class="icon-btn h-7 w-7" title="Fechar" @click="requestClose">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M13 7l-6 6M7 7l6 6" stroke-linecap="round" /></svg>
           </button>
         </header>
 
-        <!-- corpo rolável -->
         <div class="flex-1 overflow-y-auto">
           <!-- capa full-bleed (estilo Notion) -->
           <div v-if="model.cover" class="group/cover relative h-40 w-full overflow-hidden bg-ink-700">
@@ -109,7 +103,6 @@
               </button>
             </div>
 
-            <!-- título grande -->
             <textarea
               ref="title"
               v-model="model[titleKey]"
@@ -119,7 +112,6 @@
               @input="autoGrow"
             ></textarea>
 
-            <!-- propriedades -->
             <div class="mt-4">
               <div class="space-y-0.5">
                 <div
@@ -256,7 +248,6 @@
                 :disable-skin-tones="false"
                 @select="onEmojiSelect"
               />
-              <!-- ações: enviar imagem / remover -->
               <div class="flex items-center gap-2 border-t border-ink-500 bg-ink-850 px-3 py-2">
                 <button type="button" class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted transition-colors hover:bg-ink-700 disabled:opacity-50" :disabled="uploading" @click="triggerUpload('icon')">
                   <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><rect x="3" y="5" width="14" height="10" rx="2" /><path d="M3 13l4-4 3 3 3-3 4 4" stroke-linecap="round" stroke-linejoin="round" /></svg>

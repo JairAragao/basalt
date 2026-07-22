@@ -1,6 +1,5 @@
 <template>
   <div class="relative" ref="root">
-    <!-- gatilho: data (+ hora) formatada + X de limpar -->
     <div class="field flex cursor-pointer items-center gap-1.5 !py-0 !pl-0 !pr-2" :class="{ 'border-accent': open }">
       <button type="button" class="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-2.5 text-left text-[13px]" @click="toggle">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5 flex-shrink-0 text-faint"><rect x="3" y="4.5" width="14" height="12" rx="2" /><path d="M3 8h14M7 3v3M13 3v3" stroke-linecap="round" /></svg>

@@ -3,7 +3,6 @@
     <div class="flex-1 overflow-y-auto pr-1">
       <p class="mb-3 text-[12px] text-muted">Escolha o que aparece na face do cartão, antes de abrir.</p>
 
-      <!-- propriedades como etiquetas -->
       <div class="mb-5">
         <div class="mb-2 text-[12px] font-medium text-faint">Etiquetas no cartão</div>
         <label
@@ -18,7 +17,6 @@
         <p v-if="!toggleProps.length" class="px-2 text-[12px] text-faint">Sem propriedades.</p>
       </div>
 
-      <!-- subtítulo + etiqueta de destaque -->
       <div class="grid grid-cols-2 gap-3">
         <div>
           <div class="mb-1.5 text-[12px] font-medium text-faint">Subtítulo (rodapé do card)</div>

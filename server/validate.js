@@ -150,13 +150,13 @@ function slugify(text, maxLen) {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // remove diacríticos
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-') // tudo que não é letra/dígito vira "-"
-    .replace(/-+/g, '-'); // colapsa "-" repetido
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-');
 
   // Corta antes de remover as pontas, para não terminar com "-" pendurado.
   if (slug.length > limit) slug = slug.slice(0, limit);
 
-  slug = slug.replace(/^-+/, '').replace(/-+$/, ''); // remove "-" das pontas
+  slug = slug.replace(/^-+/, '').replace(/-+$/, '');
   return slug;
 }
 

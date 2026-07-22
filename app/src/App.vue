@@ -1,6 +1,5 @@
 <template>
   <div class="flex h-screen flex-col bg-ink-900 text-txt font-sans">
-    <!-- Barra de título custom: logo + abas (vaults) + controles de janela -->
     <TitleBar
       :vaults="vaults"
       :active-path="activeVault"
@@ -31,7 +30,6 @@
       <div class="flex-1"></div>
 
       <template v-if="config && !loadError">
-        <!-- controles específicos da view de tarefas -->
         <template v-if="activeView === 'tasks'">
         <!-- Filtros (board.filters) tipados pelo tipo da prop -->
         <template v-for="f in filterFields" :key="f.name">
@@ -86,10 +84,8 @@
           />
         </template>
 
-        <!-- separador -->
         <span class="mx-0.5 h-5 w-px bg-ink-500"></span>
 
-        <!-- Ordenação -->
         <Dropdown
           :value="sort.by"
           :options="sortFields"
@@ -102,7 +98,6 @@
           <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4"><path d="M10 4v12M6 12l4 4 4-4" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
 
-        <!-- separador -->
         <span class="mx-0.5 h-5 w-px bg-ink-500"></span>
 
         <!-- Colorir colunas (só no kanban; troca de view fica na sidebar) -->
@@ -132,7 +127,6 @@
           </svg>
         </button>
 
-        <!-- Notificações (sino + painel) -->
         <div class="relative z-50">
           <button class="icon-btn relative h-8 w-8" title="Notificações" @click="toggleNotif">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M6 8a4 4 0 0 1 8 0c0 4 1.5 5 1.5 5h-11S6 12 6 8Z" stroke-linecap="round" stroke-linejoin="round" /><path d="M8.5 16a1.5 1.5 0 0 0 3 0" stroke-linecap="round" /></svg>
@@ -167,7 +161,6 @@
           </template>
         </div>
 
-        <!-- Recarregar -->
         <button class="icon-btn h-8 w-8" title="Recarregar" :disabled="loading" @click="reload">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4" :class="{ 'animate-spin': loading }">
             <path d="M16 10a6 6 0 1 1-1.8-4.3" stroke-linecap="round" />
@@ -175,7 +168,6 @@
           </svg>
         </button>
 
-        <!-- Nova tarefa -->
         <button
           v-if="activeView === 'tasks'"
           class="flex h-8 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-40"
@@ -205,7 +197,6 @@
       >{{ committingFilters ? 'Salvando…' : 'Salvar pra todos' }}</button>
     </div>
 
-    <!-- Conteúdo -->
     <main class="relative flex-1 overflow-hidden">
       <!-- Configuração do vault (wizard como conteúdo da aba ativa) -->
       <SetupWizard
@@ -287,7 +278,6 @@
       @close="closePeek"
     />
 
-    <!-- Configurações -->
     <Settings
       v-if="settingsOpen && config"
       :config="config"
@@ -318,7 +308,6 @@
       </div>
     </div>
 
-    <!-- Confirmação de exclusão -->
     <div v-if="deleteTarget" class="fixed inset-0 z-40 grid place-items-center bg-black/50" @mousedown.self="deleteTarget = null">
       <div class="w-[380px] rounded-lg border border-ink-500 bg-ink-800 p-5 shadow-xl">
         <div class="text-sm font-medium">Excluir tarefa</div>
@@ -359,7 +348,6 @@
       </div>
     </transition>
 
-    <!-- Toast -->
     <transition name="toast">
       <div
         v-if="toast.show"
@@ -777,7 +765,6 @@ export default {
         this.loadError = e.message || 'Erro desconhecido.';
       }
     },
-    // Troca a aba ativa (vault).
     async switchToVault(path) {
       if (!path) return;
       if (!this.configuring && path === this.activeVault) return;
@@ -1084,7 +1071,6 @@ export default {
       this.toast = { show: true, text, type, timer: null };
       this.toast.timer = setTimeout(() => { this.toast.show = false; }, 3200);
     },
-    // abre Configurações numa aba específica
     openSettings(tab) {
       this.settingsInitialTab = tab || 'status';
       this.settingsOpen = true;

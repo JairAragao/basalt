@@ -1,7 +1,6 @@
 <template>
   <div :class="embedded ? 'h-full w-full grid place-items-center overflow-auto bg-ink-900 p-4' : 'fixed inset-0 z-50 grid place-items-center bg-black/60 p-4'">
     <div class="flex max-h-[90vh] min-h-[620px] w-[840px] max-w-[95vw] flex-col overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
-      <!-- header com stepper -->
       <header class="flex-shrink-0 border-b border-ink-500 px-5 py-4">
         <div class="flex items-center gap-2">
           <span class="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300">
@@ -12,7 +11,6 @@
           <button class="rounded-md px-2 py-1 text-[12px] text-faint hover:bg-ink-700 hover:text-muted" @click="$emit('dismiss')">Pular</button>
         </div>
 
-        <!-- trilha de etapas -->
         <ol class="mt-3.5 flex items-center gap-1.5">
           <li v-for="(s, i) in steps" :key="s.id" class="flex flex-1 items-center gap-1.5">
             <span
@@ -30,7 +28,6 @@
         </ol>
       </header>
 
-      <!-- corpo da etapa -->
       <div class="flex-1 overflow-y-auto px-5 py-4">
         <!-- ETAPA: BOAS-VINDAS -->
         <section v-if="step.id === 'welcome'" class="space-y-4">
@@ -174,7 +171,6 @@
         </section>
       </div>
 
-      <!-- footer de navegação -->
       <footer class="flex flex-shrink-0 items-center gap-2 border-t border-ink-500 px-5 py-3">
         <button
           v-if="idx > 0"

@@ -717,7 +717,6 @@ export default {
       this.refreshMarks();
     },
     onDocMouseDown(e) {
-      // clique fora do menu fecha
       const menu = this.$refs.slashMenu;
       if (menu && menu.contains(e.target)) return;
       this.closeSlash();

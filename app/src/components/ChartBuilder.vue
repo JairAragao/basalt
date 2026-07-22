@@ -10,7 +10,6 @@
       </header>
 
       <div class="thin-scroll flex-1 space-y-3 overflow-y-auto p-4">
-        <!-- tipo -->
         <div>
           <label class="lbl">Tipo de gráfico</label>
           <div class="grid grid-cols-4 gap-2">
@@ -28,13 +27,11 @@
           </div>
         </div>
 
-        <!-- título -->
         <div>
           <label class="lbl">Título <span class="text-faint">(opcional)</span></label>
           <input v-model="draft.title" class="field h-8 text-[13px]" :placeholder="autoTitle" />
         </div>
 
-        <!-- medida -->
         <div>
           <label class="lbl">Medida</label>
           <div class="flex gap-2">
@@ -53,19 +50,16 @@
           </p>
         </div>
 
-        <!-- base (kpi/bar/pie) -->
         <div v-if="draft.type !== 'line' && draft.measure.agg !== 'leadtime'">
           <label class="lbl">Base</label>
           <Dropdown :value="draft.basis" :options="basisOptions" @input="(v) => (draft.basis = v)" />
         </div>
 
-        <!-- dimensão (bar/pie) -->
         <div v-if="draft.type === 'bar' || draft.type === 'pie'">
           <label class="lbl">Agrupar por</label>
           <Dropdown :value="draft.dim" :options="dimOptions" placeholder="Propriedade" clearable @input="(v) => (draft.dim = v)" />
         </div>
 
-        <!-- eixo de tempo (line) -->
         <template v-if="draft.type === 'line'">
           <div>
             <label class="lbl">Data (eixo do tempo)</label>
@@ -77,7 +71,6 @@
           </div>
         </template>
 
-        <!-- opções bar/pie -->
         <template v-if="draft.type === 'bar' || draft.type === 'pie'">
           <div class="flex gap-2">
             <div class="flex-1">
@@ -101,7 +94,6 @@
           </div>
         </template>
 
-        <!-- largura -->
         <div>
           <label class="lbl">Largura ({{ draft.w }}/12 colunas)</label>
           <input v-model.number="draft.w" type="range" min="1" max="12" class="w-full accent-accent" />
@@ -251,7 +243,6 @@ export default {
       if (v === 'leadtime') this.draft.basis = 'completed';
     },
     apply() {
-      // normaliza limit vazio → null
       const out = { ...this.draft };
       if (!out.limit || out.limit < 1) out.limit = null;
       this.$emit('save', out);

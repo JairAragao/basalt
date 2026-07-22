@@ -69,7 +69,6 @@
                 </button>
               </template>
 
-              <!-- paleta de cor -->
               <div v-if="colorFor === s.id" class="st-palette absolute right-1 z-50 mt-1 flex flex-wrap gap-1 rounded-md border border-ink-500 bg-ink-800 p-1.5 shadow-xl" @click.stop>
                 <button
                   v-for="c in palette"

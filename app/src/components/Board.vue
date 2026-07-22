@@ -63,10 +63,8 @@
                   <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7.5" cy="5" r="1.25" /><circle cx="12.5" cy="5" r="1.25" /><circle cx="7.5" cy="10" r="1.25" /><circle cx="12.5" cy="10" r="1.25" /><circle cx="7.5" cy="15" r="1.25" /><circle cx="12.5" cy="15" r="1.25" /></svg>
                 </span>
 
-                <!-- indicador de cor -->
                 <span class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: col.color }"></span>
 
-                <!-- nome da etapa -->
                 <span class="min-w-0 flex-1 truncate text-[14px] font-medium text-muted">{{ col.label }}</span>
 
                 <span class="rounded bg-ink-700 px-1.5 py-0.5 text-[11px] text-faint">{{ (grouped[col.id] || []).length }}</span>
@@ -493,7 +491,6 @@ export default {
       this.persist(this.toPayload(groups));
     },
 
-    // adicionar etapa
     addStage(grp) {
       const groups = this.cloneGroups();
       const target = groups.find((g) => g.id === grp.id);

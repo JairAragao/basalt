@@ -1,6 +1,5 @@
 <template>
   <div class="relative" ref="root">
-    <!-- gatilho: valor + X de limpar (quando clearable e há valor) + chevron -->
     <div class="field flex cursor-pointer items-center gap-1.5 !py-0 !pl-0 !pr-2" :class="{ 'border-accent': open }">
       <button type="button" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2.5 text-left" @click="toggle">
         <span v-if="selected && selected.color" class="h-2.5 w-2.5 flex-shrink-0 rounded-full" :style="{ background: selected.color }"></span>
@@ -20,7 +19,6 @@
 
     <transition name="dd">
       <div v-if="open" class="absolute z-50 mt-1 max-h-64 w-full min-w-[11rem] overflow-auto rounded-lg border border-ink-line bg-ink-700 p-1 shadow-xl">
-        <!-- busca: aparece quando há muitas opções (some no caso trivial) -->
         <div v-if="showSearch" class="sticky top-0 z-10 mb-1 bg-ink-700 px-0.5 pb-1 pt-0.5">
           <input
             ref="search"

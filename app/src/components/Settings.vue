@@ -1,7 +1,6 @@
 <template>
   <div class="fixed inset-0 z-40 grid place-items-center bg-black/40" @mousedown.self="$emit('close')">
     <div class="flex h-[86vh] w-[760px] max-w-[94vw] flex-col overflow-hidden rounded-xl border border-ink-500 bg-ink-800 shadow-2xl">
-      <!-- header -->
       <header class="flex h-12 flex-shrink-0 items-center gap-3 border-b border-ink-500 px-4">
         <span class="text-[14px] font-medium text-txt">Configurações</span>
         <div class="flex-1"></div>
@@ -10,7 +9,6 @@
         </button>
       </header>
 
-      <!-- abas -->
       <div class="flex flex-shrink-0 gap-1 border-b border-ink-500 px-3 pt-2">
         <button
           v-for="t in tabs"
@@ -21,7 +19,6 @@
         >{{ t.label }}</button>
       </div>
 
-      <!-- corpo -->
       <div class="flex-1 overflow-hidden p-4">
         <StatusEditor
           v-if="tab === 'status'"

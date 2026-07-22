@@ -1119,11 +1119,9 @@ router.put('/schema/properties', async (req, res) => {
 
     const migrateFn = () => migrateTasks((data) => {
       let dirty = false;
-      // renomeia chave
       for (const [from, to] of renameMap) {
         if (from in data) { data[to] = data[from]; delete data[from]; dirty = true; }
       }
-      // remove chave
       for (const k of removed) {
         if (k in data) { delete data[k]; dirty = true; }
       }

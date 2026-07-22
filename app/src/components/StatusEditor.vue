@@ -13,7 +13,6 @@
       <div class="rounded-lg border border-ink-500 bg-ink-850 p-3">
         <!-- rótulo do grupo (editável) + toggle de grupo de conclusão -->
         <div class="mb-3 flex items-center gap-2">
-          <!-- alça de arraste do grupo macro -->
           <span
             class="group-handle grid h-7 w-5 flex-shrink-0 cursor-grab place-items-center text-faint hover:text-muted active:cursor-grabbing"
             title="Arrastar para reordenar grupo"
@@ -51,7 +50,6 @@
         >
           <template #item="{ element: stage, index: si }">
             <div class="flex items-center gap-2">
-              <!-- alça de arraste -->
               <span
                 class="stage-handle grid h-7 w-5 flex-shrink-0 cursor-grab place-items-center text-faint hover:text-muted active:cursor-grabbing"
                 title="Arrastar para reordenar"
@@ -59,7 +57,6 @@
                 <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5"><circle cx="7.5" cy="5" r="1.25" /><circle cx="12.5" cy="5" r="1.25" /><circle cx="7.5" cy="10" r="1.25" /><circle cx="12.5" cy="10" r="1.25" /><circle cx="7.5" cy="15" r="1.25" /><circle cx="12.5" cy="15" r="1.25" /></svg>
               </span>
 
-              <!-- botão de cor + popover de swatches -->
               <div class="relative flex-shrink-0">
                 <button
                   type="button"
@@ -120,7 +117,6 @@
       </template>
     </draggable>
 
-    <!-- footer -->
     <div class="flex flex-shrink-0 items-center gap-3 border-t border-ink-500 pt-3">
       <span v-if="error" class="flex-1 truncate text-[12px] text-red-300" :title="error">{{ error }}</span>
       <span v-else class="flex-1"></span>

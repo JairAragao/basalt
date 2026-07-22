@@ -1,6 +1,5 @@
 <template>
   <div class="cal" @mouseleave="$emit('hover', '')">
-    <!-- cabeçalho: navegação de mês + rótulo -->
     <div class="mb-2 flex items-center gap-1">
       <button type="button" class="cal-nav" title="Mês anterior" @click="shift(-1)">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M12 5l-5 5 5 5" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -11,12 +10,10 @@
       </button>
     </div>
 
-    <!-- dias da semana -->
     <div class="grid grid-cols-7 gap-0.5">
       <div v-for="(w, i) in weekdays" :key="'w' + i" class="grid h-6 place-items-center text-[11px] text-faint">{{ w }}</div>
     </div>
 
-    <!-- grade de dias -->
     <div class="grid grid-cols-7 gap-0.5">
       <button
         v-for="cell in cells"

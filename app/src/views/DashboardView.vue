@@ -1,7 +1,6 @@
 <template>
   <div class="thin-scroll h-full overflow-y-auto">
     <div class="mx-auto max-w-[1200px] p-5">
-      <!-- barra: título + período + modo edição -->
       <div class="mb-4 flex flex-wrap items-center gap-2">
         <h1 class="text-[15px] font-medium text-txt">Dashboard</h1>
         <div class="flex-1"></div>
@@ -39,7 +38,6 @@
         Modo edição — arraste pela alça p/ reordenar, puxe a borda direita p/ redimensionar. Salve para versionar no git.
       </div>
 
-      <!-- CTA conclusão não configurada -->
       <div v-if="!doneConfigured && charts.length" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 p-3 text-[12px] text-muted">
         <span>Sem grupo de conclusão definido — “finalizadas”, “em aberto” e lead time ficam sem dado. Ajuste em Configurações &gt; Status.</span>
         <button class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink-900 hover:brightness-110" @click="$emit('open-settings')">Abrir</button>

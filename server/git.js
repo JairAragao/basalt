@@ -355,7 +355,6 @@ async function healthGit() {
     };
   }
 
-  // Branch atual.
   let branch = null;
   try {
     branch = (await git().raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim() || null;

@@ -5,7 +5,6 @@
     :style="tint ? { backgroundColor: tint + '30', borderColor: tint + '60' } : {}"
     @click="$emit('open', task)"
   >
-    <!-- excluir (hover) -->
     <button
       class="icon-btn absolute right-1.5 top-1.5 z-10 h-6 w-6 bg-ink-800/60 opacity-0 group-hover:opacity-100"
       title="Excluir"

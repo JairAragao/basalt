@@ -19,12 +19,10 @@
         @drop.prevent="onDrop(i)"
         @dragend="onDragEnd"
       >
-        <!-- alça de arraste -->
         <span class="cursor-grab text-faint hover:text-muted" title="Arraste para reordenar">
           <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4"><circle cx="7" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
         </span>
 
-        <!-- checkbox de ativação -->
         <button
           type="button"
           class="grid h-5 w-5 flex-shrink-0 place-items-center rounded border transition-colors"
@@ -43,7 +41,6 @@
       </div>
     </div>
 
-    <!-- footer -->
     <div class="flex flex-shrink-0 items-center gap-3 border-t border-ink-500 pt-3">
       <span v-if="error" class="flex-1 truncate text-[12px] text-red-300" :title="error">{{ error }}</span>
       <span v-else class="flex-1 truncate text-[12px] text-faint">{{ activeCount }} filtro(s) selecionado(s)</span>

@@ -120,7 +120,6 @@
               <span class="text-[11px] text-faint">calculada a partir das propriedades numéricas</span>
             </div>
 
-            <!-- expressão -->
             <input
               v-model="prop.expression"
               class="field !py-1 font-mono text-[12px]"
@@ -141,7 +140,6 @@
               <span v-if="!numericKeysFor(prop).length" class="text-[11px] text-faint">nenhuma propriedade numérica disponível</span>
             </div>
 
-            <!-- operadores -->
             <div class="mt-2 text-[11px] text-faint">Operadores</div>
             <div class="mt-1 flex flex-wrap gap-1.5">
               <button
@@ -153,7 +151,6 @@
               >{{ op }}</button>
             </div>
 
-            <!-- arredondamento -->
             <label class="mt-2 flex items-center gap-1.5 text-[12px] text-faint">
               casas decimais
               <input v-model.number="prop.round" type="number" min="0" max="6" class="field !w-20 !py-1" placeholder="2" />
@@ -172,7 +169,6 @@
       </button>
     </div>
 
-    <!-- footer -->
     <div class="flex flex-shrink-0 items-center gap-3 border-t border-ink-500 pt-3">
       <span v-if="error" class="flex-1 truncate text-[12px] text-red-300" :title="error">{{ error }}</span>
       <span v-else class="flex-1"></span>

@@ -1,6 +1,5 @@
 <template>
   <div class="thin-scroll h-full space-y-4 overflow-y-auto p-1">
-    <!-- versão + verificação -->
     <section class="rounded-lg border border-ink-500 bg-ink-850 p-3">
       <div class="flex items-center gap-2">
         <div>
@@ -33,7 +32,6 @@
       </p>
     </section>
 
-    <!-- auto-verificação (só Electron) -->
     <section v-if="isElectron" class="rounded-lg border border-ink-500 bg-ink-850 p-3">
       <div class="mb-2 text-[13px] font-medium text-txt">Verificação automática</div>
       <div class="flex items-center gap-3">
@@ -47,7 +45,6 @@
       </p>
     </section>
 
-    <!-- changelog -->
     <section class="rounded-lg border border-ink-500 bg-ink-850 p-3">
       <div class="mb-2 flex items-center gap-2">
         <span class="text-[13px] font-medium text-txt">Novidades das versões</span>

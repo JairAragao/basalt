@@ -48,7 +48,6 @@
             ><path d="M8 6l4 4-4 4" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </div>
 
-          <!-- seletor de tarefas (só quando o commit tocou >1 tarefa) -->
           <div v-if="c.taskFiles.length > 1 && expanded === c.hash" class="border-t border-ink-500/60 p-1">
             <button
               v-for="tf in c.taskFiles"

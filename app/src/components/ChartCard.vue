@@ -7,13 +7,11 @@
     </div>
 
     <div class="min-h-0 flex-1">
-      <!-- KPI -->
       <div v-if="chart.type === 'kpi'" class="flex h-full flex-col justify-center">
         <div class="text-[26px] font-semibold leading-tight text-txt">{{ kpiLabel }}</div>
         <div class="mt-0.5 text-[11px] text-faint">{{ basisHint }}</div>
       </div>
 
-      <!-- Barras -->
       <template v-else-if="chart.type === 'bar'">
         <BarList v-if="chart.orientation !== 'vertical'" :rows="barRows" :color="defaultColor" :aria-label="title" />
         <div v-else class="flex h-full min-h-[140px] items-end gap-2 pt-2">
@@ -26,10 +24,8 @@
         </div>
       </template>
 
-      <!-- Linha / temporal -->
       <UplotChart v-else-if="chart.type === 'line'" :labels="data.labels || []" :series="lineSeries" :height="200" />
 
-      <!-- Pizza / rosca -->
       <PieChart v-else-if="chart.type === 'pie'" :rows="pieRows" :aria-label="title" />
     </div>
   </div>

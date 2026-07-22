@@ -13,7 +13,6 @@
       <span class="text-[11px] text-faint">diálogo nativo do sistema</span>
     </div>
 
-    <!-- barra de caminho atual + parent -->
     <div class="flex items-center gap-2 border-b border-ink-500 px-2.5 py-2">
       <button
         type="button"
@@ -49,7 +48,6 @@
       >{{ r }}</button>
     </div>
 
-    <!-- lista de subpastas -->
     <div class="max-h-[360px] min-h-[220px] overflow-y-auto p-1">
       <div v-if="loading" class="grid h-[220px] place-items-center text-[12px] text-faint">Carregando…</div>
       <div v-else-if="error" class="grid h-[220px] place-items-center px-4 text-center text-[12px] text-red-300">{{ error }}</div>
@@ -68,7 +66,6 @@
       </template>
     </div>
 
-    <!-- criar subpasta + usar esta pasta -->
     <div class="space-y-2 border-t border-ink-500 px-2.5 py-2.5">
       <div class="flex items-center gap-2">
         <input
