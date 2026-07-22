@@ -1355,17 +1355,22 @@ router.post('/assets', async (req, res) => {
 
     const dir = assetsDir();
     fs.mkdirSync(dir, { recursive: true });
-    const name = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    // nome = hash do CONTEÚDO → a mesma imagem colada N vezes vira 1 arquivo só
+    // (dedup) e o upload é idempotente. Se já existe, não reescreve nem re-commita.
+    const name = `${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 24)}.${ext}`;
     const file = path.join(dir, name);
-    const warning = await commitAwaitedWrite(
-      () => {
-        const tmp = file + '.tmp';
-        fs.writeFileSync(tmp, buf);
-        fs.renameSync(tmp, file);
-      },
-      () => git.commitPaths([file], `assets: ${name}`)
-    );
-    schedulePush();
+    let warning;
+    if (!fs.existsSync(file)) {
+      warning = await commitAwaitedWrite(
+        () => {
+          const tmp = file + '.tmp';
+          fs.writeFileSync(tmp, buf);
+          fs.renameSync(tmp, file);
+        },
+        () => git.commitPaths([file], `assets: ${name}`)
+      );
+      schedulePush();
+    }
     res.json(withWarning({ url: `/api/assets/${name}`, name }, warning));
   } catch (err) { fail(res, err); }
 });

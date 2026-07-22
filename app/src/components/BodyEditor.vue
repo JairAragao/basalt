@@ -156,6 +156,7 @@ import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
 import { common, createLowlight } from 'lowlight';
 import { Markdown } from 'tiptap-markdown';
 import { uploadAsset } from '../api';
+import { processImage } from '../image';
 
 // Syntax highlight dos code blocks. `common` = ~35 linguagens populares do
 // highlight.js. A linguagem escolhida vira o atributo `language` do nó e o
@@ -950,8 +951,8 @@ export default {
     async uploadAndInsertImage(file) {
       if (!this.editor) return;
       try {
-        const dataUri = await this.fileToBase64(file);
-        const r = await uploadAsset({ data: dataUri, mime: file.type });
+        const { data: dataUri, mime } = await processImage(file);
+        const r = await uploadAsset({ data: dataUri, mime });
         if (r && r.url) {
           this.editor.chain().focus().setImage({ src: r.url }).run();
           if (r.warning) this.$emit('warning', r.warning);

@@ -329,6 +329,7 @@
 <script>
 import { defineAsyncComponent } from 'vue';
 import { getTask, createTask, updateTask, uploadAsset, saveProperties, saveStatus, syncPull } from '../api';
+import { processImage } from '../image';
 import Dropdown from './Dropdown.vue';
 import DatePicker from './DatePicker.vue';
 import PropSelect from './PropSelect.vue';
@@ -1088,8 +1089,10 @@ export default {
       if (!file) return;
       this.uploading = true;
       try {
-        const dataUri = await this.fileToDataUrl(file);
-        const r = await uploadAsset({ data: dataUri, mime: file.type });
+        // ícone menor que o corpo (nunca precisa de 1600px)
+        const maxDim = this.uploadTarget === 'icon' ? 320 : 1600;
+        const { data: dataUri, mime } = await processImage(file, { maxDim });
+        const r = await uploadAsset({ data: dataUri, mime });
         if (r && r.url) {
           if (this.uploadTarget === 'cover') this.model.cover = r.url;
           else this.model.icon = r.url;
