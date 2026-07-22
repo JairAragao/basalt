@@ -30,7 +30,8 @@
               <span class="flex-shrink-0 text-[10.5px] text-faint">{{ formatDate(c.at) }}</span>
               <button
                 class="icon-btn h-5 w-5 flex-shrink-0 opacity-0 transition-opacity group-hover/c:opacity-100 hover:!text-red-300"
-                title="Excluir comentário"
+                :class="{ '!bg-red-500/20 !text-red-300 !opacity-100': confirmingDelete === i }"
+                :title="confirmingDelete === i ? 'Clique de novo para excluir' : 'Excluir comentário'"
                 @click="onDelete(i)"
               >
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round" /></svg>
@@ -78,7 +79,7 @@ export default {
   },
   emits: ['close', 'count', 'error'],
   data() {
-    return { comments: [], loading: false, error: '', draft: '', saving: false };
+    return { comments: [], loading: false, error: '', draft: '', saving: false, confirmingDelete: null };
   },
   watch: {
     open(v) { if (v) this.load(); },
@@ -118,6 +119,14 @@ export default {
       }
     },
     async onDelete(i) {
+      if (this.confirmingDelete !== i) {
+        this.confirmingDelete = i;
+        clearTimeout(this._confirmTimer);
+        this._confirmTimer = setTimeout(() => { this.confirmingDelete = null; }, 3000);
+        return;
+      }
+      clearTimeout(this._confirmTimer);
+      this.confirmingDelete = null;
       try {
         const r = await removeComment(this.taskId, i);
         this.comments = (r && Array.isArray(r.comments)) ? r.comments : this.comments;

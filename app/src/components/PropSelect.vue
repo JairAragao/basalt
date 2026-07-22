@@ -176,8 +176,11 @@ export default {
       this.$emit('input', this.isMulti ? '' : null);
     },
     onEnter() {
-      if (this.canCreate) { this.create(); return; }
-      if (this.filteredOptions.length) this.pick(this.filteredOptions[0].value);
+      // Enter escolhe o 1º match visível (o esperado ao filtrar). Só cria quando
+      // NÃO há nenhum match — antes, digitar um trecho que casava com opções
+      // existentes ainda criava uma opção-lixo (canCreate só olha match exato).
+      if (this.filteredOptions.length) { this.pick(this.filteredOptions[0].value); return; }
+      if (this.canCreate) this.create();
     },
     create() {
       const v = this.query.trim();

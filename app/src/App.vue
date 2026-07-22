@@ -248,7 +248,7 @@
         :tasks="tasks"
         :users="users"
         :vault-path="activeVault"
-        @open-settings="settingsOpen = true"
+        @open-settings="openSettings('status')"
       />
       <!-- extensões (plugins puxados do GitHub) -->
       <ExtensionsView
@@ -312,7 +312,7 @@
       <div class="w-[380px] rounded-lg border border-ink-500 bg-ink-800 p-5 shadow-xl">
         <div class="text-sm font-medium">Excluir tarefa</div>
         <div class="mt-2 text-[13px] text-muted">
-          Excluir <strong class="text-txt">{{ deleteTarget.titulo }}</strong>? Não dá pra desfazer.
+          Excluir <strong class="text-txt">{{ deleteTargetTitle }}</strong>? Não dá pra desfazer.
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button class="rounded-md px-3 py-1.5 text-[13px] text-muted hover:bg-ink-700" :disabled="deleting" @click="deleteTarget = null">Cancelar</button>
@@ -516,6 +516,13 @@ export default {
         value: key,
         label: this.properties[key].label || key,
       }));
+    },
+    // título da tarefa alvo da exclusão — usa a chave-título configurável do
+    // board (não hardcoda 'titulo', que pode ter sido renomeada/removida)
+    deleteTargetTitle() {
+      if (!this.deleteTarget) return '';
+      const key = (this.config && this.config.board && this.config.board.card && this.config.board.card.title) || 'titulo';
+      return this.deleteTarget[key] || this.deleteTarget.titulo || '(sem título)';
     },
     // Fonte das contagens/grupos: o que TasksView recebe já vem filtrado daqui.
     filteredTasks() {
@@ -988,7 +995,8 @@ export default {
       else this.notify('Tarefa não encontrada (pode ter sido removida).', 'error');
     },
     async clearOneNotif(id) {
-      try { this.notifications = (await clearNotifications(id)) || []; } catch (e) { /* noop */ }
+      try { this.notifications = (await clearNotifications(id)) || []; }
+      catch (e) { this.notify(e.message || 'Falha ao dispensar a notificação.', 'error'); }
     },
     async clearAllNotif() {
       try { this.notifications = (await clearNotifications()) || []; this.notifOpen = false; } catch (e) { /* noop */ }

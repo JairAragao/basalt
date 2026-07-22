@@ -26,9 +26,10 @@
         ></span>
         <span class="truncate">{{ v.name }}</span>
         <button
-          class="grid h-4 w-4 flex-shrink-0 place-items-center rounded text-faint opacity-0 transition-opacity hover:bg-ink-600 hover:text-txt group-hover/tab:opacity-100"
-          title="Remover aba"
-          @click.stop="$emit('remove', v.path)"
+          class="grid h-4 w-4 flex-shrink-0 place-items-center rounded opacity-0 transition-opacity group-hover/tab:opacity-100"
+          :class="confirmingRemove === v.path ? '!opacity-100 bg-red-500/25 text-red-300' : 'text-faint hover:bg-ink-600 hover:text-txt'"
+          :title="confirmingRemove === v.path ? 'Clique de novo para remover a aba (a pasta não é apagada)' : 'Remover aba'"
+          @click.stop="onRemove(v.path)"
         >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3 w-3"><path d="M4 4l8 8M12 4l-8 8" stroke-linecap="round" /></svg>
         </button>
@@ -78,7 +79,7 @@ export default {
     configuring: { type: Boolean, default: false },
   },
   data() {
-    return { maximized: false, _off: null };
+    return { maximized: false, _off: null, confirmingRemove: null };
   },
   computed: {
     isElectron() {
@@ -95,6 +96,17 @@ export default {
     if (this._off) this._off();
   },
   methods: {
+    onRemove(path) {
+      if (this.confirmingRemove !== path) {
+        this.confirmingRemove = path;
+        clearTimeout(this._rmTimer);
+        this._rmTimer = setTimeout(() => { this.confirmingRemove = null; }, 3000);
+        return;
+      }
+      clearTimeout(this._rmTimer);
+      this.confirmingRemove = null;
+      this.$emit('remove', path);
+    },
     winMin() { window.electron.window.minimize(); },
     winMax() { window.electron.window.maximize(); },
     winClose() { window.electron.window.close(); },

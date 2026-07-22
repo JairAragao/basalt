@@ -43,8 +43,16 @@
         <button class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink-900 hover:brightness-110" @click="$emit('open-settings')">Abrir</button>
       </div>
 
+      <div v-if="loadFailed" class="grid place-items-center rounded-lg border border-red-500/40 bg-red-500/10 py-16 text-center">
+        <div class="max-w-sm">
+          <div class="text-[14px] font-medium text-red-300">Não foi possível carregar o dashboard.</div>
+          <div class="mt-1 text-[12px] text-faint">O servidor pode estar fora. Tente de novo — nada foi alterado.</div>
+          <button class="mt-4 rounded-md border border-ink-500 px-3.5 py-1.5 text-[13px] text-muted hover:text-txt" @click="loadDashboard">Tentar de novo</button>
+        </div>
+      </div>
+
       <!-- vazio: onboarding -->
-      <div v-if="!charts.length" class="grid place-items-center rounded-lg border border-ink-500 bg-ink-850 py-16 text-center">
+      <div v-else-if="!charts.length" class="grid place-items-center rounded-lg border border-ink-500 bg-ink-850 py-16 text-center">
         <div class="max-w-sm">
           <div class="text-[14px] font-medium text-muted">Nenhum gráfico ainda.</div>
           <div class="mt-1 text-[12px] text-faint">Monte um dashboard com os gráficos que quiser — fica salvo no vault e versionado no git.</div>
@@ -140,6 +148,7 @@ export default {
       savedSnapshot: '[]', // JSON da última versão salva (p/ cancelar)
       editing: false,
       saving: false,
+      loadFailed: false,
       builderOpen: false,
       builderChart: null,
       rangeMode: '30',
@@ -214,10 +223,14 @@ export default {
       try {
         const r = await getDashboard();
         this.charts = ((r && r.charts) || []).map((c) => ({ ...c, id: c.id || localId() }));
+        this.loadFailed = false;
+        this.savedSnapshot = JSON.stringify(this.charts);
       } catch (e) {
-        this.charts = [];
+        // GET falhou (server fora) — NÃO cai no onboarding vazio, senão "Salvar"
+        // gravaria [] por cima do dashboard real. Bloqueia edição e mostra erro.
+        this.loadFailed = true;
+        this.editing = false;
       }
-      this.savedSnapshot = JSON.stringify(this.charts);
     },
     // sequência de opções p/ ordenação 'sequence' de um dim
     seqFor(dim) {
@@ -267,7 +280,7 @@ export default {
       return { gridColumn: `span ${Math.min(12, Math.max(1, c.w || 6))}`, minHeight: minH + 'px' };
     },
     // ── edição ──
-    enterEdit() { this.editing = true; },
+    enterEdit() { if (this.loadFailed) return; this.editing = true; },
     enterEditAndAdd() { this.editing = true; this.openBuilder(null); },
     cancelEdit() {
       this.charts = JSON.parse(this.savedSnapshot);
