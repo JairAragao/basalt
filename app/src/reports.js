@@ -28,6 +28,12 @@ function weekStartKey(key) {
   return dayKey(addDays(d, -dow));
 }
 
+// chave do 1º dia do mês (bucket 'month')
+function monthStartKey(key) {
+  const [y, m] = String(key).split('-').map(Number);
+  return dayKey(new Date(y, m - 1, 1));
+}
+
 const msPerDay = 86400000;
 
 /**
@@ -173,4 +179,152 @@ export function buildReport(input) {
     byUser,
     byEnum,
   };
+}
+
+// ── Motor de gráfico genérico (dashboard configurável) ───────────────────────
+// computeChart(def, ctx) — def = uma entrada de dashboard.json (ver routes.js
+// sanitizeDashboard); ctx = { tasks, schema, doneStageIds, range:{from,to},
+// seqFor?:{propKey:[values]} }. Retorna forma normalizada pelo tipo:
+//   kpi        → { value: number|null }
+//   bar | pie  → { rows: [{ key, label, value }] }
+//   line       → { labels: [key], points: [number] }
+// Módulo PURO — cores/labels de usuário são resolvidas na view.
+export function computeChart(def, ctx) {
+  const d = def || {};
+  const tasks = (ctx && ctx.tasks) || [];
+  const schema = (ctx && ctx.schema) || {};
+  const props = schema.properties || {};
+  const range = (ctx && ctx.range) || {};
+  const from = range.from || null;
+  const to = range.to || null;
+  const rawDone = (ctx && ctx.doneStageIds) || [];
+  const done = rawDone instanceof Set ? rawDone : new Set(rawDone);
+  const inRange = (key) => key != null && from != null && to != null && key >= from && key <= to;
+
+  // conjunto de trabalho conforme a "base"
+  const basisSet = (basis) => {
+    if (basis === 'created') return tasks.filter((t) => t && inRange(dayKey(t.created_at)));
+    if (basis === 'completed') return tasks.filter((t) => t && inRange(dayKey(t.completed_at)));
+    if (basis === 'open') return tasks.filter((t) => t && !done.has(t.status));
+    return tasks.filter(Boolean); // 'all'
+  };
+
+  // agrega uma medida sobre um array de tarefas → número (ou null)
+  const measureOf = (set, measure) => {
+    const m = measure || { agg: 'count' };
+    if (m.agg === 'count') return set.length;
+    if (m.agg === 'leadtime') {
+      let sum = 0; let n = 0;
+      for (const t of set) {
+        const a = t && t.created_at ? new Date(t.created_at).getTime() : NaN;
+        const b = t && t.completed_at ? new Date(t.completed_at).getTime() : NaN;
+        const ms = b - a;
+        if (Number.isFinite(ms) && ms >= 0) { sum += ms; n += 1; }
+      }
+      return n ? Math.round((sum / n / msPerDay) * 10) / 10 : null;
+    }
+    // sum | avg sobre prop numérica
+    const key = m.prop;
+    if (!key) return m.agg === 'sum' ? 0 : null;
+    let sum = 0; let n = 0;
+    for (const t of set) {
+      const v = t ? t[key] : undefined;
+      if (v === null || v === undefined || v === '') continue;
+      const num = Number(v);
+      if (!Number.isFinite(num)) continue;
+      sum += num; n += 1;
+    }
+    if (m.agg === 'sum') return sum;
+    return n ? Math.round((sum / n) * 100) / 100 : null;
+  };
+
+  if (d.type === 'kpi') {
+    return { value: measureOf(basisSet(d.basis || 'all'), d.measure) };
+  }
+
+  if (d.type === 'bar' || d.type === 'pie') {
+    const set = basisSet(d.basis || 'all');
+    const dim = d.dim;
+    const prop = dim ? props[dim] : null;
+    const isMulti = prop && (prop.type === 'multiselect' || (prop.type === 'user' && prop.multiple));
+    // agrupa: cada tarefa cai em 1 (ou N, multiselect) baldes; agrega a medida.
+    // sum/avg precisam do conjunto por balde → acumula listas; count é direto.
+    const groups = new Map(); // key → array de tarefas
+    const put = (k, t) => {
+      const kk = (k === null || k === undefined || k === '') ? '(sem valor)' : String(k);
+      if (!groups.has(kk)) groups.set(kk, []);
+      groups.get(kk).push(t);
+    };
+    for (const t of set) {
+      const v = dim ? (t ? t[dim] : undefined) : '(total)';
+      if (isMulti) {
+        const list = String(v == null ? '' : v).split(';').map((s) => s.trim()).filter(Boolean);
+        if (!list.length) put('(sem valor)', t);
+        else list.forEach((item) => put(item, t));
+      } else {
+        put(v, t);
+      }
+    }
+    let rows = [...groups.entries()].map(([key, arr]) => ({
+      key,
+      label: key,
+      value: measureOf(arr, d.measure),
+    }));
+    // ordenação
+    const synthetic = (k) => (k === '(sem valor)' || k === '(removido)' ? 1 : 0);
+    const seq = (ctx && ctx.seqFor && ctx.seqFor[dim]) || null;
+    if (d.sort === 'label') {
+      // base A→Z; 'desc' inverte (antes o reverse valia pro asc e A→Z virava Z→A)
+      rows.sort((a, b) => synthetic(a.key) - synthetic(b.key) || a.label.localeCompare(b.label));
+      if (d.dir === 'desc') rows.reverse();
+    } else if (d.sort === 'sequence' && seq) {
+      const rank = (k) => { const i = seq.indexOf(k); return i === -1 ? (synthetic(k) ? 2e9 : 1e9) : i; };
+      rows.sort((a, b) => rank(a.key) - rank(b.key)); // dir não se aplica
+    } else {
+      // 'value' (default): base maior→menor; 'asc' inverte
+      rows.sort((a, b) => (b.value || 0) - (a.value || 0) || synthetic(a.key) - synthetic(b.key) || a.label.localeCompare(b.label));
+      if (d.dir === 'asc') rows.reverse();
+    }
+    if (d.limit && rows.length > d.limit) rows = rows.slice(0, d.limit);
+    return { rows };
+  }
+
+  if (d.type === 'line') {
+    const bucket = d.bucket || 'day';
+    const dateProp = d.dateProp || 'created_at';
+    const bucketKeyOf = (key) => {
+      if (bucket === 'week') return weekStartKey(key);
+      if (bucket === 'month') return monthStartKey(key);
+      return key;
+    };
+    const stepNext = (key) => {
+      if (bucket === 'week') return dayKey(addDays(fromKey(key), 7));
+      if (bucket === 'month') { const [y, m] = key.split('-').map(Number); return dayKey(new Date(y, m, 1)); }
+      return dayKey(addDays(fromKey(key), 1));
+    };
+    const labels = [];
+    if (from && to && from <= to) {
+      let k = bucketKeyOf(from);
+      const end = bucketKeyOf(to);
+      let guard = 0;
+      while (k <= end && guard++ < 5000) { labels.push(k); k = stepNext(k); }
+    }
+    const idx = new Map(labels.map((l, i) => [l, i]));
+    // acumula tarefas por bucket, depois agrega a medida
+    const buckets = labels.map(() => []);
+    for (const t of tasks) {
+      if (!t) continue;
+      const key = dayKey(t[dateProp]);
+      if (!inRange(key)) continue;
+      const i = idx.get(bucketKeyOf(key));
+      if (i !== undefined) buckets[i].push(t);
+    }
+    const points = buckets.map((set) => {
+      const v = measureOf(set, d.measure);
+      return v == null ? 0 : v;
+    });
+    return { labels, points };
+  }
+
+  return { rows: [] };
 }

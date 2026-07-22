@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildReport, dayKey } from './reports.js';
+import { buildReport, computeChart, dayKey } from './reports.js';
 
 // Timestamps ao meio-dia UTC: a chave de dia local bate com a UTC em qualquer
 // fuso |offset| < 12h — testes determinísticos sem fixar TZ.
@@ -207,5 +207,71 @@ describe('dayKey', () => {
     expect(dayKey('')).toBeNull();
     expect(dayKey('não-é-data')).toBeNull();
     expect(dayKey(new Date(2026, 5, 10))).toBe('2026-06-10');
+  });
+});
+
+describe('computeChart — motor de gráfico genérico', () => {
+  const range = { from: '2026-06-01', to: '2026-06-07' };
+  const num = 'valor';
+  const sc = {
+    properties: {
+      status: { type: 'enum', label: 'Status', options: ['A fazer', 'Em andamento', 'Concluído'] },
+      tipo: { type: 'enum', label: 'Tipo', options: ['Bug', 'Feature'] },
+      valor: { type: 'int', label: 'Valor' },
+      tags: { type: 'multiselect', label: 'Tags' },
+    },
+  };
+  const base = { schema: sc, doneStageIds, range };
+
+  it('kpi count basis created conta só no range', () => {
+    const tasks = [
+      task({ created_at: noon('2026-06-02') }),
+      task({ created_at: noon('2026-06-05') }),
+      task({ created_at: noon('2026-05-20') }), // fora
+    ];
+    const r = computeChart({ type: 'kpi', measure: { agg: 'count' }, basis: 'created' }, { ...base, tasks });
+    expect(r.value).toBe(2);
+  });
+
+  it('kpi sum de prop numérica', () => {
+    const tasks = [task({ valor: 10 }), task({ valor: 5 }), task({ valor: 'x' })];
+    const r = computeChart({ type: 'kpi', measure: { agg: 'sum', prop: num }, basis: 'all' }, { ...base, tasks });
+    expect(r.value).toBe(15);
+  });
+
+  it('kpi open ignora range e conta não-concluídas', () => {
+    const tasks = [
+      task({ status: 'A fazer', created_at: noon('2026-01-01') }),
+      task({ status: 'Concluído', created_at: noon('2026-01-01') }),
+    ];
+    const r = computeChart({ type: 'kpi', measure: { agg: 'count' }, basis: 'open' }, { ...base, tasks });
+    expect(r.value).toBe(1);
+  });
+
+  it('bar agrupa por dim e ordena por valor desc', () => {
+    const tasks = [
+      task({ tipo: 'Bug' }), task({ tipo: 'Bug' }), task({ tipo: 'Feature' }),
+    ];
+    const r = computeChart({ type: 'bar', measure: { agg: 'count' }, basis: 'all', dim: 'tipo', sort: 'value', dir: 'desc' }, { ...base, tasks });
+    expect(r.rows.map((x) => [x.key, x.value])).toEqual([['Bug', 2], ['Feature', 1]]);
+  });
+
+  it('bar multiselect conta cada item da lista ;', () => {
+    const tasks = [task({ tags: 'a;b' }), task({ tags: 'a' })];
+    const r = computeChart({ type: 'bar', measure: { agg: 'count' }, basis: 'all', dim: 'tags', sort: 'label' }, { ...base, tasks });
+    const map = Object.fromEntries(r.rows.map((x) => [x.key, x.value]));
+    expect(map.a).toBe(2);
+    expect(map.b).toBe(1);
+  });
+
+  it('line agrega contagem por dia no range', () => {
+    const tasks = [
+      task({ created_at: noon('2026-06-01') }),
+      task({ created_at: noon('2026-06-01') }),
+      task({ created_at: noon('2026-06-03') }),
+    ];
+    const r = computeChart({ type: 'line', measure: { agg: 'count' }, dateProp: 'created_at', bucket: 'day' }, { ...base, tasks });
+    expect(r.labels).toEqual(['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04', '2026-06-05', '2026-06-06', '2026-06-07']);
+    expect(r.points).toEqual([2, 0, 1, 0, 0, 0, 0]);
   });
 });

@@ -1,7 +1,7 @@
 <template>
   <div class="thin-scroll h-full overflow-y-auto">
-    <div class="mx-auto max-w-[1100px] p-5">
-      <!-- controles: período + prop enum -->
+    <div class="mx-auto max-w-[1200px] p-5">
+      <!-- barra: título + período + modo edição -->
       <div class="mb-4 flex flex-wrap items-center gap-2">
         <h1 class="text-[15px] font-medium text-txt">Dashboard</h1>
         <div class="flex-1"></div>
@@ -13,134 +13,123 @@
           :to="customTo"
           @change="onCustomRange"
         />
-        <Dropdown
-          v-if="enumOptions.length"
-          :value="enumKeyValid"
-          :options="enumOptions"
-          placeholder="Agrupar por"
-          clearable
-          class="w-44"
-          @input="setEnumKey"
-        />
+        <template v-if="!editing">
+          <button
+            class="flex h-8 items-center gap-1.5 rounded-md border border-ink-500 px-3 text-[13px] text-muted transition-colors hover:text-txt"
+            @click="enterEdit"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4"><path d="M4 13.5V16h2.5l7-7L11 6.5l-7 7ZM12.5 5l1.2-1.2a1.2 1.2 0 0 1 1.7 0l.8.8a1.2 1.2 0 0 1 0 1.7L15 7.5 12.5 5Z" stroke-linejoin="round"/></svg>
+            Editar
+          </button>
+        </template>
+        <template v-else>
+          <button class="flex h-8 items-center gap-1.5 rounded-md border border-ink-500 px-3 text-[13px] text-muted hover:text-txt" @click="openBuilder(null)">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" class="h-4 w-4"><path d="M10 4v12M4 10h12" stroke-linecap="round"/></svg>
+            Gráfico
+          </button>
+          <button class="h-8 rounded-md px-3 text-[13px] text-muted hover:bg-ink-700" :disabled="saving" @click="cancelEdit">Cancelar</button>
+          <button class="flex h-8 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110 disabled:opacity-50" :disabled="saving" @click="applyEdit">
+            {{ saving ? 'Salvando…' : 'Salvar' }}
+          </button>
+        </template>
       </div>
 
-      <!-- CTA: vault sem semântica de conclusão -->
-      <div v-if="!doneConfigured" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 p-4">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-5 w-5 flex-shrink-0 text-accent"><circle cx="10" cy="10" r="7" /><path d="M10 6.5v4M10 13.5h.01" stroke-linecap="round" /></svg>
-        <div class="min-w-0 flex-1 text-[13px] text-muted">
-          Este vault não tem grupo de conclusão definido — finalizadas e lead time ficam sem dado.
-          Marque o grupo de conclusão em <strong class="text-txt">Configurações &gt; Status</strong>.
-        </div>
-        <button
-          type="button"
-          class="flex h-8 flex-shrink-0 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-ink-900 hover:brightness-110"
-          @click="$emit('open-settings')"
-        >Abrir configurações</button>
+      <div v-if="editing" class="mb-3 flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-1.5 text-[12px] text-muted">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4 flex-shrink-0 text-accent"><path d="M10 6.5v4M10 13.5h.01" stroke-linecap="round"/><circle cx="10" cy="10" r="7"/></svg>
+        Modo edição — arraste pela alça p/ reordenar, puxe a borda direita p/ redimensionar. Salve para versionar no git.
       </div>
 
-      <!-- vault sem nenhuma tarefa -->
-      <div v-if="!tasks.length" class="grid place-items-center rounded-lg border border-ink-500 bg-ink-850 py-16 text-center">
-        <div>
-          <div class="text-[14px] font-medium text-muted">Nenhuma tarefa neste vault ainda.</div>
-          <div class="mt-1 text-[12px] text-faint">Crie tarefas na view Tarefas — os relatórios aparecem aqui.</div>
+      <!-- CTA conclusão não configurada -->
+      <div v-if="!doneConfigured && charts.length" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-accent/40 bg-accent/10 p-3 text-[12px] text-muted">
+        <span>Sem grupo de conclusão definido — “finalizadas”, “em aberto” e lead time ficam sem dado. Ajuste em Configurações &gt; Status.</span>
+        <button class="rounded-md bg-accent px-2.5 py-1 font-medium text-ink-900 hover:brightness-110" @click="$emit('open-settings')">Abrir</button>
+      </div>
+
+      <!-- vazio: onboarding -->
+      <div v-if="!charts.length" class="grid place-items-center rounded-lg border border-ink-500 bg-ink-850 py-16 text-center">
+        <div class="max-w-sm">
+          <div class="text-[14px] font-medium text-muted">Nenhum gráfico ainda.</div>
+          <div class="mt-1 text-[12px] text-faint">Monte um dashboard com os gráficos que quiser — fica salvo no vault e versionado no git.</div>
+          <div class="mt-4 flex justify-center gap-2">
+            <button class="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-ink-900 hover:brightness-110" @click="enterEditAndAdd">Criar gráfico</button>
+            <button class="rounded-md border border-ink-500 px-3.5 py-1.5 text-[13px] text-muted hover:text-txt" @click="useDefaultTemplate">Usar modelo padrão</button>
+          </div>
         </div>
       </div>
 
-      <template v-else>
-        <!-- cards de número -->
-        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <div class="num-card">
-            <div class="num-label">Criadas</div>
-            <div class="num-value">{{ report.counts.created }}</div>
-            <div class="num-hint">no período</div>
+      <!-- grade de gráficos (draggable sempre montado; desabilitado fora da edição) -->
+      <draggable
+        v-else
+        v-model="charts"
+        tag="div"
+        class="dash-grid"
+        item-key="id"
+        handle=".chart-drag"
+        :disabled="!editing"
+        :animation="150"
+        ghost-class="chart-ghost"
+      >
+        <template #item="{ element: c }">
+          <div class="dash-cell" :style="cellStyle(c)">
+            <ChartCard :chart="c" :data="renderOf(c)" :color="accentColor">
+              <template v-if="editing" #actions>
+                <span class="chart-drag cursor-grab text-faint hover:text-muted" title="Arraste para reordenar">
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4"><circle cx="7" cy="5" r="1.3"/><circle cx="7" cy="10" r="1.3"/><circle cx="7" cy="15" r="1.3"/><circle cx="13" cy="5" r="1.3"/><circle cx="13" cy="10" r="1.3"/><circle cx="13" cy="15" r="1.3"/></svg>
+                </span>
+                <button class="icon-btn h-6 w-6" title="Editar" @click="openBuilder(c)">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5"><path d="M4 13.5V16h2.5l7-7L11 6.5l-7 7ZM12.5 5l1.2-1.2a1.2 1.2 0 0 1 1.7 0l.8.8a1.2 1.2 0 0 1 0 1.7L15 7.5 12.5 5Z" stroke-linejoin="round"/></svg>
+                </button>
+                <button class="icon-btn h-6 w-6 hover:!text-red-300" title="Remover" @click="removeChart(c)">
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" class="h-3.5 w-3.5"><path d="M6 6l8 8M14 6l-8 8" stroke-linecap="round"/></svg>
+                </button>
+              </template>
+            </ChartCard>
+            <!-- alça de redimensionamento (borda direita) -->
+            <div
+              v-if="editing"
+              class="chart-resize"
+              title="Arraste para redimensionar"
+              @mousedown.prevent="startResize(c, $event)"
+            ></div>
           </div>
-          <div class="num-card">
-            <div class="num-label">Finalizadas</div>
-            <div class="num-value">{{ completedLabel }}</div>
-            <div v-if="report.counts.completedNoDate > 0" class="num-hint text-accent" :title="'Tarefas concluídas antes do carimbo automático existir — fora do gráfico.'">
-              +{{ report.counts.completedNoDate }} concluída(s) sem data
-            </div>
-            <div v-else class="num-hint">no período</div>
-          </div>
-          <div class="num-card">
-            <div class="num-label">Abertas</div>
-            <div class="num-value">{{ doneConfigured ? report.counts.open : '—' }}</div>
-            <div class="num-hint">hoje</div>
-          </div>
-          <div class="num-card">
-            <div class="num-label">Lead time médio</div>
-            <div class="num-value">{{ leadTimeLabel }}</div>
-            <div class="num-hint">criação → conclusão</div>
-          </div>
-        </div>
-
-        <!-- linha: criadas × finalizadas -->
-        <div class="mt-4 rounded-lg border border-ink-500 bg-ink-850 p-4">
-          <div class="mb-2 text-[13px] font-medium text-muted">Criadas × Finalizadas <span class="text-faint">({{ bucket === 'week' ? 'por semana' : 'por dia' }})</span></div>
-          <UplotChart :labels="report.series.labels" :series="chartSeries" />
-        </div>
-
-        <!-- barras: por usuário + por enum -->
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
-          <div class="rounded-lg border border-ink-500 bg-ink-850 p-4">
-            <div class="mb-3 text-[13px] font-medium text-muted">Criadas por usuário</div>
-            <BarList :rows="byUserCreated" :color="colorCreated" aria-label="Tarefas criadas por usuário" />
-          </div>
-          <div class="rounded-lg border border-ink-500 bg-ink-850 p-4">
-            <div class="mb-3 text-[13px] font-medium text-muted">Finalizadas por usuário</div>
-            <BarList :rows="byUserCompleted" :color="colorCompleted" aria-label="Tarefas finalizadas por usuário" />
-          </div>
-          <div v-if="report.byEnum" class="rounded-lg border border-ink-500 bg-ink-850 p-4 md:col-span-2">
-            <div class="mb-3 flex items-center gap-2">
-              <div class="text-[13px] font-medium text-muted">Criadas por {{ report.byEnum.label }}</div>
-              <div class="flex-1"></div>
-              <div class="flex items-center rounded-md border border-ink-500 p-0.5 text-[12px]">
-                <button
-                  class="rounded px-2 py-0.5 transition-colors"
-                  :class="enumSort === 'count' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
-                  title="Ordenar pela quantidade"
-                  @click="setEnumSort('count')"
-                >Quantidade</button>
-                <button
-                  class="rounded px-2 py-0.5 transition-colors"
-                  :class="enumSort === 'sequence' ? 'bg-ink-600 text-txt' : 'text-faint hover:text-muted'"
-                  :title="enumKeyValid === groupByKey ? 'Ordenar pela sequência das etapas do board' : 'Ordenar pela ordem das opções'"
-                  @click="setEnumSort('sequence')"
-                >Sequência</button>
-              </div>
-            </div>
-            <BarList :rows="enumRows" :color="colorEnum" :aria-label="'Tarefas criadas por ' + report.byEnum.label" />
-          </div>
-        </div>
-      </template>
+        </template>
+      </draggable>
     </div>
+
+    <ChartBuilder
+      v-if="builderOpen"
+      :chart="builderChart"
+      :schema="schema"
+      @save="onBuilderSave"
+      @cancel="builderOpen = false"
+    />
   </div>
 </template>
 
 <script>
 import Dropdown from '../components/Dropdown.vue';
 import DateRangePicker from '../components/DateRangePicker.vue';
-import UplotChart from '../components/UplotChart.vue';
-import BarList from '../components/BarList.vue';
-import { buildReport, dayKey } from '../reports';
+import ChartCard from '../components/ChartCard.vue';
+import ChartBuilder from '../components/ChartBuilder.vue';
+import draggable from 'vuedraggable';
+import { computeChart, dayKey } from '../reports';
+import { getDashboard, saveDashboard } from '../api';
 import { PALETTE, DEFAULT_COLOR, colorFor } from '../palette';
 
 const rangeKey = 'basalt.dashRange';
-const enumPrefKey = 'basalt.dashEnumKey';
-const enumSortKey = 'basalt.dashEnumSort';
 const rangeModes = ['7', '30', '90', '365', 'all', 'custom'];
+const accentColor = PALETTE.find((p) => p.name === 'Âmbar').value;
 
-// cores das séries vêm da paleta do projeto (palette.js) — sem hex inventado
-const colorCreated = PALETTE.find((p) => p.name === 'Âmbar').value;   // accent #d9a01e
-const colorCompleted = PALETTE.find((p) => p.name === 'Verde').value; // #4caf72
-const colorEnum = PALETTE.find((p) => p.name === 'Azul').value;
+// ids simples e estáveis o suficiente pra key do v-for local (o servidor
+// re-atribui/valida no PUT). Sem Math.random (proibido no engine? não — só no
+// workflow). Usa contador + timestamp base do mount.
+let _seq = 0;
+function localId() { _seq += 1; return `c_${_seq}_${_seq * 7 + 3}`; }
 
 export default {
   name: 'DashboardView',
-  components: { Dropdown, DateRangePicker, UplotChart, BarList },
+  components: { Dropdown, DateRangePicker, ChartCard, ChartBuilder, draggable },
   props: {
-    // dados vindos do App (GET /config + /tasks + /users já carregados e
-    // atualizados pelo auto-pull — evita fetch duplicado e drift)
     config: { type: Object, required: true },
     tasks: { type: Array, default: () => [] },
     users: { type: Array, default: () => [] },
@@ -148,14 +137,16 @@ export default {
   emits: ['open-settings'],
   data() {
     return {
-      colorCreated,
-      colorCompleted,
-      colorEnum,
+      accentColor,
+      charts: [],
+      savedSnapshot: '[]', // JSON da última versão salva (p/ cancelar)
+      editing: false,
+      saving: false,
+      builderOpen: false,
+      builderChart: null,
       rangeMode: '30',
       customFrom: '',
       customTo: '',
-      enumKey: null,
-      enumSort: 'count', // 'count' | 'sequence'
       rangeOptions: [
         { value: '7', label: 'Últimos 7 dias' },
         { value: '30', label: 'Últimos 30 dias' },
@@ -164,22 +155,19 @@ export default {
         { value: 'all', label: 'Tudo' },
         { value: 'custom', label: 'Personalizado' },
       ],
+      _resize: null,
     };
   },
   computed: {
     schema() { return this.config.schema || {}; },
     doneStageIds() { return this.config.doneStageIds || []; },
     doneConfigured() { return !!(this.config.board && this.config.board.doneGroupId); },
-    // props enum do schema (seletor "agrupar por"; some se não houver nenhuma)
-    enumOptions() {
-      const props = this.schema.properties || {};
-      return Object.keys(props)
-        .filter((k) => props[k] && props[k].type === 'enum')
-        .map((k) => ({ value: k, label: props[k].label || k }));
-    },
-    // pref salva pode apontar pra prop que não existe mais → ignora
-    enumKeyValid() {
-      return this.enumOptions.some((o) => o.value === this.enumKey) ? this.enumKey : null;
+    groupByKey() { return (this.config.board && this.config.board.groupBy) || 'status'; },
+    stageColorMap() {
+      const map = {};
+      const groups = (this.config.board && this.config.board.statusGroups) || [];
+      groups.forEach((g) => (g.stages || []).forEach((s) => { if (s && s.id) map[s.id] = s.color || DEFAULT_COLOR; }));
+      return map;
     },
     range() {
       const today = dayKey(new Date());
@@ -202,83 +190,143 @@ export default {
       d.setDate(d.getDate() - (days - 1));
       return { from: dayKey(d), to: today };
     },
-    bucket() {
-      // chaves 'YYYY-MM-DD' parseiam como UTC dos 2 lados → diff exata em dias
-      const spanDays = (new Date(this.range.to) - new Date(this.range.from)) / 86400000 + 1;
-      return spanDays > 31 ? 'week' : 'day';
+    ctx() {
+      return { tasks: this.tasks, schema: this.schema, doneStageIds: this.doneStageIds, range: this.range };
     },
-    report() {
-      return buildReport({
-        tasks: this.tasks,
-        schema: this.schema,
-        doneStageIds: this.doneStageIds,
-        users: this.users,
-        range: this.range,
-        bucket: this.bucket,
-        enumKey: this.enumKeyValid,
-      });
-    },
-    chartSeries() {
-      return [
-        { label: 'Criadas', points: this.report.series.created, color: colorCreated },
-        { label: 'Finalizadas', points: this.report.series.completed, color: colorCompleted },
-      ];
-    },
-    byUserCreated() {
-      return this.report.byUser.filter((u) => u.created > 0).map((u) => ({ label: u.name, count: u.created }));
-    },
-    byUserCompleted() {
-      return this.report.byUser.filter((u) => u.completed > 0).map((u) => ({ label: u.name, count: u.completed }));
-    },
-    // chave de agrupamento do board (status por padrão)
-    groupByKey() { return (this.config.board && this.config.board.groupBy) || 'status'; },
-    // mapa etapa→cor (as cores do status vivem no board.json, não no optionMeta)
-    stageColorMap() {
-      const map = {};
-      const groups = (this.config.board && this.config.board.statusGroups) || [];
-      groups.forEach((g) => (g.stages || []).forEach((s) => { if (s && s.id) map[s.id] = s.color || DEFAULT_COLOR; }));
-      return map;
-    },
-    enumRows() {
-      if (!this.report.byEnum) return [];
-      const key = this.report.byEnum.key;
-      const prop = (this.schema.properties || {})[key] || {};
-      const isStatus = key === this.groupByKey;
-      const synthetic = (o) => o === '(sem valor)' || o === '(removido)';
-      // cor da barra: status → cor da ETAPA (board); demais agrupadores → cor da
-      // OPÇÃO (optionMeta) e, sem cor explícita, o hash estável. Sintéticos neutros.
-      const colorOf = (o) => {
-        if (synthetic(o)) return DEFAULT_COLOR;
-        if (isStatus) return this.stageColorMap[o] || DEFAULT_COLOR;
-        return colorFor(o, prop.optionMeta);
-      };
-      let rows = this.report.byEnum.rows.map((r) => ({ label: r.option, count: r.count, color: colorOf(r.option), _o: r.option }));
-      // ordenação: 'count' (default, já vem do report) ou 'sequence' (ordem
-      // declarada — etapas do board pro status, opções do schema pros demais)
-      if (this.enumSort === 'sequence') {
-        const seq = isStatus
-          ? Object.keys(this.stageColorMap) // ordem de flatten das etapas
-          : (Array.isArray(prop.options) ? prop.options : []);
-        const rank = (o) => { const i = seq.indexOf(o); return i === -1 ? (synthetic(o) ? 2e9 : 1e9) : i; };
-        rows = rows.slice().sort((a, b) => rank(a._o) - rank(b._o));
-      }
-      return rows;
-    },
-    leadTimeLabel() {
-      const v = this.report.counts.leadTimeAvgDays;
-      return v == null ? '—' : `${String(v).replace('.', ',')} d`;
-    },
-    // sem done configurado o número só engana — exibe contagem se houver
-    // carimbo legado preservado, senão "—"
-    completedLabel() {
-      if (this.doneConfigured || this.report.counts.completed > 0) return this.report.counts.completed;
-      return '—';
+  },
+  watch: {
+    // troca de vault (App substitui config) → DESCARTA edição em andamento e
+    // recarrega o dashboard do vault novo. Sem isso, "Salvar" no modo edição
+    // gravava os gráficos do vault antigo por cima do dashboard do vault novo.
+    config() {
+      this.editing = false;
+      this.builderOpen = false;
+      this.loadDashboard();
     },
   },
   created() {
     this.loadPrefs();
+    this.loadDashboard();
   },
   methods: {
+    async loadDashboard() {
+      try {
+        const r = await getDashboard();
+        this.charts = ((r && r.charts) || []).map((c) => ({ ...c, id: c.id || localId() }));
+      } catch (e) {
+        this.charts = [];
+      }
+      this.savedSnapshot = JSON.stringify(this.charts);
+    },
+    // sequência de opções p/ ordenação 'sequence' de um dim
+    seqFor(dim) {
+      if (!dim) return null;
+      if (dim === this.groupByKey || dim === 'status') return Object.keys(this.stageColorMap);
+      const prop = (this.schema.properties || {})[dim] || {};
+      return Array.isArray(prop.options) ? prop.options : null;
+    },
+    // resultado colorido de um gráfico (memo leve: recomputa por render — dataset
+    // pequeno, custo desprezível)
+    renderOf(c) {
+      const seqFor = c.dim ? { [c.dim]: this.seqFor(c.dim) } : {};
+      const res = computeChart(c, { ...this.ctx, seqFor });
+      if ((c.type === 'bar' || c.type === 'pie') && Array.isArray(res.rows)) {
+        res.rows = res.rows.map((r) => ({ ...r, color: this.colorForRow(c, r.key) }));
+      }
+      return res;
+    },
+    colorForRow(c, key) {
+      if (key === '(sem valor)' || key === '(removido)' || key === '(total)') return DEFAULT_COLOR;
+      const dim = c.dim;
+      if (dim === this.groupByKey || dim === 'status') return this.stageColorMap[key] || DEFAULT_COLOR;
+      const prop = (this.schema.properties || {})[dim] || {};
+      return colorFor(key, prop.optionMeta);
+    },
+    cellStyle(c) {
+      // altura por conteúdo (align-items:start na grade) — nada de row-span fixo
+      // que cortava barras/legendas grandes. minHeight só p/ dar respiro visual.
+      const minH = c.type === 'kpi' ? 92 : c.type === 'line' ? 240 : 160;
+      return { gridColumn: `span ${Math.min(12, Math.max(1, c.w || 6))}`, minHeight: minH + 'px' };
+    },
+    // ── edição ──
+    enterEdit() { this.editing = true; },
+    enterEditAndAdd() { this.editing = true; this.openBuilder(null); },
+    cancelEdit() {
+      this.charts = JSON.parse(this.savedSnapshot);
+      this.editing = false;
+      this.builderOpen = false;
+    },
+    async applyEdit() {
+      this.saving = true;
+      try {
+        const r = await saveDashboard(this.charts.map((c) => ({ ...c })));
+        this.charts = ((r && r.charts) || []).map((c) => ({ ...c, id: c.id || localId() }));
+        this.savedSnapshot = JSON.stringify(this.charts);
+        this.editing = false;
+      } catch (e) {
+        // mantém no modo edição p/ o usuário reagir; toast global não está aqui
+        this.charts = this.charts.slice(); // no-op p/ manter reatividade
+        alert(e.message || 'Falha ao salvar o dashboard.');
+      } finally {
+        this.saving = false;
+      }
+    },
+    // ── builder ──
+    openBuilder(chart) {
+      this.builderChart = chart ? { ...chart } : null;
+      this.builderOpen = true;
+    },
+    onBuilderSave(def) {
+      if (this.builderChart && this.builderChart.id) {
+        const i = this.charts.findIndex((c) => c.id === this.builderChart.id);
+        if (i !== -1) this.charts.splice(i, 1, { ...def, id: this.builderChart.id });
+      } else {
+        this.charts.push({ ...def, id: localId() });
+      }
+      this.builderOpen = false;
+    },
+    removeChart(c) {
+      this.charts = this.charts.filter((x) => x.id !== c.id);
+    },
+    // ── redimensionamento (arrastar borda → muda a coluna-span) ──
+    startResize(c, ev) {
+      const grid = ev.target.closest('.dash-grid');
+      if (!grid) return;
+      const colW = grid.clientWidth / 12;
+      this._resize = { id: c.id, startX: ev.clientX, startW: c.w || 6, colW };
+      window.addEventListener('mousemove', this.onResizeMove);
+      window.addEventListener('mouseup', this.stopResize);
+    },
+    onResizeMove(ev) {
+      const r = this._resize;
+      if (!r) return;
+      const deltaCols = Math.round((ev.clientX - r.startX) / r.colW);
+      const w = Math.min(12, Math.max(1, r.startW + deltaCols));
+      const c = this.charts.find((x) => x.id === r.id);
+      if (c && c.w !== w) c.w = w;
+    },
+    stopResize() {
+      this._resize = null;
+      window.removeEventListener('mousemove', this.onResizeMove);
+      window.removeEventListener('mouseup', this.stopResize);
+    },
+    // ── modelo padrão (semeia um dashboard clássico) ──
+    useDefaultTemplate() {
+      const has = (k) => !!(this.schema.properties || {})[k];
+      const t = [];
+      t.push({ id: localId(), type: 'kpi', title: 'Criadas', w: 3, measure: { agg: 'count', prop: null }, basis: 'created' });
+      t.push({ id: localId(), type: 'kpi', title: 'Finalizadas', w: 3, measure: { agg: 'count', prop: null }, basis: 'completed' });
+      t.push({ id: localId(), type: 'kpi', title: 'Em aberto', w: 3, measure: { agg: 'count', prop: null }, basis: 'open' });
+      t.push({ id: localId(), type: 'kpi', title: 'Lead time médio', w: 3, measure: { agg: 'leadtime', prop: null }, basis: 'all' });
+      t.push({ id: localId(), type: 'line', title: 'Criadas por dia', w: 12, measure: { agg: 'count', prop: null }, dateProp: 'created_at', bucket: 'day', basis: 'created' });
+      if (has('status')) {
+        t.push({ id: localId(), type: 'bar', title: 'Por status', w: 6, measure: { agg: 'count', prop: null }, basis: 'all', dim: 'status', sort: 'sequence', dir: 'desc', orientation: 'horizontal', limit: null });
+        t.push({ id: localId(), type: 'pie', title: 'Distribuição por status', w: 6, measure: { agg: 'count', prop: null }, basis: 'all', dim: 'status', sort: 'value', dir: 'desc', limit: null });
+      }
+      this.charts = t;
+      this.editing = true;
+    },
+    // ── prefs de período (localStorage) ──
     loadPrefs() {
       try {
         const raw = JSON.parse(localStorage.getItem(rangeKey) || 'null');
@@ -287,26 +335,12 @@ export default {
           if (typeof raw.from === 'string') this.customFrom = raw.from;
           if (typeof raw.to === 'string') this.customTo = raw.to;
         }
-      } catch (e) { /* pref corrompida → default */ }
-      try {
-        const k = localStorage.getItem(enumPrefKey);
-        if (k) this.enumKey = k;
-      } catch (e) { /* ignore */ }
-      try {
-        const s = localStorage.getItem(enumSortKey);
-        if (s === 'count' || s === 'sequence') this.enumSort = s;
-      } catch (e) { /* ignore */ }
-    },
-    setEnumSort(v) {
-      if (v !== 'count' && v !== 'sequence') return;
-      this.enumSort = v;
-      try { localStorage.setItem(enumSortKey, v); } catch (e) { /* ignore */ }
+      } catch (e) { /* default */ }
     },
     setRangeMode(v) {
       if (!rangeModes.includes(v)) return;
       this.rangeMode = v;
       if (v === 'custom' && !this.customFrom && !this.customTo) {
-        // ponto de partida amigável: últimos 30 dias
         const d = new Date();
         d.setDate(d.getDate() - 29);
         this.customFrom = dayKey(d);
@@ -314,46 +348,43 @@ export default {
       }
       this.persistRange();
     },
-    // DateRangePicker emite { from, to } (YYYY-MM-DD)
     onCustomRange(r) {
       this.customFrom = (r && r.from) || '';
       this.customTo = (r && r.to) || '';
       this.persistRange();
     },
     persistRange() {
-      try {
-        localStorage.setItem(rangeKey, JSON.stringify({
-          mode: this.rangeMode,
-          from: this.customFrom,
-          to: this.customTo,
-        }));
-      } catch (e) { /* ignore */ }
+      try { localStorage.setItem(rangeKey, JSON.stringify({ mode: this.rangeMode, from: this.customFrom, to: this.customTo })); } catch (e) { /* ignore */ }
     },
-    setEnumKey(v) {
-      this.enumKey = v || null;
-      try {
-        if (this.enumKey) localStorage.setItem(enumPrefKey, this.enumKey);
-        else localStorage.removeItem(enumPrefKey);
-      } catch (e) { /* ignore */ }
-    },
+  },
+  beforeUnmount() {
+    this.stopResize();
   },
 };
 </script>
 
 <style scoped>
-/* exceção documentada (design D2.2): date nativo do Chromium/Electron em dark */
-.date-dark { color-scheme: dark; }
-
-.num-card {
-  @apply rounded-lg border border-ink-500 bg-ink-850 p-4;
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  align-items: start; /* cada célula cresce só o que o conteúdo pedir (sem esticar) */
+  gap: 12px;
 }
-.num-label {
-  @apply text-[12px] font-medium uppercase tracking-wide text-faint;
+.dash-cell {
+  position: relative;
+  min-width: 0;
 }
-.num-value {
-  @apply mt-1 text-[26px] font-semibold leading-tight text-txt;
+.dash-cell > :deep(.rounded-lg) { height: 100%; }
+.chart-ghost { opacity: 0.4; }
+.chart-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  border-radius: 0 0.5rem 0.5rem 0;
 }
-.num-hint {
-  @apply mt-0.5 text-[11px] text-faint;
-}
+.chart-resize:hover { background: linear-gradient(to right, transparent, rgba(217, 160, 30, 0.35)); }
 </style>
