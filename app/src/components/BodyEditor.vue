@@ -139,6 +139,7 @@
 </template>
 
 <script>
+import { markRaw } from 'vue';
 import { Editor, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
@@ -371,7 +372,11 @@ export default {
       },
     });
 
-    this.editor = new Editor({
+    // markRaw: sem ele o Vue 3 embrulha o Editor num Proxy reativo profundo e o
+    // ProseMirror (que compara state/selection por identidade) perde updates de
+    // seleção — cursor não avançava ao digitar antes de texto (saía invertido),
+    // Delete apagava pra trás e apagar seleção deixava a 1ª letra.
+    this.editor = markRaw(new Editor({
       element: this.$refs.editor,
       extensions: [
         StarterKit.configure({
@@ -475,7 +480,7 @@ export default {
         this.refreshMarks();
         this.refreshCodeLang();
       },
-    });
+    }));
 
     // Bubble menu: registra o BubbleMenuPlugin do TipTap apontando p/ o ref.
     // shouldShow: só quando há seleção de TEXTO não-vazia (não em nós/imagens).

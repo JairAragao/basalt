@@ -3,6 +3,12 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.14.2] - 2026-07-23
+
+### Corrigido
+
+- Editor de corpo: digitar antes de texto existente saía com as letras invertidas (o cursor não avançava), Delete apagava pra trás como o Backspace, apagar uma seleção deixava a primeira letra e clicar no fim de uma linha jogava o cursor pra linha de baixo. Causa: na migração pro Vue 3, a instância do editor virou um Proxy reativo e o ProseMirror (que compara estado por identidade de objeto) perdia as atualizações de seleção — corrigido com markRaw. Atualizado também o prosemirror-view (1.42.1) com os workarounds recentes de Chrome.
+
 ## [0.14.1] - 2026-07-23
 
 ### Corrigido

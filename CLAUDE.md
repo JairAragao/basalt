@@ -152,6 +152,7 @@ Doc completa do funcionamento: `docs/ARCHITECTURE.md` (EN) / `docs/ARCHITECTURE.
   template). ADRs em pt-BR com "Summary (EN)" no fim. CHANGELOG em pt-BR (keep-a-changelog).
 - **Node ≥18** (Vite). `nvm use 20`/`24`.
 - **expr-eval:** sempre `parser.consts={}` no motor de fórmula.
+- **Instância de classe NUNCA em `data()` reativo** — Vue 3 embrulha em Proxy reativo profundo e quebra libs que comparam objetos por identidade. O TipTap `Editor` sem `markRaw` fazia o ProseMirror perder updates de seleção (texto digitado saía invertido, Delete apagava pra trás, seleção deletada sobrava a 1ª letra). Vale pra Editor, uPlot, chart, qualquer instância: `this.x = markRaw(new X(...))`.
 - **tiptap-markdown fixado em `0.8.10`** (0.9+ exige TipTap v3; o projeto é TipTap v2). Não suba sem migrar.
 - **`localStorage` keys** padronizadas no prefixo `basalt.` (`basalt.peekMode`, `basalt.colorColumns`). Renomear a key = perde a preferência salva (reseta no default) — aceitável.
 - Usar **`Dropdown.vue`** em vez de `<select>` nativo; cores da paleta em **`palette.js`**; tema dark = paleta `ink-*`/`txt`/`muted`/`faint`/`accent`(âmbar-lava #e8873a) no `tailwind.config.js`.
