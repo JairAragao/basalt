@@ -3,6 +3,17 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.14.0] - 2026-07-23
+
+### Adicionado
+
+- Opções de Seleção/Seleção múltipla recolhíveis no editor de Propriedades: header com contagem e preview das cores; expande pra editar. Abre sozinho em propriedade nova, tipo recém-trocado sem opções e quando um erro de validação envolve opções.
+
+### Alterado
+
+- Tema alinhado ao novo logo: acento dourado (#d9a01e) virou âmbar-lava (#e8873a) em todo o app (botões, calendário, editor, gráficos, paleta de status, splash).
+- Logo do titlebar em tamanho proporcional à barra (24px).
+
 ## [0.13.0] - 2026-07-23
 
 ### Alterado
