@@ -3,6 +3,12 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.14.1] - 2026-07-23
+
+### Corrigido
+
+- Corpo do card com CRLF (arquivos importados/legados) quebrava o editor: texto digitado saía invertido (cursor voltava 1 posição a cada tecla) e clicar no fim de uma linha jogava o cursor pra linha de baixo. Fins de linha agora são normalizados pra LF na leitura, na escrita, na comparação de conflito e no editor — sem migração, cobre os cards existentes.
+
 ## [0.14.0] - 2026-07-23
 
 ### Adicionado
