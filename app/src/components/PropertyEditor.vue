@@ -44,9 +44,28 @@
         <!-- editores específicos do tipo (ocultos p/ sistema) -->
         <div v-if="!prop.system" class="mt-2 space-y-2">
           <!-- options (enum/multiselect): cada opção editável (rename) + excluir + adicionar -->
-          <div v-if="prop.type === 'enum' || prop.type === 'multiselect'" class="rounded-md border border-ink-500 bg-ink-800 p-2">
-            <div class="mb-1.5 text-[11px] text-faint">Opções{{ prop.type === 'multiselect' ? ' (múltipla escolha — gravadas separadas por “;”)' : '' }}</div>
-            <div class="space-y-1.5">
+          <div v-if="prop.type === 'enum' || prop.type === 'multiselect'" class="rounded-md border border-ink-500 bg-ink-800">
+            <!-- header recolhível: contagem + preview das cores; lista só quando aberto -->
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 rounded-md p-2 text-left hover:bg-ink-700/40"
+              @click="prop._optsOpen = !prop._optsOpen"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" class="h-3 w-3 flex-shrink-0 text-faint transition-transform" :class="prop._optsOpen ? 'rotate-90' : ''"><path d="M7 5l6 5-6 5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <span class="text-[11px] text-faint">Opções</span>
+              <span class="text-[11px] text-muted">{{ (prop.options || []).length }}</span>
+              <span v-if="!prop._optsOpen" class="flex items-center gap-1">
+                <span
+                  v-for="opt in (prop.options || []).slice(0, 8)"
+                  :key="opt._uid"
+                  class="h-2 w-2 rounded-full"
+                  :style="{ background: optColor(opt) }"
+                ></span>
+                <span v-if="(prop.options || []).length > 8" class="text-[10px] text-faint">+{{ (prop.options || []).length - 8 }}</span>
+              </span>
+              <span v-if="prop.type === 'multiselect'" class="ml-auto flex-shrink-0 text-[10px] text-faint">múltipla escolha — gravadas separadas por “;”</span>
+            </button>
+            <div v-show="prop._optsOpen" class="space-y-1.5 px-2 pb-2">
               <div
                 v-for="opt in prop.options"
                 :key="opt._uid"
@@ -264,6 +283,7 @@ export default {
           _uid: nextUid(),
           _originalKey: key,
           _newOption: '',
+          _optsOpen: false,
           key,
           label: spec.label || key,
           type: spec.type || 'string',
@@ -294,6 +314,8 @@ export default {
     changeType(prop, v) {
       prop.type = v;
       if ((v === 'enum' || v === 'multiselect') && !Array.isArray(prop.options)) prop.options = [];
+      // sem opções ainda → abre direto pra pessoa cadastrar
+      if ((v === 'enum' || v === 'multiselect') && !(prop.options || []).length) prop._optsOpen = true;
       if (v === 'formula' && prop.expression === undefined) prop.expression = '';
     },
     addProp() {
@@ -301,6 +323,7 @@ export default {
         _uid: nextUid(),
         _originalKey: null,
         _newOption: '',
+        _optsOpen: true,
         key: '',
         label: '',
         type: 'string',
@@ -462,7 +485,16 @@ export default {
     save() {
       const { properties, renames, optionRenames } = this.build();
       const err = this.validate(properties);
-      if (err) { this.error = err; return; }
+      if (err) {
+        this.error = err;
+        // erro de opção pode estar num bloco recolhido — reabre pra ficar visível
+        if (/opç|seleção/i.test(err)) {
+          for (const p of this.props_) {
+            if (p.type === 'enum' || p.type === 'multiselect') p._optsOpen = true;
+          }
+        }
+        return;
+      }
       this.error = '';
 
       this.saving = true;
