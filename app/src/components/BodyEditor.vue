@@ -309,8 +309,11 @@ export default {
       if (!this.editor) return;
       // Evita loop: só re-seta o conteúdo quando o valor externo realmente
       // diverge do markdown atual E o editor não está sendo editado (sem foco).
+      // CRLF normalizado: um \r que entre no doc desalinha o mapeamento
+      // DOM↔posição do ProseMirror (cursor errado a cada tecla, clique caindo
+      // na linha de baixo) e faz esta comparação divergir pra sempre.
       const current = this.getMarkdown();
-      const incoming = newVal || '';
+      const incoming = (newVal || '').replace(/\r\n?/g, '\n');
       if (incoming === current) return;
       if (this.editor.isFocused) return;
       // Rede de segurança: NÃO apaga um corpo não-vazio por um valor vazio que
@@ -423,7 +426,7 @@ export default {
         }),
         SlashCommand,
       ],
-      content: this.value || '',
+      content: (this.value || '').replace(/\r\n?/g, '\n'),
       editorProps: {
         attributes: {
           class: 'be-prose',

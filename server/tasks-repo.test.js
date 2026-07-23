@@ -235,6 +235,31 @@ describe('tasks-repo — conflito de corpo (edição simultânea)', () => {
   });
 });
 
+describe('tasks-repo — normalização de EOL (CRLF quebra o editor)', () => {
+  it('create com body CRLF → grava e devolve LF', () => {
+    tasksRepo.create({ id: 'e1', titulo: 'E1', status: 'backlog' }, 'linha1\r\nlinha2\r\n', 'Jair');
+    expect(tasksRepo.get('e1').body).not.toContain('\r');
+  });
+
+  it('arquivo legado com CRLF no disco → get devolve LF', () => {
+    tasksRepo.create({ id: 'e2', titulo: 'E2', status: 'backlog' }, 'a\nb', 'Jair');
+    const full = path.join(config.TASKS_DIR, 'e2.md');
+    fs.writeFileSync(full, fs.readFileSync(full, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+    tasksRepo.invalidateCache('e2');
+    expect(tasksRepo.get('e2').body).not.toContain('\r');
+  });
+
+  it('disco CRLF vs bodyBase LF com mesmo conteúdo → NÃO é conflito', () => {
+    tasksRepo.create({ id: 'e3', titulo: 'E3', status: 'backlog' }, 'um\ndois', 'Jair');
+    const full = path.join(config.TASKS_DIR, 'e3.md');
+    fs.writeFileSync(full, fs.readFileSync(full, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+    tasksRepo.invalidateCache('e3');
+    const r = tasksRepo.update('e3', { titulo: 'E3' }, 'um\ndois\ntres', 'Jair', { bodyBase: 'um\ndois' });
+    expect(r.bodyConflict).toBe(false);
+    expect(tasksRepo.get('e3').body.trim()).toBe('um\ndois\ntres');
+  });
+});
+
 describe('tasks-repo — cache de list por mtime', () => {
   it('list reflete create/update/remove', () => {
     tasksRepo.create({ id: 'k1', titulo: 'K1', status: 'backlog' }, '', 'Jair');

@@ -61,11 +61,19 @@ function stripManaged(data) {
   return out;
 }
 
+// CRLF no corpo quebra o editor: um \r solto dentro do doc ProseMirror desalinha
+// o mapeamento DOM↔posição (cursor volta 1 a cada tecla → texto "invertido";
+// clique no fim da linha cai na linha de baixo) e o round-trip \r\n→\n do
+// tiptap-markdown faz o autosave ver diff eterno. LF em todas as fronteiras.
+function normEol(s) {
+  return String(s).replace(/\r\n?/g, '\n');
+}
+
 function ATOMIC_writeTask(id, data, body) {
   const full = resolveTaskPath(id);
   const tmp = path.join(config.TASKS_DIR, `.${id}.tmp`);
   const ordered = orderFrontmatter(id, data);
-  const content = matter.stringify(body == null ? '' : body, ordered, { sortKeys: false });
+  const content = matter.stringify(body == null ? '' : normEol(body), ordered, { sortKeys: false });
   fs.writeFileSync(tmp, content, 'utf8');
   fs.renameSync(tmp, full);
   _fmCache.delete(`${config.TASKS_DIR}\x1f${id}.md`); // força re-parse (mtime pode colidir no mesmo ms)
@@ -129,7 +137,7 @@ function get(id) {
   const full = resolveTaskPath(id);
   if (!fs.existsSync(full)) throw new Error(`tarefa não encontrada: ${id}`);
   const parsed = matter.read(full);
-  return { id, data: parsed.data, body: parsed.content };
+  return { id, data: parsed.data, body: normEol(parsed.content) };
 }
 
 function create(data, body, actor) {
@@ -250,8 +258,8 @@ function update(id, data, body, actor, opts) {
   if (body === undefined) {
     finalBody = existing.content;
   } else {
-    const onDisk = existing.content || '';
-    const base = opts && typeof opts.bodyBase === 'string' ? opts.bodyBase : undefined;
+    const onDisk = normEol(existing.content || '');
+    const base = opts && typeof opts.bodyBase === 'string' ? normEol(opts.bodyBase) : undefined;
     if (base !== undefined && onDisk.trim() !== base.trim() && onDisk.trim() !== String(body).trim()) {
       finalBody = `${onDisk}\n\n---\n\n> ⚠️ Editado em paralelo — mescle o que precisar e apague este aviso:\n\n${body}`;
       bodyConflict = true;
