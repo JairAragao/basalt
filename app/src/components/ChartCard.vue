@@ -49,7 +49,7 @@ export default {
   props: {
     chart: { type: Object, required: true },   // def do dashboard.json
     data: { type: Object, default: () => ({}) }, // resultado de computeChart já colorido
-    color: { type: String, default: '#d9a01e' }, // cor default da série (âmbar)
+    color: { type: String, default: '#e8873a' }, // cor default da série (âmbar)
   },
   computed: {
     defaultColor() { return this.color; },

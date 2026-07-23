@@ -117,7 +117,7 @@ export default {
 .cal-day:hover { background: #333; }
 .cal-day--out { color: #5a5a5a; }
 .cal-day--today { border-color: #4a4a4a; }
-.cal-day--in { background: rgba(217, 160, 30, 0.16); border-radius: 0; }
-.cal-day--sel { background: #d9a01e; color: #191919; font-weight: 600; }
+.cal-day--in { background: rgba(232, 135, 58, 0.16); border-radius: 0; }
+.cal-day--sel { background: #e8873a; color: #191919; font-weight: 600; }
 .cal-day--sel:hover { background: #e5ab26; }
 </style>

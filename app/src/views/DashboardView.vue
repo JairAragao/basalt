@@ -417,5 +417,5 @@ export default {
   cursor: ew-resize;
   border-radius: 0 0.5rem 0.5rem 0;
 }
-.chart-resize:hover { background: linear-gradient(to right, transparent, rgba(217, 160, 30, 0.35)); }
+.chart-resize:hover { background: linear-gradient(to right, transparent, rgba(232, 135, 58, 0.35)); }
 </style>

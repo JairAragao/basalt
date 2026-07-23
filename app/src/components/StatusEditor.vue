@@ -340,8 +340,8 @@ export default {
 .dd-enter-from, .dd-leave-to { opacity: 0; transform: translateY(-4px); }
 /* etapa sendo arrastada (ghost do vuedraggable) */
 .stage-ghost { opacity: .5; }
-.stage-ghost :deep(.field) { border-color: #d9a01e; }
+.stage-ghost :deep(.field) { border-color: #e8873a; }
 /* grupo macro sendo arrastado */
 .group-ghost { opacity: .5; }
-.group-ghost > div { border-color: #d9a01e; }
+.group-ghost > div { border-color: #e8873a; }
 </style>

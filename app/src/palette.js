@@ -5,7 +5,7 @@ export const PALETTE = [
   { name: 'Ardósia', value: '#6f7787' },
   { name: 'Marrom', value: '#a1795f' },
   { name: 'Laranja', value: '#d9730d' },
-  { name: 'Âmbar', value: '#d9a01e' },
+  { name: 'Âmbar', value: '#e8873a' },
   { name: 'Amarelo', value: '#c9b458' },
   { name: 'Verde', value: '#4caf72' },
   { name: 'Teal', value: '#3aa6a0' },

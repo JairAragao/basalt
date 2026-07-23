@@ -112,7 +112,7 @@
 // Select de STATUS estilo Notion: etapas agrupadas pela etapa macro (separador),
 // com edição inline (cor, renomear, mover, excluir, adicionar). Persiste via o pai
 // (emit 'save-status' { statusGroups, renames }), que chama PUT /board/status.
-const PALETTE = ['#9b9b9b', '#7d828c', '#4b4b4b', '#d9a01e', '#d9730d', '#4a8fe0', '#4caf72', '#2f9e58', '#e0566b', '#a855f7', '#0891b2'];
+const PALETTE = ['#9b9b9b', '#7d828c', '#4b4b4b', '#e8873a', '#d9730d', '#4a8fe0', '#4caf72', '#2f9e58', '#e0566b', '#a855f7', '#0891b2'];
 
 export default {
   name: 'StatusSelect',

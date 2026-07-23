@@ -594,7 +594,7 @@ export default {
   opacity: 0.4;
 }
 .col-ghost > * {
-  border: 1px dashed #d9a01e !important;
+  border: 1px dashed #e8873a !important;
   border-radius: 0.75rem;
 }
 .dd-enter-active, .dd-leave-active { transition: opacity .12s ease, transform .12s ease; }

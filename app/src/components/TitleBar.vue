@@ -3,9 +3,9 @@
   <div class="titlebar drag flex h-10 flex-shrink-0 items-stretch bg-ink-950 text-txt select-none">
     <!-- logo (região arrastável) — sem quadrado, com o glow pulsante do splash -->
     <div class="drag flex flex-shrink-0 items-center gap-2 pl-3 pr-2.5">
-      <span class="relative grid h-10 w-10 place-items-center self-center">
+      <span class="relative grid h-8 w-8 place-items-center self-center">
         <span class="logo-glow pointer-events-none absolute inset-0 rounded-full"></span>
-        <img src="/basalt.png" alt="Basalt" class="relative z-[1] h-9 w-9 object-contain" />
+        <img src="/basalt.png" alt="Basalt" class="relative z-[1] h-6 w-6 object-contain" />
       </span>
     </div>
 
@@ -119,7 +119,7 @@ export default {
 .no-drag { -webkit-app-region: no-drag; }
 /* mini-splash: glow âmbar pulsante atrás do logo (CSS puro, não fura o drag) */
 .logo-glow {
-  background: radial-gradient(circle, rgba(217, 160, 30, .38) 0%, rgba(217, 160, 30, .14) 45%, transparent 72%);
+  background: radial-gradient(circle, rgba(232, 135, 58, .38) 0%, rgba(232, 135, 58, .14) 45%, transparent 72%);
   animation: logo-pulse 3s ease-in-out infinite;
 }
 @keyframes logo-pulse {

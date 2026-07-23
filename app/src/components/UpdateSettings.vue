@@ -131,7 +131,7 @@ export default {
       return STATE_LABELS[this.state] || '';
     },
     statusColor() {
-      if (this.state === 'downloaded' || this.state === 'available' || this.state === 'downloading') return '#d9a01e';
+      if (this.state === 'downloaded' || this.state === 'available' || this.state === 'downloading') return '#e8873a';
       if (this.state === 'uptodate') return '#4caf72';
       if (this.state === 'error') return '#e0566b';
       return '#6f6f6f';

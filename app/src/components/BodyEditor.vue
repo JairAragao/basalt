@@ -1074,8 +1074,8 @@ export default {
   transition: background .12s, border-color .12s;
 }
 .body-editor__surface :deep(.ProseMirror ul[data-type="taskList"] input[type="checkbox"]:checked) {
-  background: #d9a01e;
-  border-color: #d9a01e;
+  background: #e8873a;
+  border-color: #e8873a;
 }
 .body-editor__surface :deep(.ProseMirror ul[data-type="taskList"] input[type="checkbox"]:checked::after) {
   content: '';
@@ -1177,7 +1177,7 @@ export default {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(217, 160, 30, 0.12);
+  background: rgba(232, 135, 58, 0.12);
   pointer-events: none;
 }
 
@@ -1199,7 +1199,7 @@ export default {
   cursor: zoom-in; /* clique → abre expandida (lightbox) */
 }
 .body-editor__surface :deep(.ProseMirror img.ProseMirror-selectednode) {
-  outline: 2px solid rgba(217, 160, 30, 0.6);
+  outline: 2px solid rgba(232, 135, 58, 0.6);
 }
 
 /* divisor (hr) */
@@ -1209,12 +1209,12 @@ export default {
   margin: 1em 0;
 }
 .body-editor__surface :deep(.ProseMirror hr.ProseMirror-selectednode) {
-  border-top-color: #d9a01e;
+  border-top-color: #e8873a;
 }
 
 /* links — usa o accent âmbar da paleta (não indigo/violeta, fora do design system) */
 .body-editor__surface :deep(.ProseMirror a) {
-  color: #d9a01e;
+  color: #e8873a;
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
@@ -1222,7 +1222,7 @@ export default {
 
 /* marca de seleção dentro do gap-cursor / nó selecionado */
 .body-editor__surface :deep(.ProseMirror .ProseMirror-selectednode) {
-  outline: 2px solid rgba(217, 160, 30, 0.4);
+  outline: 2px solid rgba(232, 135, 58, 0.4);
   border-radius: 4px;
 }
 
@@ -1255,7 +1255,7 @@ export default {
   transition: background .12s, color .12s;
 }
 .be-bubble__btn:hover { background: #2a2a2a; color: #e9e9e7; }
-.be-bubble__btn.is-active { color: #d9a01e; background: rgba(217, 160, 30, 0.12); }
+.be-bubble__btn.is-active { color: #e8873a; background: rgba(232, 135, 58, 0.12); }
 .be-bubble__btn--mono { font-family: Consolas, monospace; font-size: 12px; }
 .be-linkbar {
   position: fixed;
@@ -1281,7 +1281,7 @@ export default {
   color: #e9e9e7;
   outline: none;
 }
-.be-linkbar__input:focus { border-color: #d9a01e; }
+.be-linkbar__input:focus { border-color: #e8873a; }
 .be-bubble__sep {
   width: 1px;
   height: 18px;
@@ -1430,7 +1430,7 @@ export default {
 .be-prose pre code .hljs-selector-tag,
 .be-prose pre code .hljs-literal,
 .be-prose pre code .hljs-type,
-.be-prose pre code .hljs-name { color: #d9a01e !important; }
+.be-prose pre code .hljs-name { color: #e8873a !important; }
 .be-prose pre code .hljs-string,
 .be-prose pre code .hljs-meta .hljs-string,
 .be-prose pre code .hljs-regexp { color: #7fbf7f !important; }

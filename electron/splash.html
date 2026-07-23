@@ -17,26 +17,26 @@
       .logo { position: relative; display: grid; place-items: center; width: 260px; height: 260px; }
       .logo::before {
         content: ''; position: absolute; inset: -20px; border-radius: 50%;
-        background: radial-gradient(circle, rgba(217,160,30,.45) 0%, rgba(217,160,30,.16) 42%, transparent 70%);
+        background: radial-gradient(circle, rgba(232,135,58,.45) 0%, rgba(232,135,58,.16) 42%, transparent 70%);
         animation: pulse 2.8s ease-in-out infinite;
       }
       .logo img {
         position: relative; z-index: 1;
         width: 210px; height: 210px; max-width: none; object-fit: contain;
         transform: scale(1.25);
-        filter: drop-shadow(0 0 24px rgba(217,160,30,.35));
+        filter: drop-shadow(0 0 24px rgba(232,135,58,.35));
       }
 
-      .title { font-size: 32px; font-weight: 700; letter-spacing: .4px; text-shadow: 0 0 50px rgba(217,160,30,.35); }
+      .title { font-size: 32px; font-weight: 700; letter-spacing: .4px; text-shadow: 0 0 50px rgba(232,135,58,.35); }
       .sub { font-size: 13px; color: #9b9b9b; margin-top: -10px; letter-spacing: .3px; }
 
       /* barra DETERMINADA — enche de 0 a 100% até completar */
       .bar { width: 320px; height: 5px; background: #1d1d21; border-radius: 999px; overflow: hidden; margin-top: 8px; }
       .bar > i {
         display: block; height: 100%; width: 0;
-        background: linear-gradient(90deg, #b9821a, #d9a01e 55%, #f3c75a);
+        background: linear-gradient(90deg, #b9821a, #e8873a 55%, #f3c75a);
         border-radius: 999px;
-        box-shadow: 0 0 12px rgba(217,160,30,.5);
+        box-shadow: 0 0 12px rgba(232,135,58,.5);
         animation: fill 1.2s cubic-bezier(.3,.6,.3,1) forwards;
       }
 
