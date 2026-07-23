@@ -3,6 +3,12 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.13.0] - 2026-07-23
+
+### Alterado
+
+- Rebranding visual: novo logo "lasca de basalto" — lasca de 3 facetas com gume de lava (âmbar) e fio de luz, substituindo o cristal facetado antigo. Trocado no ícone do app (janela, instalador Windows, mac/linux), splash e favicon.
+
 ## [0.12.1] - 2026-07-22
 
 ### Adicionado
