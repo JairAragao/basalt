@@ -3,6 +3,16 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.14.3] - 2026-07-29
+
+### Corrigido
+
+- Editor de corpo: os 6 pontinhos à esquerda da linha não faziam nada. O botão fica sobre a superfície de edição (no respiro esquerdo do texto), então levar o mouse até ele contava como "saiu do editor" e o handle sumia no instante em que o ponteiro chegava — o clique nunca acontecia e o menu do bloco (transformar em / duplicar / excluir), que já existia, era inalcançável.
+
+### Adicionado
+
+- Editor de corpo: arrastar o bloco pelos 6 pontinhos, estilo Notion — segure e arraste para mover a linha inteira (parágrafo, título, item de lista, checkbox, citação, código, imagem); uma linha marca o destino durante o arrasto. Clique único continua abrindo o menu do bloco.
+
 ## [0.14.2] - 2026-07-23
 
 ### Corrigido
