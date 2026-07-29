@@ -89,13 +89,19 @@
       <div v-else class="be-slash__empty">Nenhum bloco</div>
     </div>
 
-    <!-- handle de bloco (6 pontinhos) à esquerda do bloco sob o cursor -->
+    <!-- handle de bloco (6 pontinhos) à esquerda do bloco sob o cursor.
+         Clique = menu do bloco · arrastar = move o bloco inteiro (HTML5 drag,
+         o drop é tratado pelo próprio ProseMirror via view.dragging). -->
     <button
+      ref="blockHandle"
       v-show="bh.visible && !bm.open"
       class="be-blockhandle"
       :style="{ top: bh.top + 'px' }"
-      title="Opções do bloco"
-      @mousedown.prevent
+      title="Arraste para mover · clique para as opções do bloco"
+      draggable="true"
+      @mousedown="onHandleMouseDown"
+      @dragstart="onHandleDragStart"
+      @dragend="onHandleDragEnd"
       @click="openBlockMenu"
     >
       <svg viewBox="0 0 20 20" fill="currentColor"><circle cx="7" cy="5" r="1.3" /><circle cx="13" cy="5" r="1.3" /><circle cx="7" cy="10" r="1.3" /><circle cx="13" cy="10" r="1.3" /><circle cx="7" cy="15" r="1.3" /><circle cx="13" cy="15" r="1.3" /></svg>
@@ -141,7 +147,7 @@
 <script>
 import { markRaw } from 'vue';
 import { Editor, Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
@@ -281,7 +287,7 @@ export default {
       },
       slashItems: buildSlashItems(),
       // handle de bloco (6 pontinhos) + menu do bloco sob o cursor
-      bh: { visible: false, top: 0, start: 0, end: 0 },
+      bh: { visible: false, top: 0, start: 0, end: 0, dragging: false },
       bm: { open: false, x: 0, y: 0 },
       blockItems: [], // opções "transformar em" aplicáveis ao bloco atual
       lightbox: { open: false, src: '', alt: '' }, // imagem expandida (estilo Notion)
@@ -512,7 +518,17 @@ export default {
 
     // handle de bloco: segue o cursor sobre a superfície de edição
     this._onSurfaceMove = (e) => self.onSurfaceMouseMove(e);
-    this._onSurfaceLeave = () => { if (!self.bm.open) self.bh.visible = false; };
+    // o handle é irmão da superfície e fica SOBRE ela (gutter esquerdo): mover o
+    // mouse do texto pro handle dispara mouseleave aqui. Sem ignorar esse caso o
+    // botão sumia justo quando o ponteiro chegava nele — os 6 pontinhos nunca
+    // recebiam o clique.
+    this._onSurfaceLeave = (e) => {
+      if (self.bm.open || self.bh.dragging) return;
+      const h = self.$refs.blockHandle;
+      const to = e && e.relatedTarget;
+      if (h && to && (to === h || h.contains(to))) return;
+      self.bh.visible = false;
+    };
     this._onSurfaceClick = (e) => self.onSurfaceClick(e);
     const surf = this.$refs.editor;
     if (surf) {
@@ -836,7 +852,7 @@ export default {
 
     // ---- handle de bloco (6 pontinhos por linha, estilo Notion) ----
     onSurfaceMouseMove(e) {
-      if (!this.editor || this.bm.open) return;
+      if (!this.editor || this.bm.open || this.bh.dragging) return;
       const view = this.editor.view;
       let res;
       try { res = view.posAtCoords({ left: e.clientX, top: e.clientY }); } catch (_) { res = null; }
@@ -849,7 +865,40 @@ export default {
       let coords;
       try { coords = view.coordsAtPos(start + 1); } catch (_) { return; }
       const host = this.$el.getBoundingClientRect();
-      this.bh = { visible: true, top: coords.top - host.top, start, end };
+      this.bh = { visible: true, top: coords.top - host.top, start, end, dragging: false };
+    },
+    // seleciona o bloco top-level inteiro (NodeSelection) — dá o realce visual do
+    // bloco e é o que o dragstart carrega. Sem preventDefault no mousedown: em
+    // Firefox isso cancelaria o drag nativo do botão draggable.
+    selectBlockNode() {
+      if (!this.editor) return null;
+      const view = this.editor.view;
+      let sel;
+      try { sel = NodeSelection.create(view.state.doc, this.bh.start); } catch (_) { return null; }
+      view.dispatch(view.state.tr.setSelection(sel));
+      return sel;
+    },
+    onHandleMouseDown() {
+      this.selectBlockNode();
+    },
+    onHandleDragStart(e) {
+      if (!this.editor || !this.selectBlockNode()) { e.preventDefault(); return; }
+      const view = this.editor.view;
+      this.bh.dragging = true;
+      const dom = view.nodeDOM(this.bh.start);
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', ''); // Firefox só inicia o drag com algum payload
+        if (dom && dom.nodeType === 1) e.dataTransfer.setDragImage(dom, 0, 0);
+      }
+      // com view.dragging setado, o handleDrop nativo do ProseMirror move o nó
+      // (e o dropcursor do StarterKit mostra a linha de destino).
+      view.dragging = { slice: view.state.selection.content(), move: true };
+    },
+    onHandleDragEnd() {
+      this.bh.dragging = false;
+      this.bh.visible = false;
+      if (this.editor) this.editor.view.dragging = null;
     },
     // id do slash correspondente ao tipo do bloco atual (null = atom: imagem/divisor)
     currentBlockTypeId() {
@@ -1364,11 +1413,19 @@ export default {
   color: #6f6f6f;
   background: transparent;
   border: none;
-  cursor: pointer;
+  cursor: grab;
+  user-select: none;
   transition: background .12s, color .12s;
 }
+.be-blockhandle:active { cursor: grabbing; }
 .be-blockhandle:hover { background: #2a2a2a; color: #c8c8c6; }
 .be-blockhandle svg { width: 13px; height: 13px; }
+/* bloco selecionado pelo handle (NodeSelection) — realce estilo Notion */
+.body-editor__surface :deep(.ProseMirror-selectednode) {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(232, 135, 58, 0.35);
+}
 .be-blockmenu {
   position: absolute;
   z-index: 60;
