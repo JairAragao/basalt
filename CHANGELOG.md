@@ -3,6 +3,14 @@
 Todas as mudanças relevantes do Basalt estão documentadas aqui. O formato segue o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/); as versões seguem semver.
 
+## [0.14.4] - 2026-08-03
+
+### Corrigido
+
+- "Recuperar mudanças guardadas" podia fazer a tarefa **sumir do board**. A recuperação commitava o resultado sem olhar o conteúdo: quando sobravam marcadores de conflito dentro do `.md`, eles iam pro commit, o frontmatter YAML virava inválido e o card aparecia sem título (ou nem aparecia). A guarda antiga só checava o index (`ls-files -u`), que não pega marcador que já veio no conteúdo. Agora o conteúdo dos `.md` é varrido antes do commit e a recuperação é barrada se houver marcador.
+- Recuperação usava `git stash pop`, que apaga a entrada antes de qualquer verificação — ao barrar, as mudanças estariam perdidas. Trocado por `apply` + `drop` só depois do commit: se a guarda dispara, a mudança **continua guardada**.
+- Mesma varredura de conteúdo aplicada ao `pull` (`--ff-only` e `--rebase`), que antes também só olhava o index.
+
 ## [0.14.3] - 2026-07-29
 
 ### Corrigido

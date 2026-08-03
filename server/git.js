@@ -152,6 +152,21 @@ async function pushNow() {
   }
 }
 
+// conflictedMd(): .md rastreados cujo CONTEÚDO tem marcador de conflito.
+// O `ls-files -u` só enxerga index unmerged — não pega o caso em que os
+// marcadores já entraram no conteúdo (pop sobre um arquivo que já os continha).
+// Commitar isso quebra o YAML do frontmatter e a tarefa some do board.
+// Casa só `<<<<<<< ` / `>>>>>>> `: `=======` sozinho é sublinhado de título
+// setext, markdown legítimo. Nunca lança — exit 1 (sem match) vira [].
+async function conflictedMd() {
+  try {
+    const out = await git().raw(['grep', '-lE', '^(<<<<<<<|>>>>>>>) ', '--', '*.md']);
+    return out.trim() ? out.trim().split('\n').filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 // pull: `git pull --ff-only`. Retorna { ok, message?, error? } (não lança).
 async function pull() {
   try {
@@ -169,7 +184,8 @@ async function pull() {
     // RECUPERA o working tree (já está no estado remoto pós-FF); as mudanças locais
     // (em geral só stamps derivados recalculáveis) ficam preservadas no stash.
     const unmerged = (await git().raw(['ls-files', '-u'])).trim();
-    if (unmerged) {
+    const marked = await conflictedMd();
+    if (unmerged || marked.length) {
       await git().raw(['reset', '--hard', 'HEAD']); // HEAD = remoto pós-FF; limpa os marcadores
       return {
         ok: false,
@@ -215,7 +231,8 @@ async function pullRebase() {
     // index (edge — o git costuma guardar no stash e sair limpo), restaura o
     // working tree pro HEAD pós-rebase; as mudanças locais ficam no stash.
     const unmerged = (await git().raw(['ls-files', '-u'])).trim();
-    if (unmerged) {
+    const marked = await conflictedMd();
+    if (unmerged || marked.length) {
       await git().raw(['reset', '--hard', 'HEAD']);
       return {
         ok: false,
@@ -353,25 +370,45 @@ async function syncState() {
   return { ahead, hasUpstream, stashCount };
 }
 
-// recoverStash(): traz de volta a MAIS RECENTE "mudança guardada" (git stash pop).
-// Se o pop conflitar, restaura o working tree (nada é perdido — o stash CONTINUA
-// na lista) e devolve { ok:false, conflict:true }. Sucesso → commita as mudanças
-// recuperadas (add -A escopo recuperação). NUNCA lança.
+// recoverStash(): traz de volta a MAIS RECENTE "mudança guardada".
+// Usa `stash apply` (NÃO `pop`): a entrada só sai da lista (`drop`) depois que
+// o resultado passa nas duas guardas. Com `pop` a entrada já teria sido apagada
+// quando a guarda dispara — restaurar ali PERDERIA as mudanças.
+// Guardas: (1) index unmerged; (2) marcador de conflito no conteúdo dos .md —
+// um apply pode sair 0 e ainda assim deixar marcadores, e commitar isso quebra
+// o YAML do frontmatter (a tarefa some do board). Em ambos os casos o working
+// tree volta ao estado anterior e o stash CONTINUA na lista. NUNCA lança.
 async function recoverStash() {
   try {
     const list = (await git().raw(['stash', 'list'])).trim();
     if (!list) return { ok: true, message: 'nada a recuperar' };
+
+    const restore = async () => {
+      await git().raw(['checkout', '--', '.']);
+      try { await git().raw(['reset']); } catch { /* noop */ }
+    };
+
     try {
-      await git().raw(['stash', 'pop']);
-    } catch (popErr) {
+      await git().raw(['stash', 'apply']);
+    } catch (applyErr) {
       const unmerged = (await git().raw(['ls-files', '-u'])).trim();
       if (unmerged) {
-        await git().raw(['checkout', '--', '.']); // desfaz o pop conflitante
-        try { await git().raw(['reset']); } catch { /* noop */ }
+        await restore();
         return { ok: false, conflict: true, error: 'a recuperação conflitou com o estado atual — suas mudanças continuam guardadas (peça ajuda pra resolver)' };
       }
-      return { ok: false, error: oneLine(popErr.message) };
+      return { ok: false, error: oneLine(applyErr.message) };
     }
+
+    const marked = await conflictedMd();
+    if (marked.length) {
+      await restore();
+      return {
+        ok: false,
+        conflict: true,
+        error: `a recuperação deixaria marcadores de conflito em ${marked.length} arquivo(s) (${marked.slice(0, 3).join(', ')}) — nada foi commitado e suas mudanças continuam guardadas`,
+      };
+    }
+
     try {
       await ensureIdentity();
       await git().raw(['add', '-A']);
@@ -379,6 +416,8 @@ async function recoverStash() {
     } catch (e) {
       if (!/nothing to commit/i.test(e.message)) return { ok: true, warning: oneLine(e.message) };
     }
+    // Só agora a entrada pode sair da lista — o conteúdo já está commitado.
+    try { await git().raw(['stash', 'drop']); } catch { /* noop */ }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: oneLine(err.message) };
